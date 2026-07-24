@@ -171,6 +171,9 @@ export default function App() {
   const [pendingComponents, setPendingComponents] = useState<PendingComponent[]>([]);
   const [pendingAssignments, setPendingAssignments] = useState<Record<string, string>>({});
   const [diagramPath, setDiagramPath]     = useState('');
+  const [previewXml, setPreviewXml]       = useState<string | null>(null);
+  const [previewReady, setPreviewReady]   = useState(false);
+  const previewRef = useRef<HTMLIFrameElement>(null);
 
   // UI state
   const [status, setStatus]   = useState('');
@@ -190,6 +193,22 @@ export default function App() {
   const [newCustomerName, setNewCustomerName] = useState('');
   const [newProjectName, setNewProjectName]   = useState('');
   const importInputRef = useRef<HTMLInputElement>(null);
+
+  // Send XML to the embed iframe whenever both are ready
+  useEffect(() => {
+    if (previewReady && previewXml && previewRef.current?.contentWindow) {
+      previewRef.current.contentWindow.postMessage(
+        JSON.stringify({ action: 'load', xml: previewXml }),
+        'https://embed.diagrams.net',
+      );
+    }
+  }, [previewReady, previewXml]);
+
+  // Reset preview state when diagram type changes so the iframe reloads
+  useEffect(() => {
+    setPreviewXml(null);
+    setPreviewReady(false);
+  }, [diagramType]);
 
   useEffect(() => {
     fetch('/api/example')
@@ -468,6 +487,27 @@ export default function App() {
     }
   }
 
+  async function loadPreview() {
+    if (!architecture) return;
+    setBusy(true);
+    setError('');
+    try {
+      const response = await fetch('/api/drawio-xml', {
+        method: 'POST', headers: API_HEADERS,
+        body: JSON.stringify({ architecture, diagramType }),
+      });
+      if (!response.ok) throw new Error('Failed to get XML');
+      const xml = await response.text();
+      setPreviewXml(xml);
+      setPreviewReady(false); // iframe will fire init event when loaded
+      setStatus('Preview loaded');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Preview failed');
+    } finally {
+      setBusy(false);
+    }
+  }
+
   // ── Settings ─────────────────────────────────────────────────────────────────
 
   async function testOllamaConnection() {
@@ -486,6 +526,21 @@ export default function App() {
       setSettingsStatus('Settings saved');
     } catch { setSettingsStatus('Failed to save'); }
   }
+
+  // Listen for diagrams.net embed init event and send XML
+  useEffect(() => {
+    function handleMessage(event: MessageEvent) {
+      if (event.origin !== 'https://embed.diagrams.net') return;
+      try {
+        const msg = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
+        if (msg?.event === 'init') {
+          setPreviewReady(true);
+        }
+      } catch { /* ignore */ }
+    }
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, []);
 
   // ── Step helpers ─────────────────────────────────────────────────────────────
 
@@ -1000,6 +1055,28 @@ export default function App() {
                       <Button kind="secondary" renderIcon={Launch} onClick={openInDiagramsNet} disabled={busy || !architecture}>
                         Open in diagrams.net
                       </Button>
+                    </div>
+
+                    {/* Option D — Inline preview */}
+                    <div className="diagram-action-card">
+                      <div className="diagram-action-header">
+                        <strong>Option D — Preview here</strong>
+                        <InfoTip text="Renders a live interactive preview of the diagram using the diagrams.net embed API. Requires an internet connection to load the embed viewer. The diagram is sent to the iframe via postMessage — nothing is stored externally." />
+                      </div>
+                      <p className="panel-copy">Render an interactive preview inline. Requires internet access to load the embed viewer.</p>
+                      <Button kind="secondary" renderIcon={Diagram} onClick={loadPreview} disabled={busy || !architecture}>
+                        {previewXml ? 'Refresh preview' : 'Load preview'}
+                      </Button>
+                      {previewXml && (
+                        <div className="diagram-preview">
+                          <iframe
+                            ref={previewRef}
+                            src="https://embed.diagrams.net/?embed=1&proto=json&spin=1&analytics=0&noSaveBtn=1&noExitBtn=1"
+                            title="Diagram preview"
+                            className="diagram-preview-frame"
+                          />
+                        </div>
+                      )}
                     </div>
                   </div>
 

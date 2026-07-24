@@ -421,7 +421,12 @@ class NetworkPicassoHandler(BaseHTTPRequestHandler):
         self.send_json({"error": message}, status=status)
 
     def send_cors_headers(self) -> None:
-        self.send_header("Access-Control-Allow-Origin", "http://localhost:5173")
+        allowed = {"http://localhost:5173", "http://127.0.0.1:5173"}
+        origin = self.headers.get("Origin", "")
+        if origin in allowed:
+            self.send_header("Access-Control-Allow-Origin", origin)
+        else:
+            self.send_header("Access-Control-Allow-Origin", "http://localhost:5173")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "Content-Type")
 
