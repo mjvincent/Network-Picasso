@@ -472,7 +472,11 @@ export default function App() {
   async function uploadAndRunIntake() {
     setBusy(true);
     setError('');
-    setStatus('Uploading and parsing files…');
+    setStatus(
+      settings.mode === 'ollama'
+        ? `Uploading files and running AI extraction (${settings.ollamaModel}) — this may take up to a minute…`
+        : 'Uploading and parsing files…'
+    );
     try {
       const body = new FormData();
       body.append('projectName', projectName || 'Customer Architecture');

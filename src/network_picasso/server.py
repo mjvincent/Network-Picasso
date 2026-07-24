@@ -469,7 +469,19 @@ class NetworkPicassoHandler(BaseHTTPRequestHandler):
         if not architecture:
             architecture_path = repo_path(payload.get("architecturePath") or DEFAULT_ARCHITECTURE_PATH)
             architecture = read_json_file(architecture_path)
-        self.send_json({"questions": find_design_gaps(architecture)})
+        gaps = find_design_gaps(architecture)
+        # Augment with LLM gaps when mode is ollama (from payload or saved settings).
+        settings = load_settings()
+        mode = str(payload.get("mode") or settings.get("mode") or "rules")
+        if mode == "ollama":
+            model = str(payload.get("ollamaModel") or settings.get("ollamaModel") or _SETTINGS_DEFAULTS["ollamaModel"])
+            llm_gaps = _ollama.generate_questions(architecture, model, OLLAMA_BASE_URL)
+            existing_texts = {g["question"] for g in gaps}
+            for g in llm_gaps:
+                if g.get("question") and g["question"] not in existing_texts:
+                    gaps.append(g)
+                    existing_texts.add(g["question"])
+        self.send_json({"questions": gaps})
 
     def handle_save_settings(self, payload: dict) -> None:
         settings = load_settings()
