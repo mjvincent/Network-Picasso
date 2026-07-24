@@ -13,9 +13,17 @@ from .intake import backfill_answer_into_model, build_architecture_from_inputs
 from . import ollama as _ollama
 from .projects import (
     create_project,
+    delete_folder,
+    delete_project,
+    duplicate_project,
+    list_folders,
     list_projects,
+    list_projects_in_folder,
+    move_project,
     project_architecture_path,
     project_uploads_path,
+    rename_folder,
+    rename_project,
     resolve_projects_root,
     safe_slug,
 )
@@ -99,6 +107,17 @@ class NetworkPicassoHandler(BaseHTTPRequestHandler):
             root = resolve_projects_root(settings)
             self.send_json({"projects": list_projects(root)})
             return
+        if parsed.path == "/api/folders":
+            settings = load_settings()
+            root = resolve_projects_root(settings)
+            qs = parse_qs(parsed.query or "")
+            folder_name = (qs.get("folder") or [None])[0]
+            if folder_name:
+                folder_path = root / folder_name
+                self.send_json({"projects": list_projects_in_folder(folder_path)})
+            else:
+                self.send_json({"folders": list_folders(root)})
+            return
         if parsed.path == "/api/project-export":
             qs = parse_qs(parsed.query or "")
             project_path = repo_path((qs.get("path") or [""])[0])
@@ -146,6 +165,18 @@ class NetworkPicassoHandler(BaseHTTPRequestHandler):
                 self.handle_save_settings(payload)
             elif parsed.path == "/api/projects":
                 self.handle_create_project(payload)
+            elif parsed.path == "/api/folders/rename":
+                self.handle_rename_folder(payload)
+            elif parsed.path == "/api/folders/delete":
+                self.handle_delete_folder(payload)
+            elif parsed.path == "/api/projects/rename":
+                self.handle_rename_project(payload)
+            elif parsed.path == "/api/projects/delete":
+                self.handle_delete_project(payload)
+            elif parsed.path == "/api/projects/duplicate":
+                self.handle_duplicate_project(payload)
+            elif parsed.path == "/api/projects/move":
+                self.handle_move_project(payload)
             else:
                 self.send_error_json(404, "Route not found")
         except Exception as exc:  # Keep the local UI useful during early iteration.
@@ -246,6 +277,95 @@ class NetworkPicassoHandler(BaseHTTPRequestHandler):
             "path": relative_to_repo(proj_path),
             "customer": safe_slug(customer),
             "project": safe_slug(project) if project else "",
+        })
+
+    def handle_rename_folder(self, payload: dict) -> None:
+        path_str = str(payload.get("path") or "").strip()
+        new_name = str(payload.get("name") or "").strip()
+        if not path_str or not new_name:
+            self.send_error_json(400, "path and name are required")
+            return
+        folder_path = repo_path(path_str)
+        try:
+            new_path = rename_folder(folder_path, new_name)
+        except ValueError as exc:
+            self.send_error_json(409, str(exc))
+            return
+        self.send_json({"path": relative_to_repo(new_path), "name": new_path.name})
+
+    def handle_delete_folder(self, payload: dict) -> None:
+        path_str = str(payload.get("path") or "").strip()
+        if not path_str:
+            self.send_error_json(400, "path is required")
+            return
+        folder_path = repo_path(path_str)
+        delete_folder(folder_path)
+        self.send_json({"ok": True})
+
+    def handle_rename_project(self, payload: dict) -> None:
+        path_str = str(payload.get("path") or "").strip()
+        new_name = str(payload.get("name") or "").strip()
+        if not path_str or not new_name:
+            self.send_error_json(400, "path and name are required")
+            return
+        project_path = repo_path(path_str)
+        try:
+            new_path = rename_project(project_path, new_name)
+        except ValueError as exc:
+            self.send_error_json(409, str(exc))
+            return
+        self.send_json({"path": relative_to_repo(new_path), "name": new_path.name})
+
+    def handle_delete_project(self, payload: dict) -> None:
+        path_str = str(payload.get("path") or "").strip()
+        if not path_str:
+            self.send_error_json(400, "path is required")
+            return
+        project_path = repo_path(path_str)
+        delete_project(project_path)
+        self.send_json({"ok": True})
+
+    def handle_duplicate_project(self, payload: dict) -> None:
+        path_str = str(payload.get("path") or "").strip()
+        new_name = str(payload.get("name") or "").strip()
+        if not path_str or not new_name:
+            self.send_error_json(400, "path and name are required")
+            return
+        project_path = repo_path(path_str)
+        try:
+            new_path = duplicate_project(project_path, new_name)
+        except ValueError as exc:
+            self.send_error_json(409, str(exc))
+            return
+        settings = load_settings()
+        root = resolve_projects_root(settings)
+        self.send_json({
+            "path": relative_to_repo(new_path),
+            "customer": new_path.parent.name,
+            "project": new_path.name,
+            "hasArchitecture": (new_path / "architecture.json").exists(),
+            "isLegacy": False,
+        })
+
+    def handle_move_project(self, payload: dict) -> None:
+        path_str = str(payload.get("path") or "").strip()
+        dest_str = str(payload.get("destFolder") or "").strip()
+        if not path_str or not dest_str:
+            self.send_error_json(400, "path and destFolder are required")
+            return
+        project_path = repo_path(path_str)
+        dest_folder = repo_path(dest_str)
+        try:
+            new_path = move_project(project_path, dest_folder)
+        except ValueError as exc:
+            self.send_error_json(409, str(exc))
+            return
+        self.send_json({
+            "path": relative_to_repo(new_path),
+            "customer": new_path.parent.name,
+            "project": new_path.name,
+            "hasArchitecture": (new_path / "architecture.json").exists(),
+            "isLegacy": False,
         })
 
     def handle_project_import(self) -> None:

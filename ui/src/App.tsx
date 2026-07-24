@@ -12,6 +12,8 @@ import {
   InlineNotification,
   Layer,
   Modal,
+  OverflowMenu,
+  OverflowMenuItem,
   ProgressIndicator,
   ProgressStep,
   Select,
@@ -154,10 +156,17 @@ const DEFAULT_SETTINGS: AppSettings = {
 // Re-export utilities for tests
 export { questionKey, mergeQuestions };
 
+type FolderNode = {
+  name: string;
+  path: string;
+  projectCount: number;
+  childCount: number;
+};
+
 export default function App() {
   // Wizard state
   const [step, setStep] = useState<Step>('upload');
-  const [activeNav, setActiveNav] = useState<'wizard' | 'settings'>('wizard');
+  const [activeNav, setActiveNav] = useState<'wizard' | 'settings' | 'projects'>('wizard');
 
   // Intake state
   const [projectName, setProjectName]     = useState('');
@@ -202,6 +211,24 @@ export default function App() {
   const [newCustomerName, setNewCustomerName] = useState('');
   const [newProjectName, setNewProjectName]   = useState('');
   const importInputRef = useRef<HTMLInputElement>(null);
+
+  // Projects page state (folder browser)
+  const [folders, setFolders]             = useState<FolderNode[]>([]);
+  const [browseFolder, setBrowseFolder]   = useState<FolderNode | null>(null); // null = root
+  const [folderProjects, setFolderProjects] = useState<ProjectNode[]>([]);
+  const [foldersLoading, setFoldersLoading] = useState(false);
+  // Project action modals
+  const [renameTarget, setRenameTarget]   = useState<ProjectNode | null>(null);
+  const [renameValue, setRenameValue]     = useState('');
+  const [deleteTarget, setDeleteTarget]   = useState<{ kind: 'project' | 'folder'; node: ProjectNode | FolderNode } | null>(null);
+  const [duplicateTarget, setDuplicateTarget] = useState<ProjectNode | null>(null);
+  const [duplicateName, setDuplicateName] = useState('');
+  const [moveTarget, setMoveTarget]       = useState<ProjectNode | null>(null);
+  const [moveDest, setMoveDest]           = useState('');
+  const [renameFolderTarget, setRenameFolderTarget] = useState<FolderNode | null>(null);
+  const [renameFolderValue, setRenameFolderValue]   = useState('');
+  const [projectsActionBusy, setProjectsActionBusy] = useState(false);
+  const [projectsError, setProjectsError] = useState('');
 
   // Send XML to the embed iframe whenever both are ready
   useEffect(() => {
@@ -253,17 +280,126 @@ export default function App() {
       .catch(() => {});
   }
 
+  // ── Folder browser (Projects page) ──────────────────────────────────────
+
+  async function loadFolders() {
+    setFoldersLoading(true);
+    setProjectsError('');
+    try {
+      const data: { folders: FolderNode[] } = await fetch('/api/folders').then((r) => r.json());
+      setFolders(data.folders || []);
+      setBrowseFolder(null);
+      setFolderProjects([]);
+    } catch { setProjectsError('Could not load folders.'); }
+    finally { setFoldersLoading(false); }
+  }
+
+  async function loadFolderProjects(folder: FolderNode) {
+    setFoldersLoading(true);
+    setProjectsError('');
+    try {
+      const data: { projects: ProjectNode[] } = await fetch(
+        `/api/folders?folder=${encodeURIComponent(folder.name)}`
+      ).then((r) => r.json());
+      setFolderProjects(data.projects || []);
+      setBrowseFolder(folder);
+    } catch { setProjectsError('Could not load projects.'); }
+    finally { setFoldersLoading(false); }
+  }
+
+  // ── Project / folder actions ─────────────────────────────────────────────
+
+  async function doRenameFolder() {
+    if (!renameFolderTarget || !renameFolderValue.trim()) return;
+    setProjectsActionBusy(true);
+    try {
+      await postJson('/api/folders/rename', { path: renameFolderTarget.path, name: renameFolderValue.trim() });
+      setRenameFolderTarget(null);
+      await loadFolders();
+      refreshProjectTree();
+    } catch (e: any) { setProjectsError(e.message || 'Rename failed'); }
+    finally { setProjectsActionBusy(false); }
+  }
+
+  async function doDeleteFolder(folder: FolderNode) {
+    setProjectsActionBusy(true);
+    try {
+      await postJson('/api/folders/delete', { path: folder.path });
+      setDeleteTarget(null);
+      await loadFolders();
+      refreshProjectTree();
+    } catch (e: any) { setProjectsError(e.message || 'Delete failed'); }
+    finally { setProjectsActionBusy(false); }
+  }
+
+  async function doRenameProject() {
+    if (!renameTarget || !renameValue.trim()) return;
+    setProjectsActionBusy(true);
+    try {
+      await postJson('/api/projects/rename', { path: renameTarget.path, name: renameValue.trim() });
+      setRenameTarget(null);
+      if (browseFolder) await loadFolderProjects(browseFolder); else await loadFolders();
+      refreshProjectTree();
+    } catch (e: any) { setProjectsError(e.message || 'Rename failed'); }
+    finally { setProjectsActionBusy(false); }
+  }
+
+  async function doDeleteProject(node: ProjectNode) {
+    setProjectsActionBusy(true);
+    try {
+      await postJson('/api/projects/delete', { path: node.path });
+      setDeleteTarget(null);
+      if (browseFolder) await loadFolderProjects(browseFolder); else await loadFolders();
+      refreshProjectTree();
+    } catch (e: any) { setProjectsError(e.message || 'Delete failed'); }
+    finally { setProjectsActionBusy(false); }
+  }
+
+  async function doDuplicateProject() {
+    if (!duplicateTarget || !duplicateName.trim()) return;
+    setProjectsActionBusy(true);
+    try {
+      await postJson('/api/projects/duplicate', { path: duplicateTarget.path, name: duplicateName.trim() });
+      setDuplicateTarget(null);
+      if (browseFolder) await loadFolderProjects(browseFolder); else await loadFolders();
+      refreshProjectTree();
+    } catch (e: any) { setProjectsError(e.message || 'Duplicate failed'); }
+    finally { setProjectsActionBusy(false); }
+  }
+
+  async function doMoveProject() {
+    if (!moveTarget || !moveDest) return;
+    setProjectsActionBusy(true);
+    try {
+      await postJson('/api/projects/move', { path: moveTarget.path, destFolder: moveDest });
+      setMoveTarget(null);
+      if (browseFolder) await loadFolderProjects(browseFolder); else await loadFolders();
+      refreshProjectTree();
+    } catch (e: any) { setProjectsError(e.message || 'Move failed'); }
+    finally { setProjectsActionBusy(false); }
+  }
+
+  function openProjectsPage() {
+    setActiveNav('projects');
+    loadFolders();
+  }
+
   async function createProject() {
-    if (!newCustomerName.trim()) return;
+    // When inside a folder, that folder IS the customer — only need a project name.
+    const inFolder = activeNav === 'projects' && browseFolder != null;
+    const customer = inFolder ? browseFolder!.name : newCustomerName.trim();
+    const project  = inFolder ? newProjectName.trim() : newProjectName.trim() || undefined;
+    if (!customer) return;
+    if (inFolder && !project) return; // project name required when customer is fixed
     try {
       const result = await postJson<{ path: string }>('/api/projects', {
-        customer: newCustomerName.trim(),
-        project: newProjectName.trim() || undefined,
+        customer,
+        project,
       });
       setShowNewProjectModal(false);
       setNewCustomerName('');
       setNewProjectName('');
-      refreshProjectTree();
+      if (inFolder) await loadFolderProjects(browseFolder!); else refreshProjectTree();
       setStatus(`Project created: ${result.path}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create project');
@@ -675,71 +811,54 @@ export default function App() {
             4 · Diagram
           </SideNavLink>
           <SideNavLink
+            renderIcon={Add}
+            isActive={activeNav === 'projects'}
+            onClick={openProjectsPage}
+          >
+            Projects
+          </SideNavLink>
+          <SideNavLink
             renderIcon={Settings}
             isActive={activeNav === 'settings'}
             onClick={() => setActiveNav('settings')}
           >
             Settings
           </SideNavLink>
-          <SideNavLink renderIcon={Add} onClick={() => setShowNewProjectModal(true)}>
-            New project
-          </SideNavLink>
-          {/* Dynamic project tree */}
-          {(() => {
-            const customers = Array.from(new Set(projectTree.map((n) => n.customer)));
-            return customers.map((customer) => {
-              const nodes = projectTree.filter((n) => n.customer === customer);
-              const hasSubs = nodes.some((n) => n.project);
-              if (hasSubs) {
-                return (
-                  <SideNavMenu key={customer} title={customer} renderIcon={IbmCloud}>
-                    {nodes.map((node) => (
-                      <SideNavMenuItem
-                        key={node.path}
-                        isActive={activeProject?.path === node.path}
-                        onClick={() => selectProject(node)}
-                      >
-                        {node.project || customer}
-                      </SideNavMenuItem>
-                    ))}
-                  </SideNavMenu>
-                );
-              }
-              return nodes.map((node) => (
-                <SideNavLink
-                  key={node.path}
-                  renderIcon={IbmCloud}
-                  isActive={activeProject?.path === node.path}
-                  onClick={() => selectProject(node)}
-                >
-                  {node.isLegacy ? 'Unsaved workspace' : node.customer}
-                </SideNavLink>
-              ));
-            });
-          })()}
+          {/* Active project indicator */}
+          {activeProject && activeNav === 'wizard' && (
+            <SideNavLink renderIcon={IbmCloud} isActive={false} style={{ opacity: 0.75 }}>
+              {activeProject.project || activeProject.customer}
+            </SideNavLink>
+          )}
         </SideNavItems>
       </SideNav>
 
       {/* New Project Modal */}
       <Modal
         open={showNewProjectModal}
-        modalHeading="New project"
+        modalHeading={activeNav === 'projects' && browseFolder ? `New project in ${browseFolder.name}` : 'New project'}
         primaryButtonText="Create"
         secondaryButtonText="Cancel"
         onRequestSubmit={createProject}
-        onRequestClose={() => setShowNewProjectModal(false)}
-        onSecondarySubmit={() => setShowNewProjectModal(false)}
+        onRequestClose={() => { setShowNewProjectModal(false); setNewCustomerName(''); setNewProjectName(''); }}
+        onSecondarySubmit={() => { setShowNewProjectModal(false); setNewCustomerName(''); setNewProjectName(''); }}
       >
         <Stack gap={5}>
-          <TextInput id="new-customer-name" labelText="Customer name" placeholder="Acme Bank"
-            value={newCustomerName}
-            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewCustomerName(e.target.value)} />
-          <TextInput id="new-project-name" labelText="Project name (optional)" placeholder="Q1 Modernisation"
+          {!(activeNav === 'projects' && browseFolder) && (
+            <TextInput id="new-customer-name" labelText="Customer name" placeholder="Acme Bank"
+              value={newCustomerName}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewCustomerName(e.target.value)} />
+          )}
+          <TextInput id="new-project-name"
+            labelText={activeNav === 'projects' && browseFolder ? 'Project name' : 'Project name (optional)'}
+            placeholder="Q1 Modernisation"
             value={newProjectName}
             onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewProjectName(e.target.value)} />
-          <p style={{ fontSize: '0.875rem', color: '#525252' }}>
-            Leave project name blank to create a single-project customer folder.
-          </p>
+          {!(activeNav === 'projects' && browseFolder) && (
+            <p style={{ fontSize: '0.875rem', color: '#525252' }}>
+              Leave project name blank to create a single-project customer folder.
+            </p>
+          )}
         </Stack>
       </Modal>
 
@@ -751,9 +870,18 @@ export default function App() {
             <div className="page-heading">
               <div>
                 <p className="eyebrow">IBM Cloud architecture workbench</p>
-                <h1>{activeNav === 'settings' ? 'Settings' : STEP_LABELS[step]}</h1>
-                {activeNav !== 'settings' && (
+                <h1>
+                  {activeNav === 'settings' ? 'Settings'
+                    : activeNav === 'projects' ? 'Projects'
+                    : STEP_LABELS[step]}
+                </h1>
+                {activeNav === 'wizard' && (
                   <p className="eyebrow" style={{ marginTop: '0.25rem' }}>{STEP_DESCRIPTIONS[step]}</p>
+                )}
+                {activeNav === 'projects' && (
+                  <p className="eyebrow" style={{ marginTop: '0.25rem' }}>
+                    {browseFolder ? `Customer: ${browseFolder.name}` : 'All customer folders'}
+                  </p>
                 )}
               </div>
               <div className="status-line">
@@ -779,6 +907,124 @@ export default function App() {
               </div>
             )}
           </Column>
+
+          {/* ══════════════════════════════════════════════════════════════════
+              PROJECTS PAGE — folder browser
+          ══════════════════════════════════════════════════════════════════ */}
+          {activeNav === 'projects' && (
+            <Column sm={4} md={8} lg={12}>
+              {projectsError && (
+                <InlineNotification kind="error" title={projectsError} lowContrast
+                  style={{ marginBottom: '1rem' }} onCloseButtonClick={() => setProjectsError('')} />
+              )}
+
+              {/* Toolbar */}
+              <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.25rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                {browseFolder && (
+                  <Button kind="ghost" size="sm" onClick={() => loadFolders()}>
+                    ← All folders
+                  </Button>
+                )}
+                <Button size="sm" renderIcon={Add} onClick={() => setShowNewProjectModal(true)}>
+                  {browseFolder ? 'New project in this folder' : 'New customer folder'}
+                </Button>
+              </div>
+
+              {foldersLoading && <InlineLoading description="Loading…" style={{ marginBottom: '1rem' }} />}
+
+              {/* ── Root view: show folders ── */}
+              {!browseFolder && !foldersLoading && (
+                <>
+                  {folders.length === 0 ? (
+                    <Tile className="panel" style={{ textAlign: 'center', padding: '2.5rem 1rem' }}>
+                      <IbmCloud size={48} style={{ color: '#a8a8a8', marginBottom: '0.75rem' }} />
+                      <p style={{ fontWeight: 600, marginBottom: '0.5rem' }}>No projects yet</p>
+                      <p style={{ color: '#525252', fontSize: '0.875rem' }}>
+                        Create a customer folder to start. Each folder can hold one or more project workspaces.
+                      </p>
+                    </Tile>
+                  ) : (
+                    <div className="project-browser-list">
+                      {folders.map((folder) => (
+                        <div key={folder.path}
+                          className="project-browser-row folder-row"
+                          onClick={() => loadFolderProjects(folder)}
+                          role="button" tabIndex={0}
+                          onKeyDown={(e) => e.key === 'Enter' && loadFolderProjects(folder)}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', minWidth: 0 }}>
+                            <IbmCloud size={20} style={{ color: '#0043ce', flexShrink: 0 }} />
+                            <div>
+                              <p className="project-browser-name" style={{ color: '#0043ce' }}>{folder.name}</p>
+                              <p className="project-browser-meta">
+                                {folder.projectCount} project{folder.projectCount !== 1 ? 's' : ''}
+                                {folder.childCount > 0 && ` · ${folder.childCount} sub-folder${folder.childCount !== 1 ? 's' : ''}`}
+                              </p>
+                            </div>
+                          </div>
+                          <div onClick={(e) => e.stopPropagation()}>
+                            <OverflowMenu aria-label="Folder actions" size="sm" flipped>
+                              <OverflowMenuItem itemText="Rename folder"
+                                onClick={() => { setRenameFolderTarget(folder); setRenameFolderValue(folder.name); }} />
+                              <OverflowMenuItem itemText="Delete folder" isDelete hasDivider
+                                onClick={() => setDeleteTarget({ kind: 'folder', node: folder })} />
+                            </OverflowMenu>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </>
+              )}
+
+              {/* ── Folder view: show projects inside ── */}
+              {browseFolder && !foldersLoading && (
+                <>
+                  {folderProjects.length === 0 ? (
+                    <Tile className="panel" style={{ textAlign: 'center', padding: '2.5rem 1rem' }}>
+                      <p style={{ fontWeight: 600, marginBottom: '0.5rem' }}>No projects in {browseFolder.name}</p>
+                      <p style={{ color: '#525252', fontSize: '0.875rem' }}>
+                        Use &quot;New project in this folder&quot; above to add one.
+                      </p>
+                    </Tile>
+                  ) : (
+                    <div className="project-browser-list">
+                      {folderProjects.map((node) => (
+                        <div key={node.path}
+                          className="project-browser-row"
+                          onClick={() => { selectProject(node); setActiveNav('wizard'); }}
+                          role="button" tabIndex={0}
+                          onKeyDown={(e) => e.key === 'Enter' && (() => { selectProject(node); setActiveNav('wizard'); })()}
+                        >
+                          <div>
+                            <p className="project-browser-name">{node.project || node.customer}</p>
+                            <p className="project-browser-meta">
+                              {node.hasArchitecture ? '✓ Has architecture' : 'No architecture yet'}
+                              {activeProject?.path === node.path && ' · Active'}
+                            </p>
+                          </div>
+                          <div onClick={(e) => e.stopPropagation()}>
+                            <OverflowMenu aria-label="Project actions" size="sm" flipped>
+                              <OverflowMenuItem itemText="Open project"
+                                onClick={() => { selectProject(node); setActiveNav('wizard'); }} />
+                              <OverflowMenuItem itemText="Rename project"
+                                onClick={() => { setRenameTarget(node); setRenameValue(node.project || node.customer); }} />
+                              <OverflowMenuItem itemText="Duplicate project"
+                                onClick={() => { setDuplicateTarget(node); setDuplicateName(`${node.project || node.customer}-copy`); }} />
+                              <OverflowMenuItem itemText="Move to another folder"
+                                onClick={() => { setMoveTarget(node); setMoveDest(''); }} />
+                              <OverflowMenuItem itemText="Delete project" isDelete hasDivider
+                                onClick={() => setDeleteTarget({ kind: 'project', node })} />
+                            </OverflowMenu>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </>
+              )}
+            </Column>
+          )}
 
           {/* ══════════════════════════════════════════════════════════════════
               STEP 1 — UPLOAD
@@ -1318,6 +1564,126 @@ export default function App() {
 
         </Grid>
       </Content>
+
+      {/* ── Projects page modals ─────────────────────────────────────── */}
+
+      {/* Rename folder */}
+      <Modal
+        open={!!renameFolderTarget}
+        modalHeading={`Rename folder "${renameFolderTarget?.name}"`}
+        primaryButtonText={projectsActionBusy ? 'Saving…' : 'Save'}
+        secondaryButtonText="Cancel"
+        primaryButtonDisabled={projectsActionBusy || !renameFolderValue.trim()}
+        onRequestSubmit={doRenameFolder}
+        onRequestClose={() => setRenameFolderTarget(null)}
+      >
+        <TextInput
+          id="rename-folder-input"
+          labelText="Folder name"
+          value={renameFolderValue}
+          onChange={(e: React.ChangeEvent<HTMLInputElement>) => setRenameFolderValue(e.target.value)}
+        />
+      </Modal>
+
+      {/* Rename project */}
+      <Modal
+        open={!!renameTarget}
+        modalHeading={`Rename project "${renameTarget?.project || renameTarget?.customer}"`}
+        primaryButtonText={projectsActionBusy ? 'Saving…' : 'Rename'}
+        secondaryButtonText="Cancel"
+        primaryButtonDisabled={projectsActionBusy || !renameValue.trim()}
+        onRequestSubmit={doRenameProject}
+        onRequestClose={() => setRenameTarget(null)}
+      >
+        <TextInput
+          id="rename-project-input"
+          labelText="Project name"
+          value={renameValue}
+          onChange={(e: React.ChangeEvent<HTMLInputElement>) => setRenameValue(e.target.value)}
+        />
+        <p style={{ fontSize: '0.8125rem', color: '#6f6f6f', marginTop: '0.5rem' }}>
+          The folder name on disk will be converted to a lowercase slug (e.g. &quot;Acme Q1&quot; → &quot;acme-q1&quot;).
+        </p>
+      </Modal>
+
+      {/* Duplicate project */}
+      <Modal
+        open={!!duplicateTarget}
+        modalHeading={`Duplicate "${duplicateTarget?.project || duplicateTarget?.customer}"`}
+        primaryButtonText={projectsActionBusy ? 'Duplicating…' : 'Duplicate'}
+        secondaryButtonText="Cancel"
+        primaryButtonDisabled={projectsActionBusy || !duplicateName.trim()}
+        onRequestSubmit={doDuplicateProject}
+        onRequestClose={() => setDuplicateTarget(null)}
+      >
+        <p style={{ color: '#525252', lineHeight: 1.6, marginBottom: '1rem', fontSize: '0.875rem' }}>
+          Creates a copy with the same architecture JSON. Uploaded source files are not copied — upload new files to the duplicate project.
+        </p>
+        <TextInput
+          id="duplicate-project-name"
+          labelText="New project name"
+          value={duplicateName}
+          onChange={(e: React.ChangeEvent<HTMLInputElement>) => setDuplicateName(e.target.value)}
+        />
+      </Modal>
+
+      {/* Move project */}
+      <Modal
+        open={!!moveTarget}
+        modalHeading={`Move "${moveTarget?.project || moveTarget?.customer}" to another folder`}
+        primaryButtonText={projectsActionBusy ? 'Moving…' : 'Move'}
+        secondaryButtonText="Cancel"
+        primaryButtonDisabled={projectsActionBusy || !moveDest}
+        onRequestSubmit={doMoveProject}
+        onRequestClose={() => setMoveTarget(null)}
+      >
+        <Select
+          id="move-dest-select"
+          labelText="Destination folder"
+          value={moveDest}
+          onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setMoveDest(e.target.value)}
+        >
+          <SelectItem value="" text="— Select a folder —" />
+          {folders
+            .filter((f) => f.path !== (moveTarget ? moveTarget.path.split('/').slice(0, -1).join('/') : ''))
+            .map((f) => (
+              <SelectItem key={f.path} value={f.path} text={f.name} />
+            ))}
+        </Select>
+      </Modal>
+
+      {/* Delete confirmation (folder or project) */}
+      <Modal
+        open={!!deleteTarget}
+        danger
+        modalHeading={
+          deleteTarget?.kind === 'folder'
+            ? `Delete folder "${(deleteTarget.node as FolderNode).name}"?`
+            : `Delete project "${(deleteTarget?.node as ProjectNode)?.project || (deleteTarget?.node as ProjectNode)?.customer}"?`
+        }
+        primaryButtonText={projectsActionBusy ? 'Deleting…' : 'Delete'}
+        secondaryButtonText="Cancel"
+        primaryButtonDisabled={projectsActionBusy}
+        onRequestSubmit={() => {
+          if (!deleteTarget) return;
+          if (deleteTarget.kind === 'folder') doDeleteFolder(deleteTarget.node as FolderNode);
+          else doDeleteProject(deleteTarget.node as ProjectNode);
+        }}
+        onRequestClose={() => setDeleteTarget(null)}
+      >
+        {deleteTarget?.kind === 'folder' ? (
+          <p style={{ color: '#525252', lineHeight: 1.6 }}>
+            The folder and <strong>all projects inside it</strong> will be permanently removed from disk.
+            This cannot be undone.
+          </p>
+        ) : (
+          <p style={{ color: '#525252', lineHeight: 1.6 }}>
+            The project directory and all its files (architecture JSON, uploads) will be permanently deleted.
+            This cannot be undone.
+          </p>
+        )}
+      </Modal>
+
     </>
   );
 }
