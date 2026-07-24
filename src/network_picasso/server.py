@@ -569,10 +569,12 @@ def run_intake(
 
     # Exclude questions already answered when building the open list.
     answered_questions = {entry["question"] for entry in architecture["questions"].get("answered", []) if isinstance(entry, dict)}
-    architecture["questions"]["open"] = [gap["question"] for gap in gaps if gap["question"] not in answered_questions]
+    open_gaps = [gap for gap in gaps if gap["question"] not in answered_questions]
+    architecture["questions"]["open"] = [gap["question"] for gap in open_gaps]
 
     atomic_write_json(output_path, architecture)
-    return architecture, gaps, pending_components
+    # Return only open (unanswered) gaps so the UI doesn't re-filter them.
+    return architecture, open_gaps, pending_components
 
 
 def normalize_sources(architecture: dict) -> None:

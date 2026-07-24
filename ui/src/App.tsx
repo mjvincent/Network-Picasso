@@ -220,10 +220,10 @@ export default function App() {
     fetch('/api/example')
       .then((r) => r.json())
       .then((payload) => {
-        const answered: AnsweredQuestion[] = payload.answeredQuestions || [];
-        setAnsweredQuestions(answered);
+        // Do NOT load answeredQuestions from the example — it's a demo warmup only.
+        // Answered state must only come from a real project intake run.
         setArchitecture(payload.architecture);
-        setQuestions((current) => mergeQuestions(current, payload.questions, answered));
+        setQuestions(payload.questions || []);
         setArchitecturePath(payload.architecturePath);
       })
       .catch(() => setStatus('Start the local API server to use this app.'));

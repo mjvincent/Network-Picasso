@@ -58,6 +58,32 @@ def test_run_intake_preserves_answers(tmp_path):
     answered = arch2["questions"]["answered"]
     assert len(answered) >= 1
     assert answered[0]["area"] == "Subnet design"
+    # Gaps returned to the caller must NOT include the answered question.
+    assert not any(g["question"] == "Which subnets?" for g in _)
+
+
+def test_run_intake_open_gaps_excludes_answered(tmp_path):
+    """run_intake() returns only open (unanswered) gaps, not the full question set."""
+    _make_csv(tmp_path)
+    out = tmp_path / "architecture.json"
+    # First run to create the file
+    arch, _, _ = run_intake(tmp_path, out, project_name="Test")
+    # Pick the first gap question text from the full question bank
+    from network_picasso.questions import find_design_gaps
+    all_gaps = find_design_gaps(arch)
+    first_q = all_gaps[0]
+    # Write it as answered into the file
+    arch["questions"]["answered"].append({
+        "area": first_q["area"],
+        "question": first_q["question"],
+        "answer": "Answered for test.",
+        "source": "architect",
+        "timestamp": "2024-01-01T00:00:00Z",
+    })
+    out.write_text(json.dumps(arch))
+    # Second run — returned gaps must not include the answered question
+    _, gaps2, _ = run_intake(tmp_path, out, project_name="Test")
+    assert not any(g["question"] == first_q["question"] for g in gaps2)
 
 
 def test_backfill_subnets():
