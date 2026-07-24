@@ -181,7 +181,7 @@ def read_xlsx(path: Path) -> Iterable[dict[str, str]]:
                     continue
                 if headers:
                     yield {
-                        f"{sheet_name}.{headers[index] or f'column_{index + 1}'}": value
+                        f"{sheet_name}.{header_for(headers, index)}": value
                         for index, value in enumerate(row)
                         if value
                     }
@@ -233,6 +233,10 @@ def parse_sheet_rows(content: bytes, shared_strings: list[str]) -> list[list[str
     for row in root.findall(f".//{namespace}row"):
         values: list[str] = []
         for cell in row.findall(f"{namespace}c"):
+            reference = cell.attrib.get("r", "")
+            column_index = column_index_from_reference(reference)
+            while len(values) < column_index:
+                values.append("")
             cell_type = cell.attrib.get("t")
             value_node = cell.find(f"{namespace}v")
             inline_node = cell.find(f"{namespace}is/{namespace}t")
@@ -247,6 +251,22 @@ def parse_sheet_rows(content: bytes, shared_strings: list[str]) -> list[list[str
             values.append(raw.strip())
         rows.append(values)
     return rows
+
+
+def column_index_from_reference(reference: str) -> int:
+    letters = "".join(character for character in reference if character.isalpha())
+    if not letters:
+        return 0
+    index = 0
+    for character in letters.upper():
+        index = index * 26 + (ord(character) - ord("A") + 1)
+    return index - 1
+
+
+def header_for(headers: list[str], index: int) -> str:
+    if index < len(headers) and headers[index]:
+        return headers[index]
+    return f"column_{index + 1}"
 
 
 def flatten_mapping(data: dict, *, prefix: str = "") -> dict[str, str]:

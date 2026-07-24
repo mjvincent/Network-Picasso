@@ -1,4 +1,4 @@
-# OmniCare Production Notes
+# Sample Healthcare Production Notes
 
 The application runs in IBM Cloud us-south with disaster recovery planned for us-east.
 Traffic enters through IBM Cloud Internet Services and a public load balancer.

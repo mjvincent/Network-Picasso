@@ -14,9 +14,9 @@ Network Picasso is a local-first workflow for turning architecture notes, bills 
 ## Try It Locally
 
 ```bash
-PYTHONPATH=src python3 -B -m network_picasso.cli intake examples/customer-inputs --project-name OmniCare --output examples/omnicare/intake-architecture.json
-PYTHONPATH=src python3 -B -m network_picasso.cli ask examples/omnicare/architecture.json
-PYTHONPATH=src python3 -B -m network_picasso.cli generate examples/omnicare/architecture.json --type deployment --output outputs/omnicare-deployment.drawio
+PYTHONPATH=src python3 -B -m network_picasso.cli intake examples/sample-inputs --project-name "Sample Healthcare" --output examples/sample/architecture.json
+PYTHONPATH=src python3 -B -m network_picasso.cli ask examples/sample/architecture.json
+PYTHONPATH=src python3 -B -m network_picasso.cli generate examples/sample/architecture.json --type deployment --output outputs/network-picasso-deployment.drawio
 ```
 
 Open the generated `.drawio` file in diagrams.net or the Draw.io desktop app.
@@ -38,6 +38,16 @@ npm run dev
 ```
 
 Then open `http://127.0.0.1:5173`.
+
+The first screen guides the user to upload one or more source files:
+
+- BOM exports
+- IBM Cloud Solutioning pricing workbooks
+- Customer spreadsheets
+- Architecture notes
+- Markdown, text, CSV, TSV, JSON, and XLSX files
+
+After parsing, the app shows pointed design questions with best-practice coaching and can generate a starter Draw.io diagram from the extracted architecture model.
 
 ## Direction
 

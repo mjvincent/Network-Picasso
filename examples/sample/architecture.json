@@ -1,6 +1,6 @@
 {
   "project": {
-    "name": "OmniCare",
+    "name": "Sample Healthcare",
     "environment": "Production",
     "diagram_goals": [
       "Generate professional IBM Cloud architecture diagrams",
@@ -26,36 +26,15 @@
     ],
     "vpcs": [
       {
-        "name": "The application runtime is Red Hat OpenShift on IBM Cloud inside the production ",
-        "type": "vpcs",
-        "purpose": "",
-        "source": "architecture-notes.md:4",
-        "notes": "The application runtime is Red Hat OpenShift on IBM Cloud inside the production VPC."
-      },
-      {
-        "name": "Monitoring, logging, Activity Tracker, and VPC flow logs are required for operat",
-        "type": "vpcs",
-        "purpose": "",
-        "source": "architecture-notes.md:8",
-        "notes": "Monitoring, logging, Activity Tracker, and VPC flow logs are required for operations and audit."
-      },
-      {
-        "name": "omnicare-prod-vpc",
+        "name": "sample-prod-vpc",
         "type": "vpcs",
         "purpose": "Production application VPC",
         "region": "us-south",
         "source": "bom.csv:1",
-        "notes": "omnicare-prod-vpc | VPC | us-south | Production application VPC"
+        "notes": "sample-prod-vpc | VPC | us-south | Production application VPC"
       }
     ],
     "connectivity": [
-      {
-        "name": "Private connectivity to the customer network uses Direct Link and Transit Gatewa",
-        "type": "connectivity",
-        "purpose": "",
-        "source": "architecture-notes.md:5",
-        "notes": "Private connectivity to the customer network uses Direct Link and Transit Gateway."
-      },
       {
         "name": "Direct Link",
         "type": "connectivity",
@@ -75,20 +54,6 @@
     ],
     "ingress": [
       {
-        "name": "Traffic enters through IBM Cloud Internet Services and a public load balancer.",
-        "type": "ingress",
-        "purpose": "",
-        "source": "architecture-notes.md:3",
-        "notes": "Traffic enters through IBM Cloud Internet Services and a public load balancer."
-      },
-      {
-        "name": "Private connectivity to the customer network uses Direct Link and Transit Gatewa",
-        "type": "ingress",
-        "purpose": "",
-        "source": "architecture-notes.md:5",
-        "notes": "Private connectivity to the customer network uses Direct Link and Transit Gateway."
-      },
-      {
         "name": "IBM Cloud Internet Services",
         "type": "ingress",
         "purpose": "Public DNS and edge protection",
@@ -107,13 +72,6 @@
     ],
     "compute": [
       {
-        "name": "The application runtime is Red Hat OpenShift on IBM Cloud inside the production ",
-        "type": "compute",
-        "purpose": "",
-        "source": "architecture-notes.md:4",
-        "notes": "The application runtime is Red Hat OpenShift on IBM Cloud inside the production VPC."
-      },
-      {
         "name": "Red Hat OpenShift on IBM Cloud",
         "type": "compute",
         "purpose": "Production application runtime",
@@ -123,13 +81,6 @@
       }
     ],
     "data": [
-      {
-        "name": "Application data is stored in PostgreSQL and IBM Cloud Object Storage.",
-        "type": "data",
-        "purpose": "",
-        "source": "architecture-notes.md:6",
-        "notes": "Application data is stored in PostgreSQL and IBM Cloud Object Storage."
-      },
       {
         "name": "IBM Cloud Databases for PostgreSQL",
         "type": "data",
@@ -149,13 +100,6 @@
     ],
     "security": [
       {
-        "name": "Secrets Manager and Key Protect are required for secrets and encryption keys.",
-        "type": "security",
-        "purpose": "",
-        "source": "architecture-notes.md:7",
-        "notes": "Secrets Manager and Key Protect are required for secrets and encryption keys."
-      },
-      {
         "name": "Secrets Manager",
         "type": "security",
         "purpose": "Application secrets",
@@ -174,13 +118,6 @@
     ],
     "observability": [
       {
-        "name": "Monitoring, logging, Activity Tracker, and VPC flow logs are required for operat",
-        "type": "observability",
-        "purpose": "",
-        "source": "architecture-notes.md:8",
-        "notes": "Monitoring, logging, Activity Tracker, and VPC flow logs are required for operations and audit."
-      },
-      {
         "name": "Activity Tracker",
         "type": "observability",
         "purpose": "Audit event capture",
@@ -191,9 +128,9 @@
     ],
     "backup_dr": [
       {
-        "name": "The application runs in IBM Cloud us",
+        "name": "DR region",
         "type": "backup_dr",
-        "purpose": "",
+        "purpose": "Disaster recovery planned for us-east",
         "source": "architecture-notes.md:2",
         "notes": "The application runs in IBM Cloud us-south with disaster recovery planned for us-east."
       }
@@ -204,12 +141,12 @@
   },
   "sources": [
     {
-      "file": "examples/customer-inputs/architecture-notes.md",
+      "file": "examples/sample-inputs/architecture-notes.md",
       "type": "md",
       "records": 8
     },
     {
-      "file": "examples/customer-inputs/bom.csv",
+      "file": "examples/sample-inputs/bom.csv",
       "type": "csv",
       "records": 11
     }

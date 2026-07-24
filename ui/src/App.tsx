@@ -3,6 +3,8 @@ import {
   Column,
   Content,
   Dropdown,
+  FileUploaderDropContainer,
+  FileUploaderItem,
   Grid,
   Header,
   HeaderName,
@@ -18,6 +20,7 @@ import {
   StructuredListRow,
   StructuredListWrapper,
   Tag,
+  TextArea,
   TextInput,
   Tile,
 } from '@carbon/react';
@@ -50,9 +53,11 @@ type Architecture = {
 type Question = {
   area: string;
   question: string;
+  guidance?: string;
 };
 
 const API_HEADERS = { 'Content-Type': 'application/json' };
+const ACCEPTED_FILE_TYPES = ['.xlsx', '.csv', '.tsv', '.json', '.md', '.txt'];
 
 async function postJson<T>(url: string, body: unknown): Promise<T> {
   const response = await fetch(url, {
@@ -67,13 +72,27 @@ async function postJson<T>(url: string, body: unknown): Promise<T> {
   return response.json();
 }
 
+async function postForm<T>(url: string, body: FormData): Promise<T> {
+  const response = await fetch(url, {
+    method: 'POST',
+    body,
+  });
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({}));
+    throw new Error(payload.error || `Request failed: ${response.status}`);
+  }
+  return response.json();
+}
+
 export default function App() {
-  const [projectName, setProjectName] = useState('OmniCare');
-  const [inputPath, setInputPath] = useState('examples/customer-inputs');
-  const [architecturePath, setArchitecturePath] = useState('examples/omnicare/intake-architecture.json');
+  const [projectName, setProjectName] = useState('');
+  const [inputPath, setInputPath] = useState('examples/sample-inputs');
+  const [architecturePath, setArchitecturePath] = useState('examples/sample/architecture.json');
   const [diagramType, setDiagramType] = useState('deployment');
   const [architecture, setArchitecture] = useState<Architecture | null>(null);
   const [questions, setQuestions] = useState<Question[]>([]);
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const [questionAnswers, setQuestionAnswers] = useState<Record<string, string>>({});
   const [diagramPath, setDiagramPath] = useState('');
   const [status, setStatus] = useState('');
   const [error, setError] = useState('');
@@ -86,6 +105,7 @@ export default function App() {
         setArchitecture(payload.architecture);
         setQuestions(payload.questions);
         setArchitecturePath(payload.architecturePath);
+        setProjectName('');
       })
       .catch(() => {
         setStatus('Start the local API to load the example workspace.');
@@ -116,7 +136,7 @@ export default function App() {
         outputPath: string;
       }>('/api/intake', {
         inputPath,
-        projectName,
+        projectName: projectName || 'Sample Architecture',
         outputPath: architecturePath,
       });
       setArchitecture(payload.architecture);
@@ -129,6 +149,56 @@ export default function App() {
     } finally {
       setBusy(false);
     }
+  }
+
+  async function uploadAndRunIntake() {
+    setBusy(true);
+    setError('');
+    setStatus('Uploading and parsing files');
+    try {
+      const body = new FormData();
+      body.append('projectName', projectName || 'Customer Architecture');
+      selectedFiles.forEach((file) => body.append('files', file));
+      const payload = await postForm<{
+        architecture: Architecture;
+        questions: Question[];
+        inputPath: string;
+        outputPath: string;
+        files: string[];
+      }>('/api/upload-intake', body);
+      setArchitecture(payload.architecture);
+      setQuestions(payload.questions);
+      setInputPath(payload.inputPath);
+      setArchitecturePath(payload.outputPath);
+      setDiagramPath('');
+      setStatus(`Parsed ${payload.files.length} file${payload.files.length === 1 ? '' : 's'}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Upload intake failed');
+      setStatus('');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function addFiles(files: File[]) {
+    const validFiles = files.filter((file) =>
+      ACCEPTED_FILE_TYPES.some((extension) => file.name.toLowerCase().endsWith(extension))
+    );
+    setSelectedFiles((current) => {
+      const existing = new Set(current.map((file) => `${file.name}:${file.size}`));
+      const next = [...current];
+      validFiles.forEach((file) => {
+        const key = `${file.name}:${file.size}`;
+        if (!existing.has(key)) {
+          next.push(file);
+        }
+      });
+      return next;
+    });
+  }
+
+  function removeFile(name: string) {
+    setSelectedFiles((current) => current.filter((file) => file.name !== name));
   }
 
   async function generateDiagram() {
@@ -175,8 +245,8 @@ export default function App() {
           <Column sm={4} md={8} lg={16}>
             <div className="page-heading">
               <div>
-                <p className="eyebrow">Local architecture workbench</p>
-                <h1>IBM Cloud diagram intake</h1>
+                <p className="eyebrow">Guided local architecture workbench</p>
+                <h1>Start with BOM and pricing files</h1>
               </div>
               <div className="status-line">
                 {busy && <InlineLoading description={status} />}
@@ -186,16 +256,55 @@ export default function App() {
             </div>
           </Column>
 
-          <Column sm={4} md={4} lg={5}>
-            <Tile className="panel">
+          <Column sm={4} md={8} lg={7}>
+            <Tile className="panel upload-panel">
               <Stack gap={6}>
-                <h2>Inputs</h2>
+                <div>
+                  <h2>Upload source material</h2>
+                  <p className="panel-copy">
+                    Add a BOM, IBM Cloud Solutioning pricing export, architecture notes, or supporting customer data.
+                  </p>
+                </div>
                 <TextInput
                   id="project-name"
                   labelText="Project name"
                   value={projectName}
+                  placeholder="Customer or project name"
                   onChange={(event) => setProjectName(event.target.value)}
                 />
+                <FileUploaderDropContainer
+                  id="source-files"
+                  labelText="Drag files here or click to upload"
+                  multiple
+                  accept={ACCEPTED_FILE_TYPES}
+                  onAddFiles={(_event, { addedFiles }) => addFiles(addedFiles)}
+                />
+                <div className="selected-files">
+                  {selectedFiles.map((file) => (
+                    <FileUploaderItem
+                      key={`${file.name}-${file.size}`}
+                      name={file.name}
+                      status="edit"
+                      size="md"
+                      iconDescription="Remove file"
+                      onDelete={() => removeFile(file.name)}
+                    />
+                  ))}
+                </div>
+                <Button renderIcon={DocumentImport} onClick={uploadAndRunIntake} disabled={busy || selectedFiles.length === 0}>
+                  Parse files
+                </Button>
+              </Stack>
+            </Tile>
+          </Column>
+
+          <Column sm={4} md={8} lg={4}>
+            <Tile className="panel">
+              <Stack gap={6}>
+                <div>
+                  <h2>Use local folder</h2>
+                  <p className="panel-copy">For repeat runs, point to a local folder inside this repository.</p>
+                </div>
                 <TextInput
                   id="input-path"
                   labelText="Input folder or file"
@@ -215,25 +324,6 @@ export default function App() {
             </Tile>
           </Column>
 
-          <Column sm={4} md={4} lg={6}>
-            <Tile className="panel">
-              <Stack gap={5}>
-                <h2>Open Design Questions</h2>
-                <div className="question-list">
-                  {questions.length === 0 && <p>No open questions detected.</p>}
-                  {questions.map((item) => (
-                    <Layer key={`${item.area}-${item.question}`}>
-                      <div className="question-item">
-                        <Tag type="blue">{item.area}</Tag>
-                        <p>{item.question}</p>
-                      </div>
-                    </Layer>
-                  ))}
-                </div>
-              </Stack>
-            </Tile>
-          </Column>
-
           <Column sm={4} md={8} lg={5}>
             <Tile className="panel">
               <Stack gap={5}>
@@ -246,7 +336,7 @@ export default function App() {
                   items={['context', 'logical', 'deployment']}
                   onChange={({ selectedItem }) => selectedItem && setDiagramType(String(selectedItem))}
                 />
-                <Button renderIcon={Diagram} onClick={generateDiagram} disabled={busy}>
+                <Button renderIcon={Diagram} onClick={generateDiagram} disabled={busy || !architecture}>
                   Generate Draw.io
                 </Button>
                 {diagramPath && (
@@ -260,6 +350,48 @@ export default function App() {
           </Column>
 
           <Column sm={4} md={8} lg={9}>
+            <Tile className="panel">
+              <Stack gap={5}>
+                <div>
+                  <h2>Guided Design Questions</h2>
+                  <p className="panel-copy">
+                    Answer what you know. Use the coaching notes when a design decision is unclear.
+                  </p>
+                </div>
+                <div className="question-list">
+                  {questions.length === 0 && <p>No open questions detected.</p>}
+                  {questions.map((item, index) => (
+                    <Layer key={`${item.area}-${item.question}`}>
+                      <div className="question-item">
+                        <Tag type="blue">{item.area}</Tag>
+                        <p>{item.question}</p>
+                        {item.guidance && (
+                          <div className="coaching">
+                            <span>Best-practice coaching</span>
+                            <p>{item.guidance}</p>
+                          </div>
+                        )}
+                        <TextArea
+                          id={`answer-${index}`}
+                          labelText="Your answer"
+                          placeholder="Capture the design decision, assumption, or follow-up needed."
+                          value={questionAnswers[item.question] || ''}
+                          onChange={(event) =>
+                            setQuestionAnswers((current) => ({
+                              ...current,
+                              [item.question]: event.target.value,
+                            }))
+                          }
+                        />
+                      </div>
+                    </Layer>
+                  ))}
+                </div>
+              </Stack>
+            </Tile>
+          </Column>
+
+          <Column sm={4} md={8} lg={7}>
             <Tile className="panel">
               <Stack gap={5}>
                 <h2>Architecture Model</h2>
@@ -283,7 +415,7 @@ export default function App() {
             </Tile>
           </Column>
 
-          <Column sm={4} md={8} lg={7}>
+          <Column sm={4} md={8} lg={9}>
             <Tile className="panel">
               <Stack gap={5}>
                 <h2>Sources</h2>

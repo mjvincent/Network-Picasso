@@ -8,6 +8,7 @@ Network Picasso converts customer materials into professional IBM Cloud architec
    - Architecture notes
    - Bills of material
    - Customer spreadsheets
+   - IBM Cloud Solutioning pricing workbooks
    - Existing Markdown prompt guidance
    - Architect-entered answers
 
@@ -50,20 +51,22 @@ Future iterations can add a lightweight web UI, spreadsheet upload, RAG over IBM
 
 ## Local MVP Commands
 
+The Carbon UI is the preferred guided experience. It starts with BOM/pricing file upload, parses the files locally, then asks design questions with best-practice coaching.
+
 Create a first-pass architecture model from customer inputs:
 
 ```bash
-PYTHONPATH=src python3 -B -m network_picasso.cli intake examples/customer-inputs --project-name OmniCare --output examples/omnicare/intake-architecture.json
+PYTHONPATH=src python3 -B -m network_picasso.cli intake examples/sample-inputs --project-name "Sample Healthcare" --output examples/sample/architecture.json
 ```
 
 Review missing design decisions:
 
 ```bash
-PYTHONPATH=src python3 -B -m network_picasso.cli ask examples/omnicare/intake-architecture.json
+PYTHONPATH=src python3 -B -m network_picasso.cli ask examples/sample/architecture.json
 ```
 
 Generate a starter Draw.io file:
 
 ```bash
-PYTHONPATH=src python3 -B -m network_picasso.cli generate examples/omnicare/intake-architecture.json --type deployment --output outputs/omnicare-intake-deployment.drawio
+PYTHONPATH=src python3 -B -m network_picasso.cli generate examples/sample/architecture.json --type deployment --output outputs/network-picasso-deployment.drawio
 ```

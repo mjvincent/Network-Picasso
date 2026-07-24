@@ -59,6 +59,21 @@ body {
   min-width: 0;
 }
 
+.panel-copy {
+  color: #525252;
+  line-height: 1.4;
+  margin: 0.5rem 0 0;
+}
+
+.upload-panel .cds--file__drop-container {
+  max-width: none;
+}
+
+.selected-files {
+  display: grid;
+  gap: 0.5rem;
+}
+
 .question-list,
 .source-list {
   display: grid;
@@ -69,13 +84,25 @@ body {
   background: #ffffff;
   border-left: 3px solid #0f62fe;
   display: grid;
-  gap: 0.5rem;
+  gap: 1rem;
   padding: 1rem;
 }
 
 .question-item p {
   line-height: 1.4;
   margin: 0;
+}
+
+.coaching {
+  background: #f4f4f4;
+  display: grid;
+  gap: 0.375rem;
+  padding: 0.75rem;
+}
+
+.coaching span {
+  color: #525252;
+  font-size: 0.75rem;
 }
 
 .source-item {

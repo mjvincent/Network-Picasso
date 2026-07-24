@@ -9,3 +9,4 @@ node_modules/
 .vite-temp/
 ui/dist/
 ui/node_modules/
+inputs/uploads/

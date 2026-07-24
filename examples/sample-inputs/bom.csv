@@ -1,5 +1,5 @@
 Component,Category,Region,Notes
-omnicare-prod-vpc,VPC,us-south,Production application VPC
+sample-prod-vpc,VPC,us-south,Production application VPC
 IBM Cloud Internet Services,Ingress,global,Public DNS and edge protection
 Public Load Balancer,Ingress,us-south,Routes traffic to OpenShift
 Red Hat OpenShift on IBM Cloud,Compute,us-south,Production application runtime
