@@ -69,40 +69,57 @@ BAND_PADDING_Y = 32
 # IBM Cloud official color palette
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# IBM Cloud canonical color palette — sourced directly from Sidebar-IBMCloud.js
+# ---------------------------------------------------------------------------
+# IBM's prescribed node pattern:
+#   bg  = colored square  (shape=rect;fillColor=<CAT_COLOR>;strokeColor=none)
+#   icon = white stencil  (shape=mxgraph.ibm_cloud.X;fillColor=#ffffff;strokeColor=none)
+#
+# IBM's prescribed location (container) pattern:
+#   outer box             (container=1;strokeColor=<CAT_COLOR>;fillColor=none;strokeWidth=1)
+#   left border strip     (shape=rect;fillColor=<CAT_COLOR>;width=4)
+#   icon child            (shape=mxgraph.ibm_cloud.X;fillColor=<CAT_COLOR>)
+# ---------------------------------------------------------------------------
+
 COLOR = {
-    # Structural chrome — IBM Blue 70 accent
-    "account_fill":    "#f4f4f4",
-    "account_stroke":  "#0f62fe",
-    "region_fill":     "#edf5ff",
-    "region_stroke":   "#0f62fe",
-    "vpc_fill":        "#ffffff",
-    "vpc_stroke":      "#4589ff",
-    # Availability zone — cool gray
-    "az_fill":         "#f4f4f4",
-    "az_stroke":       "#8d8d8d",
-    # Subnet bands (same palette as IBM Cloud stencil conventions)
-    "Public":          "#d0e2ff",   # Blue-10
-    "Private":         "#defbe6",   # Green-10
-    "Management":      "#fff8e1",   # Yellow-10
-    "Data":            "#ede8fe",   # Purple-10
-    # External / connectivity
-    "external_fill":   "#e5f6ff",
-    "external_stroke": "#1192e8",
-    "conn_fill":       "#d0e2ff",
-    "conn_stroke":     "#0f62fe",
-    # PowerVS
-    "powervs_fill":    "#f6f2ff",
-    "powervs_stroke":  "#7c3e97",
-    # Transit Gateway — IBM dark blue
-    "tgw_fill":        "#001141",
-    "tgw_font":        "#ffffff",
-    # Security band icon
-    "security_fill":   "#fff1f1",
-    "security_stroke": "#da1e28",
-    # Icons — IBM stencil default colours
-    "icon_fill":       "#0f62fe",
+    # ── IBM canonical category colors (from Sidebar-IBMCloud.js) ──────────
+    "network":         "#1192E8",   # Network, Connectivity, VPC, Subnet
+    "compute":         "#198038",   # VSI, Bare Metal, ROKS, Kubernetes
+    "security":        "#FA4D56",   # VPN, Bastion, Auth Boundary, Sec Groups
+    "data":            "#0F62FE",   # Databases, Object Storage, Data
+    "ai":              "#A56EFF",   # Watson, watsonx, Applications
+    "actor":           "#000000",   # User, Enterprise (actors)
+    "observability":   "#1192E8",   # Monitoring, Logging, Flow Logs
+    "grey":            "#878D96",   # Region, AZ, Generic group
+    # ── Structural containers ──────────────────────────────────────────────
+    "account_fill":    "none",
+    "account_stroke":  "#1192E8",
+    "account_sw":      2,
+    "region_fill":     "none",
+    "region_stroke":   "#878D96",
+    "region_sw":       1,
+    "vpc_fill":        "none",
+    "vpc_stroke":      "#1192E8",
+    "vpc_sw":          1,
+    "az_fill":         "none",
+    "az_stroke":       "#878D96",
+    "az_sw":           1,
+    # ── Subnet band fills (light tints, NOT the category colors) ──────────
+    "Public":          "#D0E2FF",   # Blue-10
+    "Private":         "#D9F7BE",   # Green-10 (approx)
+    "Management":      "#FFF1F1",   # Red-10
+    "Data":            "#EDE8FE",   # Purple-10
+    # ── External / connectivity containers ────────────────────────────────
+    "external_fill":   "none",
+    "external_stroke": "#878D96",
+    "conn_stroke":     "#1192E8",
+    # ── PowerVS ───────────────────────────────────────────────────────────
+    "powervs_fill":    "none",
+    "powervs_stroke":  "#1192E8",
+    # ── Icon text ─────────────────────────────────────────────────────────
     "icon_font":       "#161616",
-    "icon_stroke":     "#0f62fe",
+    "icon_font_white": "#ffffff",
 }
 
 # Map component category → subnet tier (deployment guide placement)
@@ -114,62 +131,164 @@ TYPE_TO_TIER: dict[str, str] = {
     "data":          "Data",
 }
 
-# Map component category/name tokens → IBM Cloud stencil shape name
-# (shape=mxgraph.ibm_cloud.{STENCIL_SHAPE})
+# ── IBM canonical node color per stencil category ─────────────────────────
+# Sourced from Sidebar-IBMCloud.js bgFillColor parameter per palette function.
+STENCIL_COLOR: dict[str, str] = {
+    # Compute — green
+    "ibm-cloud--virtual-server-vpc":        "#198038",
+    "ibm-cloud--virtual-server-classic":    "#198038",
+    "ibm-cloud--bare-metal-servers-vpc":    "#198038",
+    "ibm-cloud--bare-metal-server":         "#198038",
+    "ibm-cloud--dedicated-host":            "#198038",
+    "ibm-cloud--kubernetes-service":        "#198038",
+    "logo--openshift":                      "#198038",
+    "ibm-z-os--containers":                 "#198038",
+    "cloud-registry":                       "#198038",
+    "cloud-satellite":                      "#198038",
+    "image-service":                        "#198038",
+    "ibm--power-vs":                        "#198038",
+    # Network / connectivity — cyan-blue
+    "ibm-cloud--transit-gateway":           "#1192E8",
+    "ibm-cloud--direct-link-2--connect":    "#1192E8",
+    "ibm-cloud--direct-link-2--dedicated":  "#1192E8",
+    "ibm-cloud--internet-services":         "#1192E8",
+    "ibm-cloud--vpc-endpoints":             "#1192E8",
+    "ibm-cloud--vpc":                       "#1192E8",
+    "ibm-cloud--subnets":                   "#1192E8",
+    "load-balancer--vpc":                   "#1192E8",
+    "load-balancer--application":           "#1192E8",
+    "load-balancer--network":               "#1192E8",
+    "load-balancer--global":                "#1192E8",
+    "load-balancer--classic":               "#1192E8",
+    "floating-ip":                          "#1192E8",
+    "gateway--public":                      "#1192E8",
+    "dns-services":                         "#1192E8",
+    "network-interface":                    "#1192E8",
+    "network--public":                      "#1192E8",
+    "network--enterprise":                  "#1192E8",
+    "wikis":                                "#1192E8",
+    "point-of-presence":                    "#878D96",
+    "location":                             "#878D96",
+    "data--center":                         "#878D96",
+    "arrows--horizontal":                   "#1192E8",
+    # Security / VPN — red
+    "ibm--vpn-for-vpc":                     "#FA4D56",
+    "vpn--connection":                      "#FA4D56",
+    "bastion-host":                         "#FA4D56",
+    "ibm-cloud--key-protect":               "#FA4D56",
+    "ibm-cloud--secrets-manager":           "#FA4D56",
+    "ibm-cloud--security-compliance-center":"#FA4D56",
+    "group--security":                      "#FA4D56",
+    "group--access":                        "#FA4D56",
+    "group--resource":                      "#FA4D56",
+    "group--account":                       "#FA4D56",
+    "subnet-acl-rules":                     "#FA4D56",
+    "password-icon":                        "#FA4D56",  # IBM stencil shape name
+    # Data / storage — blue
+    "object-storage":                       "#0F62FE",
+    "block-storage":                        "#0F62FE",
+    "data--base":                           "#0F62FE",
+    "ibm--db2":                             "#0F62FE",
+    "ibm--db2-warehouse":                   "#0F62FE",
+    "ibm--cloudant":                        "#0F62FE",
+    "ibm--mq":                              "#0F62FE",
+    "database--postgresql":                 "#0F62FE",
+    "database--mysql":                      "#0F62FE",
+    "database--mongodb":                    "#0F62FE",
+    "database--redis":                      "#0F62FE",
+    "database--rabbit":                     "#0F62FE",
+    "database--elastic":                    "#0F62FE",
+    "database--etcd":                       "#0F62FE",
+    "database--datastax":                   "#0F62FE",
+    "database--enterprisedb":               "#0F62FE",
+    # Observability — cyan-blue
+    "cloud--monitoring":                    "#1192E8",
+    "ibm-cloud--logging":                   "#1192E8",
+    "flow-logs-vpc":                        "#1192E8",
+    # AI / Apps — purple
+    "application":                          "#A56EFF",
+    "application--web":                     "#A56EFF",
+    # Actors — black
+    "user":                                 "#000000",
+    "enterprise":                           "#000000",
+    "group":                                "#000000",
+}
+
+# Map component name tokens → IBM Cloud stencil shape name.
+# Keys are lowercase substrings matched against the component name.
+# Order matters — more specific matches first.
 STENCIL_MAP: dict[str, str] = {
     # Compute
-    "vsi":                      "ibm-cloud--virtual-server-vpc",
-    "virtual server":           "ibm-cloud--virtual-server-vpc",
+    "power virtual server":     "ibm--power-vs",
+    "powervs":                  "ibm--power-vs",
+    "power vs":                 "ibm--power-vs",
     "openshift":                "logo--openshift",
     "roks":                     "logo--openshift",
     "kubernetes":               "ibm-cloud--kubernetes-service",
     "iks":                      "ibm-cloud--kubernetes-service",
     "bare metal":               "ibm-cloud--bare-metal-servers-vpc",
-    "powervs":                  "ibm--power-vs",
-    "power virtual server":     "ibm--power-vs",
-    "power vs":                 "ibm--power-vs",
+    "vsi":                      "ibm-cloud--virtual-server-vpc",
+    "virtual server":           "ibm-cloud--virtual-server-vpc",
+    "dedicated host":           "ibm-cloud--dedicated-host",
     # Connectivity
     "transit gateway":          "ibm-cloud--transit-gateway",
+    "direct link dedicated":    "ibm-cloud--direct-link-2--dedicated",
     "direct link":              "ibm-cloud--direct-link-2--connect",
+    "vpn gateway":              "ibm--vpn-for-vpc",
+    "vpn connection":           "vpn--connection",
     "vpn":                      "ibm--vpn-for-vpc",
+    "bastion":                  "bastion-host",
+    "floating ip":              "floating-ip",
+    "public gateway":           "gateway--public",
     # Ingress / network
     "internet services":        "ibm-cloud--internet-services",
     "cis":                      "ibm-cloud--internet-services",
+    "application load balancer":"load-balancer--application",
+    "private load balancer":    "load-balancer--vpc",
+    "network load balancer":    "load-balancer--network",
+    "global load balancer":     "load-balancer--global",
     "load balancer":            "load-balancer--application",
     "load-balancer":            "load-balancer--application",
-    "public load balancer":     "load-balancer--application",
-    "private load balancer":    "load-balancer--vpc",
+    "dns":                      "dns-services",
+    "internet":                 "wikis",
     # Data / storage
     "object storage":           "object-storage",
     "cos":                      "object-storage",
     "postgresql":               "database--postgresql",
     "mysql":                    "database--mysql",
     "mongodb":                  "database--mongodb",
+    "redis":                    "database--redis",
     "db2":                      "ibm--db2",
+    "cloudant":                 "ibm--cloudant",
+    "mq":                       "ibm--mq",
     "database":                 "data--base",
     "file storage":             "block-storage",
     "block storage":            "block-storage",
     # Security
     "key protect":              "ibm-cloud--key-protect",
     "hpcs":                     "ibm-cloud--key-protect",
+    "hyper protect":            "ibm-cloud--key-protect",
     "secrets manager":          "ibm-cloud--secrets-manager",
-    "iam":                      "group--access",
     "scc":                      "ibm-cloud--security-compliance-center",
+    "security compliance":      "ibm-cloud--security-compliance-center",
+    "iam":                      "group--access",
+    "access group":             "group--access",
+    "resource group":           "group--resource",
+    "nacl":                     "subnet-acl-rules",
+    "acl":                      "subnet-acl-rules",
     # Observability
     "monitoring":               "cloud--monitoring",
     "log analysis":             "ibm-cloud--logging",
     "logging":                  "ibm-cloud--logging",
-    "activity tracker":         "ibm-cloud--security-compliance-center",
+    "activity tracker":         "ibm-cloud--logging",
     "flow log":                 "flow-logs-vpc",
     # Endpoints
     "vpe":                      "ibm-cloud--vpc-endpoints",
+    "endpoint gateway":         "ibm-cloud--vpc-endpoints",
     "private endpoint":         "ibm-cloud--vpc-endpoints",
-    # Container
-    "vpc":                      "ibm-cloud--vpc",
-    "subnet":                   "ibm-cloud--subnets",
-    # Generic
+    # Actors
     "user":                     "user",
-    "external":                 "enterprise",
+    "enterprise":               "enterprise",
 }
 
 
@@ -180,6 +299,11 @@ def _stencil_shape(name: str) -> str:
         if token in lower:
             return shape
     return ""
+
+
+def _stencil_color(shape: str) -> str:
+    """Return the IBM canonical background color for a stencil shape."""
+    return STENCIL_COLOR.get(shape, "#1192E8")
 
 
 # ---------------------------------------------------------------------------
@@ -201,49 +325,188 @@ class DrawioBuilder:
     def _next_id(self) -> str:
         return f"n{next(self._ids)}"
 
-    def ibm_service(
+    def ibm_node(
         self,
-        value: str,
+        label: str,
         x: int,
         y: int,
-        width: int = 48,
-        height: int = 48,
+        shape: str,
         *,
-        shape: str = "",
-        fill: str = "",
-        stroke: str = "",
-        font_size: int = 10,
+        d: int = 48,
     ) -> str:
-        """Render an IBM stencil icon cell.
+        """Render an IBM Prescribed Node: colored square bg + white icon child.
 
-        Uses shape=mxgraph.ibm_cloud.{shape} when a shape is provided,
-        falling back to a rounded rectangle with IBM color conventions.
+        This exactly matches the IBM draw.io sidebar pattern:
+          - Outer cell: shape=rect; fillColor=<category-color>; strokeColor=none
+          - Inner cell: shape=mxgraph.ibm_cloud.<shape>; fillColor=#ffffff
+          - Label sits below both (verticalLabelPosition=bottom)
         """
-        cell_id = self._next_id()
-        if shape:
-            style = (
-                f"shape=mxgraph.ibm_cloud.{shape};"
-                f"fillColor={fill or COLOR['icon_fill']};"
-                f"strokeColor={stroke or COLOR['icon_stroke']};"
-                f"fontColor={COLOR['icon_font']};"
-                f"fontSize={font_size};align=center;html=1;"
-                "sketch=0;aspect=fixed;"
-            )
-        else:
-            style = (
-                "rounded=1;whiteSpace=wrap;html=1;"
-                f"fillColor={fill or '#ffffff'};"
-                f"strokeColor={stroke or COLOR['icon_stroke']};"
-                f"fontColor={COLOR['icon_font']};"
-                f"fontSize={font_size};align=center;verticalAlign=middle;"
-            )
+        bg_color = _stencil_color(shape)
+        d2 = d // 2   # icon is half the bg size, centered
+        bg_id   = self._next_id()
+        icon_id = self._next_id()
+
+        bg_style = (
+            "shape=rect;"
+            f"fillColor={bg_color};strokeColor=none;"
+            "aspect=fixed;resizable=0;"
+            "labelPosition=center;verticalLabelPosition=bottom;"
+            "align=center;verticalAlign=top;"
+            f"fontSize=11;fontColor={COLOR['icon_font']};"
+            "html=1;"
+        )
+        icon_style = (
+            f"shape=mxgraph.ibm_cloud.{shape};"
+            "fillColor=#ffffff;strokeColor=none;"
+            "dashed=0;html=1;"
+            "labelPosition=center;verticalLabelPosition=bottom;"
+            "verticalAlign=top;part=1;"
+            "movable=0;resizable=0;rotatable=0;"
+        )
+        offset_x = (d - d2) // 2
+        offset_y = (d - d2) // 2
+
         self.cells.append(
-            f'<mxCell id="{cell_id}" value="{escape(value)}" style="{style}" '
+            f'<mxCell id="{bg_id}" value="{escape(label)}" style="{bg_style}" '
+            f'vertex="1" parent="1">'
+            f'<mxGeometry x="{x}" y="{y}" width="{d}" height="{d}" as="geometry" />'
+            "</mxCell>"
+        )
+        self.cells.append(
+            f'<mxCell id="{icon_id}" value="" style="{icon_style}" '
+            f'vertex="1" parent="{bg_id}">'
+            f'<mxGeometry x="{offset_x}" y="{offset_y}" width="{d2}" height="{d2}" as="geometry" />'
+            "</mxCell>"
+        )
+        return bg_id
+
+    def ibm_actor(
+        self,
+        label: str,
+        x: int,
+        y: int,
+        shape: str,
+        *,
+        d: int = 48,
+    ) -> str:
+        """Render an IBM Actor node: black circle bg + white icon child."""
+        bg_color = _stencil_color(shape)
+        d2 = d // 2
+        bg_id   = self._next_id()
+        icon_id = self._next_id()
+
+        bg_style = (
+            "shape=ellipse;"
+            f"fillColor={bg_color};strokeColor=none;"
+            "aspect=fixed;resizable=0;"
+            "labelPosition=center;verticalLabelPosition=bottom;"
+            "align=center;verticalAlign=top;"
+            f"fontSize=11;fontColor={COLOR['icon_font']};"
+            "html=1;"
+        )
+        icon_style = (
+            f"shape=mxgraph.ibm_cloud.{shape};"
+            "fillColor=#ffffff;strokeColor=none;"
+            "dashed=0;html=1;part=1;"
+            "movable=0;resizable=0;rotatable=0;"
+        )
+        offset_x = (d - d2) // 2
+        offset_y = (d - d2) // 2
+
+        self.cells.append(
+            f'<mxCell id="{bg_id}" value="{escape(label)}" style="{bg_style}" '
+            f'vertex="1" parent="1">'
+            f'<mxGeometry x="{x}" y="{y}" width="{d}" height="{d}" as="geometry" />'
+            "</mxCell>"
+        )
+        self.cells.append(
+            f'<mxCell id="{icon_id}" value="" style="{icon_style}" '
+            f'vertex="1" parent="{bg_id}">'
+            f'<mxGeometry x="{offset_x}" y="{offset_y}" width="{d2}" height="{d2}" as="geometry" />'
+            "</mxCell>"
+        )
+        return bg_id
+
+    def ibm_location(
+        self,
+        label: str,
+        x: int,
+        y: int,
+        width: int,
+        height: int,
+        shape: str,
+        stroke_color: str,
+        *,
+        stroke_width: int = 1,
+        dashed: bool = False,
+        icon_size: int = 24,
+    ) -> str:
+        """Render an IBM Prescribed Location (container with left border strip + icon).
+
+        Matches the IBM sidebar addIBMCloudPrescribedLocation pattern:
+          - Outer container: fillColor=none; strokeColor=<color>; strokeWidth=<sw>
+          - Left strip child: shape=rect; fillColor=<color>; width=4
+          - Icon child: shape=mxgraph.ibm_cloud.<shape>; fillColor=<color>
+          - Label as part of the icon child row
+        """
+        outer_id = self._next_id()
+        strip_id = self._next_id()
+        icon_id  = self._next_id()
+        label_id = self._next_id()
+
+        dash_str = "dashed=1;dashPattern=8 4;" if dashed else "dashed=0;"
+        outer_style = (
+            "container=1;collapsible=0;expand=0;recursiveResize=0;"
+            "html=1;whiteSpace=wrap;"
+            f"fillColor=none;strokeColor={stroke_color};strokeWidth={stroke_width};"
+            + dash_str
+        )
+        strip_style = (
+            "shape=rect;"
+            f"fillColor={stroke_color};strokeColor=none;"
+            "aspect=fixed;part=1;movable=0;resizable=0;rotatable=0;"
+        )
+        icon_style = (
+            f"shape=mxgraph.ibm_cloud.{shape};"
+            f"fillColor={stroke_color};strokeColor=none;"
+            "dashed=0;html=1;part=1;movable=0;resizable=0;rotatable=0;"
+        )
+        label_style = (
+            "shape=rect;fillColor=none;strokeColor=none;"
+            "labelPosition=right;verticalLabelPosition=middle;"
+            "align=left;verticalAlign=middle;"
+            "fontSize=13;fontStyle=1;part=1;movable=0;resizable=0;rotatable=0;"
+            "spacingLeft=5;"
+        )
+
+        self.cells.append(
+            f'<mxCell id="{outer_id}" value="" style="{outer_style}" '
             f'vertex="1" parent="1">'
             f'<mxGeometry x="{x}" y="{y}" width="{width}" height="{height}" as="geometry" />'
             "</mxCell>"
         )
-        return cell_id
+        # Left border strip (4px wide, full height)
+        self.cells.append(
+            f'<mxCell id="{strip_id}" value="" style="{strip_style}" '
+            f'vertex="1" parent="{outer_id}">'
+            f'<mxGeometry x="0" y="0" width="4" height="{height}" as="geometry" />'
+            "</mxCell>"
+        )
+        # Icon positioned top-left after the strip
+        self.cells.append(
+            f'<mxCell id="{icon_id}" value="" style="{icon_style}" '
+            f'vertex="1" parent="{outer_id}">'
+            f'<mxGeometry x="8" y="8" width="{icon_size}" height="{icon_size}" as="geometry" />'
+            "</mxCell>"
+        )
+        # Label to the right of the icon
+        self.cells.append(
+            f'<mxCell id="{label_id}" value="{escape(label)}" style="{label_style}" '
+            f'vertex="1" parent="{outer_id}">'
+            f'<mxGeometry x="8" y="8" width="{icon_size}" height="{icon_size}" as="geometry" />'
+            "</mxCell>"
+        )
+        return outer_id
 
     def container(
         self,
@@ -253,33 +516,25 @@ class DrawioBuilder:
         width: int,
         height: int,
         *,
-        fill: str = "#f4f4f4",
+        fill: str = "none",
         stroke: str = "#8d8d8d",
-        font_size: int = 12,
+        stroke_width: int = 1,
+        font_size: int = 13,
         font_style: int = 1,
         dashed: bool = False,
         vertical_align: str = "top",
-        shape: str = "",
     ) -> str:
-        """Render a container / boundary box (region, VPC, AZ, etc.)."""
+        """Plain container boundary box — no IBM icon strip (for subnet bands, misc)."""
         cell_id = self._next_id()
-        if shape:
-            style = (
-                f"shape=mxgraph.ibm_cloud.{shape};"
-                f"fillColor={fill};strokeColor={stroke};"
-                f"fontSize={font_size};fontStyle={font_style};"
-                f"verticalAlign={vertical_align};align=left;html=1;whiteSpace=wrap;"
-                "swimlane=0;sketch=0;"
-            )
-        else:
-            style = (
-                "rounded=0;whiteSpace=wrap;html=1;"
-                f"fillColor={fill};strokeColor={stroke};"
-                f"fontSize={font_size};fontStyle={font_style};"
-                f"verticalAlign={vertical_align};align=left;"
-            )
-        if dashed:
-            style += "dashed=1;dashPattern=8 4;"
+        dash_str = "dashed=1;dashPattern=8 4;" if dashed else ""
+        style = (
+            "container=1;collapsible=0;expand=0;recursiveResize=0;"
+            "rounded=0;whiteSpace=wrap;html=1;"
+            f"fillColor={fill};strokeColor={stroke};strokeWidth={stroke_width};"
+            f"fontSize={font_size};fontStyle={font_style};"
+            f"verticalAlign={vertical_align};align=left;"
+            + dash_str
+        )
         self.cells.append(
             f'<mxCell id="{cell_id}" value="{escape(value)}" style="{style}" '
             f'vertex="1" parent="1">'
@@ -297,14 +552,14 @@ class DrawioBuilder:
         height: int,
         *,
         fill: str = "#ffffff",
-        stroke: str = "#4589ff",
+        stroke: str = "#1192E8",
         font_size: int = 11,
         font_style: int = 0,
         dashed: bool = False,
         align: str = "center",
         vertical_align: str = "middle",
     ) -> str:
-        """Generic rounded rectangle (used for fallback nodes)."""
+        """Generic rounded rectangle (title bar, fallback nodes)."""
         cell_id = self._next_id()
         style = (
             "rounded=1;whiteSpace=wrap;html=1;"
@@ -328,10 +583,10 @@ class DrawioBuilder:
         style = (
             "edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;"
             "jettySize=auto;html=1;fontSize=10;endArrow=block;endFill=1;"
-            "strokeColor=#4589ff;"
+            "strokeColor=#1192E8;"
         )
         if dashed:
-            style += "dashed=1;endArrow=open;endFill=0;"
+            style += "dashed=1;endArrow=open;endFill=0;strokeColor=#878D96;"
         self.cells.append(
             f'<mxCell id="{cell_id}" value="{escape(label)}" style="{style}" edge="1" '
             f'source="{source}" target="{target}" parent="1">'
@@ -344,29 +599,26 @@ class DrawioBuilder:
     # ------------------------------------------------------------------
 
     def zone_column(self, label: str, x: int, y: int, w: int, h: int) -> str:
-        """Availability zone boundary — gray swimlane."""
-        cell_id = self._next_id()
-        style = (
-            "swimlane;startSize=26;"
-            f"fillColor={COLOR['az_fill']};strokeColor={COLOR['az_stroke']};"
-            "fontStyle=1;fontSize=11;align=center;horizontal=1;"
+        """Availability zone boundary — IBM Zone pattern (dashed gray, data--center icon)."""
+        # IBM Zone = dashed container with data--center icon, grey stroke
+        return self.ibm_location(
+            label, x, y, w, h,
+            shape="data--center",
+            stroke_color=COLOR["az_stroke"],
+            stroke_width=1,
+            dashed=True,
+            icon_size=24,
         )
-        self.cells.append(
-            f'<mxCell id="{cell_id}" value="{escape(label)}" style="{style}" '
-            f'vertex="1" parent="1">'
-            f'<mxGeometry x="{x}" y="{y}" width="{w}" height="{h}" as="geometry" />'
-            "</mxCell>"
-        )
-        return cell_id
 
     def subnet_band(self, label: str, x: int, y: int, w: int, h: int, tier: str) -> str:
-        """Colored subnet tier band inside an AZ."""
+        """Colored subnet tier band — IBM Subnet pattern with tinted fill."""
         fill = COLOR.get(tier, "#ffffff")
         cell_id = self._next_id()
         style = (
-            f"fillColor={fill};strokeColor={COLOR['az_stroke']};"
+            "container=1;collapsible=0;expand=0;recursiveResize=0;"
+            f"fillColor={fill};strokeColor={COLOR['az_stroke']};strokeWidth=1;"
             "rounded=0;whiteSpace=wrap;html=1;"
-            "fontStyle=1;fontSize=10;align=left;verticalAlign=top;"
+            "fontStyle=1;fontSize=11;align=left;verticalAlign=top;"
         )
         self.cells.append(
             f'<mxCell id="{cell_id}" value="{escape(label)}" style="{style}" '
@@ -377,55 +629,25 @@ class DrawioBuilder:
         return cell_id
 
     def transit_gateway(self, label: str, x: int, y: int) -> str:
-        """IBM Transit Gateway node using the IBM stencil shape."""
-        cell_id = self._next_id()
-        style = (
-            "shape=mxgraph.ibm_cloud.ibm-cloud--transit-gateway;"
-            f"fillColor={COLOR['tgw_fill']};strokeColor={COLOR['tgw_fill']};"
-            f"fontColor={COLOR['tgw_font']};"
-            "fontSize=11;fontStyle=1;align=center;html=1;sketch=0;"
-        )
-        self.cells.append(
-            f'<mxCell id="{cell_id}" value="{escape(label)}" style="{style}" '
-            f'vertex="1" parent="1">'
-            f'<mxGeometry x="{x}" y="{y}" width="180" height="60" as="geometry" />'
-            "</mxCell>"
-        )
-        return cell_id
+        """IBM Transit Gateway — prescribed node (cyan-blue square + white icon)."""
+        return self.ibm_node(label, x, y, "ibm-cloud--transit-gateway", d=48)
 
     def powervs_workspace(self, label: str, x: int, y: int, w: int, h: int) -> str:
-        """PowerVS workspace boundary — purple dashed."""
-        cell_id = self._next_id()
-        style = (
-            "shape=mxgraph.ibm_cloud.ibm--power-vs;"
-            f"fillColor={COLOR['powervs_fill']};strokeColor={COLOR['powervs_stroke']};"
-            "fontSize=12;fontStyle=1;verticalAlign=top;align=left;html=1;"
-            "dashed=1;dashPattern=8 4;whiteSpace=wrap;sketch=0;"
+        """PowerVS workspace boundary — IBM Location pattern, green border."""
+        return self.ibm_location(
+            label, x, y, w, h,
+            shape="ibm--power-vs",
+            stroke_color=COLOR["compute"],
+            stroke_width=1,
+            dashed=True,
+            icon_size=24,
         )
-        self.cells.append(
-            f'<mxCell id="{cell_id}" value="{escape(label)}" style="{style}" '
-            f'vertex="1" parent="1">'
-            f'<mxGeometry x="{x}" y="{y}" width="{w}" height="{h}" as="geometry" />'
-            "</mxCell>"
-        )
-        return cell_id
 
     def vpe_gateway(self, label: str, x: int, y: int, parent_id: str) -> str:
-        """VPE gateway icon + dotted edge to its parent service."""
-        cell_id = self._next_id()
-        style = (
-            "shape=mxgraph.ibm_cloud.ibm-cloud--vpc-endpoints;"
-            f"fillColor={COLOR['Private']};strokeColor={COLOR['vpc_stroke']};"
-            "fontSize=9;align=center;html=1;sketch=0;"
-        )
-        self.cells.append(
-            f'<mxCell id="{cell_id}" value="{escape(label)}" style="{style}" '
-            f'vertex="1" parent="1">'
-            f'<mxGeometry x="{x}" y="{y}" width="80" height="50" as="geometry" />'
-            "</mxCell>"
-        )
-        self.edge(cell_id, parent_id, dashed=True)
-        return cell_id
+        """VPE gateway node + dotted edge to its parent service."""
+        node_id = self.ibm_node(label, x, y, "ibm-cloud--vpc-endpoints", d=40)
+        self.edge(node_id, parent_id, dashed=True)
+        return node_id
 
     def render(self) -> str:
         body = "\n    ".join(self.cells)
@@ -497,29 +719,20 @@ def _service_node(
     *,
     tier: str = "",
 ) -> str:
-    """Render a component as an IBM stencil icon + label box.
+    """Render a component using the IBM Prescribed Node pattern.
 
-    Uses the IBM stencil shape when one can be matched, falls back to a
-    colored rounded rectangle if not.
+    Uses ibm_node (colored square + white icon) when a stencil shape is found,
+    falls back to a generic box otherwise.
     """
     name = item.get("name") or fallback_name
     shape = _stencil_shape(name)
-    fill = COLOR.get(tier, "#ffffff") if tier else "#ffffff"
 
-    # Render icon (left-aligned) + text label
     if shape:
-        icon_id = builder.ibm_service(
-            name, x, y, w, h,
-            shape=shape, fill=fill,
-            font_size=10,
-        )
-        return icon_id
+        # IBM prescribed node: use the stencil's canonical color, not the tier tint
+        return builder.ibm_node(name, x, y, shape, d=48)
     else:
-        return builder.box(
-            name, x, y, w, h,
-            fill=fill, stroke=COLOR["icon_stroke"],
-            font_size=10,
-        )
+        fill = COLOR.get(tier, "#ffffff") if tier else "#ffffff"
+        return builder.box(name, x, y, w, h, fill=fill, font_size=10)
 
 
 # ---------------------------------------------------------------------------
@@ -555,26 +768,19 @@ def _render_title(builder: DrawioBuilder, project: dict, diagram_type: str) -> N
 def _render_context(builder: DrawioBuilder, project: dict, ibm_cloud: dict) -> None:
     _render_title(builder, project, "context")
 
-    # ── External lane (left) ─────────────────────────────────────────────
-    ext_lane = builder.container(
-        "External Users & Systems", 20, ACCOUNT_Y, 220, 460,
-        fill=COLOR["external_fill"], stroke=COLOR["external_stroke"],
-        font_size=12,
+    # ── External lane (left) — IBM Location: grey border, network--public icon ──
+    builder.ibm_location(
+        "External / Internet", 20, ACCOUNT_Y, 220, 460,
+        shape="network--public", stroke_color=COLOR["grey"],
     )
-    users_node = builder.ibm_service(
-        "Users / Clients", 50, ACCOUNT_Y + 80, 160, 60,
-        shape="user", fill=COLOR["external_fill"],
-    )
-    ext_sys_node = builder.ibm_service(
-        "External Systems", 50, ACCOUNT_Y + 180, 160, 60,
-        shape="enterprise", fill=COLOR["external_fill"],
-    )
+    users_node    = builder.ibm_actor("Users / Clients",   50, ACCOUNT_Y + 80,  "user",       d=48)
+    ext_sys_node  = builder.ibm_actor("External Systems",  50, ACCOUNT_Y + 190, "enterprise", d=48)
 
-    # ── IBM Cloud Account boundary ───────────────────────────────────────
-    cloud = builder.container(
+    # ── IBM Cloud Account boundary — IBM Location: cyan border, ibm-cloud icon ──
+    cloud = builder.ibm_location(
         "IBM Cloud Account", 280, ACCOUNT_Y, 1720, 740,
-        fill=COLOR["account_fill"], stroke=COLOR["account_stroke"],
-        font_size=14,
+        shape="ibm-cloud", stroke_color=COLOR["network"],
+        stroke_width=2,
     )
     builder.edge(users_node, cloud, "HTTPS requests")
     builder.edge(ext_sys_node, cloud, "API integration")
@@ -584,61 +790,56 @@ def _render_context(builder: DrawioBuilder, project: dict, ibm_cloud: dict) -> N
 
     for idx, region in enumerate(regions[:2]):
         rx = 320 + idx * 820
-        rn = builder.container(
+        # IBM Location: grey border, location icon
+        rn = builder.ibm_location(
             _label(region, "Region"), rx, ACCOUNT_Y + 60, 760, 540,
-            fill=COLOR["region_fill"], stroke=COLOR["region_stroke"],
-            font_size=13,
+            shape="location", stroke_color=COLOR["grey"],
         )
         region_nodes.append(rn)
 
         vpc = _preferred(ibm_cloud.get("vpcs"), {"name": "VPC", "purpose": "Application network"})
-        vpc_node = builder.container(
+        # IBM Location: cyan border, ibm-cloud--vpc icon
+        builder.ibm_location(
             _label(vpc, "VPC"), rx + 30, ACCOUNT_Y + 130, 700, 370,
-            fill=COLOR["vpc_fill"], stroke=COLOR["vpc_stroke"],
-            font_size=12,
+            shape="ibm-cloud--vpc", stroke_color=COLOR["network"],
         )
 
         # Ingress → Compute → Data (left-to-right, style guide)
-        ingress = _preferred(ibm_cloud.get("ingress"), {"name": "Ingress"})
-        ingress_node = _service_node(builder, ingress, "Ingress", rx + 50, ACCOUNT_Y + 195, 180, 60, tier="Public")
+        ingress  = _preferred(ibm_cloud.get("ingress"),  {"name": "Ingress"})
+        compute  = _preferred(ibm_cloud.get("compute"),  {"name": "Compute"})
+        data_svc = _preferred(ibm_cloud.get("data"),     {"name": "Data Services"})
 
-        compute = _preferred(ibm_cloud.get("compute"), {"name": "Compute"})
-        compute_node = _service_node(builder, compute, "Compute", rx + 265, ACCOUNT_Y + 195, 180, 60, tier="Private")
-
-        data = _preferred(ibm_cloud.get("data"), {"name": "Data Services"})
-        data_node = _service_node(builder, data, "Data", rx + 480, ACCOUNT_Y + 195, 180, 60, tier="Data")
+        ingress_node  = _service_node(builder, ingress,  "Ingress",       rx + 50,  ACCOUNT_Y + 200)
+        compute_node  = _service_node(builder, compute,  "Compute",       rx + 280, ACCOUNT_Y + 200)
+        data_node     = _service_node(builder, data_svc, "Data",          rx + 510, ACCOUNT_Y + 200)
 
         builder.edge(ingress_node, compute_node, "app traffic")
         builder.edge(compute_node, data_node, "data access")
 
-        # Security + Observability (bottom of VPC, style guide)
-        security = _preferred(ibm_cloud.get("security"), {"name": "IAM / Secrets / Keys"})
-        sec_node = _service_node(builder, security, "Security", rx + 50, ACCOUNT_Y + 310, 200, 60, tier="Management")
+        # Security + Observability (bottom of VPC)
+        security = _preferred(ibm_cloud.get("security"),    {"name": "IAM / Secrets / Keys"})
+        obs      = _preferred(ibm_cloud.get("observability"),{"name": "Monitoring / Logging"})
 
-        obs = _preferred(ibm_cloud.get("observability"), {"name": "Monitoring / Logging"})
-        obs_node = _service_node(builder, obs, "Observability", rx + 280, ACCOUNT_Y + 310, 200, 60, tier="Management")
+        sec_node = _service_node(builder, security, "Security",    rx + 50,  ACCOUNT_Y + 330)
+        obs_node = _service_node(builder, obs,      "Observability",rx + 280, ACCOUNT_Y + 330)
 
         builder.edge(sec_node, compute_node, "identity & secrets")
         builder.edge(compute_node, obs_node, "telemetry")
 
-    # ── Connectivity bar (bottom, style guide) ───────────────────────────
-    conn = _preferred(ibm_cloud.get("connectivity"), {"name": "Connectivity"})
-    conn_name = conn.get("name") or "Connectivity"
-    conn_shape = _stencil_shape(conn_name)
-    conn_node = builder.ibm_service(
-        conn_name, 300, ACCOUNT_Y + 640, 260, 60,
-        shape=conn_shape, fill=COLOR["conn_fill"], stroke=COLOR["conn_stroke"],
+    # ── Connectivity bar (bottom) ────────────────────────────────────────
+    conn       = _preferred(ibm_cloud.get("connectivity"), {"name": "Connectivity"})
+    conn_shape = _stencil_shape(conn.get("name") or "direct link")
+    conn_node  = builder.ibm_node(
+        conn.get("name") or "Connectivity", 300, ACCOUNT_Y + 640,
+        conn_shape or "ibm-cloud--direct-link-2--connect",
     )
     for rn in region_nodes:
         builder.edge(conn_node, rn, "")
 
-    # ── Security boundary (bottom-right) ─────────────────────────────────
+    # ── Security boundary (bottom-right, shown as a node) ────────────────
     if ibm_cloud.get("security"):
-        builder.container(
-            "Security & Compliance", 600, ACCOUNT_Y + 640, 400, 60,
-            fill=COLOR["security_fill"], stroke=COLOR["security_stroke"],
-            font_size=11,
-        )
+        sec = _preferred(ibm_cloud.get("security"), {"name": "Security & Compliance"})
+        _service_node(builder, sec, "Security & Compliance", 600, ACCOUNT_Y + 640)
 
 
 # ---------------------------------------------------------------------------
@@ -654,25 +855,18 @@ def _render_context(builder: DrawioBuilder, project: dict, ibm_cloud: dict) -> N
 def _render_logical(builder: DrawioBuilder, project: dict, ibm_cloud: dict) -> None:
     _render_title(builder, project, "logical")
 
-    # ── Left: external ───────────────────────────────────────────────────
-    ext_lane = builder.container(
-        "External Users & Systems", 20, ACCOUNT_Y, 220, 560,
-        fill=COLOR["external_fill"], stroke=COLOR["external_stroke"],
+    # ── Left: external — IBM Location: grey, network--public ─────────────
+    builder.ibm_location(
+        "External / Internet", 20, ACCOUNT_Y, 220, 560,
+        shape="network--public", stroke_color=COLOR["grey"],
     )
-    users_node = builder.ibm_service(
-        "Users / Clients", 50, ACCOUNT_Y + 80, 160, 60, shape="user",
-        fill=COLOR["external_fill"],
-    )
-    ext_sys_node = builder.ibm_service(
-        "External Systems", 50, ACCOUNT_Y + 190, 160, 60, shape="enterprise",
-        fill=COLOR["external_fill"],
-    )
+    users_node   = builder.ibm_actor("Users / Clients",  50, ACCOUNT_Y + 80,  "user",       d=48)
+    ext_sys_node = builder.ibm_actor("External Systems", 50, ACCOUNT_Y + 190, "enterprise", d=48)
 
-    # ── Center: IBM Cloud ────────────────────────────────────────────────
-    cloud = builder.container(
+    # ── Center: IBM Cloud Account — IBM Location: cyan, ibm-cloud ────────
+    cloud = builder.ibm_location(
         "IBM Cloud Account", 280, ACCOUNT_Y, 1280, 740,
-        fill=COLOR["account_fill"], stroke=COLOR["account_stroke"],
-        font_size=14,
+        shape="ibm-cloud", stroke_color=COLOR["network"], stroke_width=2,
     )
     builder.edge(users_node, cloud, "HTTPS")
     builder.edge(ext_sys_node, cloud, "API")
@@ -682,48 +876,40 @@ def _render_logical(builder: DrawioBuilder, project: dict, ibm_cloud: dict) -> N
 
     for idx, region in enumerate(regions[:2]):
         rx = 320 + idx * 600
-        rn = builder.container(
+        builder.ibm_location(
             _label(region, "Region"), rx, ACCOUNT_Y + 60, 560, 540,
-            fill=COLOR["region_fill"], stroke=COLOR["region_stroke"],
+            shape="location", stroke_color=COLOR["grey"],
         )
 
         vpc = _preferred(ibm_cloud.get("vpcs"), {"name": "VPC"})
-        vpc_node = builder.container(
+        vpc_node = builder.ibm_location(
             _label(vpc, "VPC"), rx + 20, ACCOUNT_Y + 120, 520, 380,
-            fill=COLOR["vpc_fill"], stroke=COLOR["vpc_stroke"],
+            shape="ibm-cloud--vpc", stroke_color=COLOR["network"],
         )
         vpc_nodes.append(vpc_node)
 
-        # Ingress layer
-        ingress = _preferred(ibm_cloud.get("ingress"), {"name": "Ingress"})
-        in_node = _service_node(builder, ingress, "Ingress", rx + 30, ACCOUNT_Y + 180, 160, 55, tier="Public")
-
-        # Compute layer
-        compute = _preferred(ibm_cloud.get("compute"), {"name": "Compute"})
-        comp_node = _service_node(builder, compute, "Compute", rx + 200, ACCOUNT_Y + 180, 160, 55, tier="Private")
-
-        builder.edge(in_node, comp_node, "app traffic")
-
-        # Security + IAM
+        ingress  = _preferred(ibm_cloud.get("ingress"),  {"name": "Ingress"})
+        compute  = _preferred(ibm_cloud.get("compute"),  {"name": "Compute"})
         security = _preferred(ibm_cloud.get("security"), {"name": "Security"})
-        sec_node = _service_node(builder, security, "Security", rx + 30, ACCOUNT_Y + 310, 160, 55, tier="Management")
-        builder.edge(sec_node, comp_node, "auth & secrets")
+        obs      = _preferred(ibm_cloud.get("observability"), {"name": "Observability"})
 
-        # Observability
-        obs = _preferred(ibm_cloud.get("observability"), {"name": "Observability"})
-        obs_node = _service_node(builder, obs, "Observability", rx + 200, ACCOUNT_Y + 310, 160, 55, tier="Management")
-        builder.edge(comp_node, obs_node, "telemetry")
+        in_node   = _service_node(builder, ingress,  "Ingress",       rx + 30,  ACCOUNT_Y + 180)
+        comp_node = _service_node(builder, compute,  "Compute",       rx + 180, ACCOUNT_Y + 180)
+        sec_node  = _service_node(builder, security, "Security",      rx + 30,  ACCOUNT_Y + 310)
+        obs_node  = _service_node(builder, obs,      "Observability", rx + 180, ACCOUNT_Y + 310)
 
-    # ── Right: data stores (02-logical-architecture.md: right side) ──────
-    data_lane = builder.container(
+        builder.edge(in_node,   comp_node, "app traffic")
+        builder.edge(sec_node,  comp_node, "auth & secrets")
+        builder.edge(comp_node, obs_node,  "telemetry")
+
+    # ── Right: data stores ───────────────────────────────────────────────
+    builder.ibm_location(
         "Data & Storage", 1600, ACCOUNT_Y + 60, 320, 500,
-        fill=COLOR["Data"], stroke=COLOR["az_stroke"],
+        shape="data--base", stroke_color=COLOR["data"],
     )
     data_items = ibm_cloud.get("data") or [{"name": "Data Services"}]
     for di, ditem in enumerate(data_items[:4]):
-        dn = _service_node(
-            builder, ditem, "Data", 1620, ACCOUNT_Y + 130 + di * 90, 280, 55, tier="Data",
-        )
+        dn = _service_node(builder, ditem, "Data", 1620, ACCOUNT_Y + 130 + di * 90)
         if vpc_nodes:
             builder.edge(vpc_nodes[0], dn, "private data access")
 
@@ -733,10 +919,8 @@ def _render_logical(builder: DrawioBuilder, project: dict, ibm_cloud: dict) -> N
         for vn in vpc_nodes:
             builder.edge(tgw, vn, "")
     else:
-        conn = _preferred(ibm_cloud.get("connectivity"), {"name": "Connectivity"})
-        conn_node = _service_node(
-            builder, conn, "Connectivity", 320, ACCOUNT_Y + 760, 300, 55,
-        )
+        conn      = _preferred(ibm_cloud.get("connectivity"), {"name": "Connectivity"})
+        conn_node = _service_node(builder, conn, "Connectivity", 320, ACCOUNT_Y + 760)
         for rn_id in vpc_nodes:
             builder.edge(conn_node, rn_id, "network")
 
@@ -746,15 +930,14 @@ def _render_logical(builder: DrawioBuilder, project: dict, ibm_cloud: dict) -> N
         if vpc_nodes:
             builder.edge(pw, vpc_nodes[0], "cloud connection")
 
-    # ── Bottom: backup/DR (02-logical-architecture.md: bottom layer) ─────
+    # ── Bottom: backup/DR ────────────────────────────────────────────────
     backup = ibm_cloud.get("backup_dr")
     if backup:
         bitem = _preferred(backup, {"name": "Backup / DR"})
-        builder.ibm_service(
+        builder.ibm_node(
             bitem.get("name") or "Backup / DR",
-            320, ACCOUNT_Y + 840, 280, 55,
-            shape="ibm-cloud--continuous-delivery",
-            fill="#f4f4f4",
+            320, ACCOUNT_Y + 840,
+            "ibm-cloud--continuous-delivery",
         )
 
 
@@ -771,26 +954,19 @@ def _render_logical(builder: DrawioBuilder, project: dict, ibm_cloud: dict) -> N
 def _render_deployment(builder: DrawioBuilder, project: dict, ibm_cloud: dict) -> None:
     _render_title(builder, project, "deployment")
 
-    # ── External lane (left) ─────────────────────────────────────────────
-    builder.container(
+    # ── External lane (left) — IBM Location: grey, network--public ───────
+    builder.ibm_location(
         "External / Internet", 20, ACCOUNT_Y, 200, ACCOUNT_H,
-        fill=COLOR["external_fill"], stroke=COLOR["external_stroke"],
+        shape="network--public", stroke_color=COLOR["grey"],
     )
-    users_node = builder.ibm_service(
-        "Users / Clients", 30, ACCOUNT_Y + 80, 180, 60, shape="user",
-        fill=COLOR["external_fill"],
-    )
-    ext_sys_node = builder.ibm_service(
-        "External Systems", 30, ACCOUNT_Y + 200, 180, 60, shape="enterprise",
-        fill=COLOR["external_fill"],
-    )
+    users_node   = builder.ibm_actor("Users / Clients",  30, ACCOUNT_Y + 80,  "user",       d=48)
+    ext_sys_node = builder.ibm_actor("External Systems", 30, ACCOUNT_Y + 200, "enterprise", d=48)
 
-    # ── IBM Cloud Account boundary ───────────────────────────────────────
-    cloud = builder.container(
+    # ── IBM Cloud Account boundary — IBM Location: cyan, ibm-cloud ───────
+    cloud = builder.ibm_location(
         "IBM Cloud Account",
         ACCOUNT_X + 220, ACCOUNT_Y, ACCOUNT_W - 220, ACCOUNT_H,
-        fill=COLOR["account_fill"], stroke=COLOR["account_stroke"],
-        font_size=14,
+        shape="ibm-cloud", stroke_color=COLOR["network"], stroke_width=2,
     )
     builder.edge(users_node, cloud, "HTTPS")
     builder.edge(ext_sys_node, cloud, "API integration")
@@ -829,19 +1005,17 @@ def _render_deployment(builder: DrawioBuilder, project: dict, ibm_cloud: dict) -
         rx = account_left + REGION_MARGIN_X + r_idx * REGION_SPACING
         ry = ACCOUNT_Y + REGION_MARGIN_Y
 
-        region_node = builder.container(
+        region_node = builder.ibm_location(
             _label(region, "Region"), rx, ry, REGION_W, REGION_H,
-            fill=COLOR["region_fill"], stroke=COLOR["region_stroke"],
-            font_size=13,
+            shape="location", stroke_color=COLOR["grey"],
         )
         region_nodes.append(region_node)
 
         vpc_x = rx + VPC_MARGIN_X
         vpc_y = ry + VPC_MARGIN_Y
-        vpc_node = builder.container(
+        vpc_node = builder.ibm_location(
             _label(vpc, "VPC"), vpc_x, vpc_y, VPC_W, VPC_H,
-            fill=COLOR["vpc_fill"], stroke=COLOR["vpc_stroke"],
-            font_size=12,
+            shape="ibm-cloud--vpc", stroke_color=COLOR["network"],
         )
         vpc_nodes.append(vpc_node)
 
@@ -878,12 +1052,13 @@ def _render_deployment(builder: DrawioBuilder, project: dict, ibm_cloud: dict) -
                         cy = band_top + BAND_PADDING_Y + ci * (chip_h + 4)
                         name = item.get("name") or tier
                         shape = _stencil_shape(name)
-                        nid = builder.ibm_service(
-                            name, cx, cy, chip_w, chip_h,
-                            shape=shape,
-                            fill=COLOR.get(tier, "#ffffff"),
-                            font_size=9,
-                        )
+                        if shape:
+                            nid = builder.ibm_node(name, cx, cy, shape, d=40)
+                        else:
+                            nid = builder.box(
+                                name, cx, cy, chip_w, chip_h,
+                                fill=COLOR.get(tier, "#ffffff"), font_size=9,
+                            )
                         # Track first compute node for connectivity edges
                         if tier == "Private" and first_comp_node is None:
                             first_comp_node = nid
@@ -913,10 +1088,10 @@ def _render_deployment(builder: DrawioBuilder, project: dict, ibm_cloud: dict) -
         if other:
             dl = other[0]
             dl_shape = _stencil_shape(dl.get("name") or "")
-            dl_node = builder.ibm_service(
+            dl_node = builder.ibm_node(
                 dl.get("name") or "Direct Link",
-                account_left + REGION_MARGIN_X, tgw_y, 220, 55,
-                shape=dl_shape, fill=COLOR["conn_fill"], stroke=COLOR["conn_stroke"],
+                account_left + REGION_MARGIN_X, tgw_y,
+                dl_shape or "ibm-cloud--direct-link-2--connect",
             )
             builder.edge(dl_node, tgw_node, "")
     else:
