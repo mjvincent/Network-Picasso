@@ -1,0 +1,27 @@
+name: IBM Cloud VPC Networking
+version: 0.1.0
+checks:
+  - id: region-selected
+    severity: high
+    question: Which IBM Cloud region or regions are required?
+  - id: availability-zone-spread
+    severity: high
+    question: Which availability zones host workload, ingress, and data subnets?
+  - id: subnet-tiering
+    severity: high
+    question: Are public, private, management, and data subnet tiers explicitly identified?
+  - id: ingress-path
+    severity: high
+    question: Is ingress public, private, or hybrid, and which load balancer or OpenShift router terminates it?
+  - id: hybrid-connectivity
+    severity: high
+    question: Is connectivity provided by Direct Link, VPN, Transit Gateway, internet, or a combination?
+  - id: route-control
+    severity: medium
+    question: Are routing domains, custom routes, default routes, and inter-VPC paths known?
+  - id: network-controls
+    severity: high
+    question: Are security groups and network ACL boundaries defined for each subnet or workload tier?
+  - id: private-endpoints
+    severity: medium
+    question: Which IBM Cloud services should be reached through private endpoints or VPE gateways?

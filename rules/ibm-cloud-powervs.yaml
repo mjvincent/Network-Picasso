@@ -1,0 +1,21 @@
+name: IBM Cloud PowerVS
+version: 0.1.0
+checks:
+  - id: workspace
+    severity: high
+    question: Which PowerVS workspace or workspaces are in scope?
+  - id: connectivity
+    severity: high
+    question: How does PowerVS connect to VPC workloads, on-premises networks, and shared services?
+  - id: ip-plan
+    severity: high
+    question: What CIDR ranges are assigned to PowerVS private networks, VPC subnets, and on-premises networks?
+  - id: management-services
+    severity: medium
+    question: Where are DNS, NTP, patching, image, backup, and monitoring services hosted?
+  - id: resilience
+    severity: high
+    question: What are the PowerVS high-availability, backup, replication, and DR requirements?
+  - id: security
+    severity: high
+    question: Which IAM, key management, bastion, firewall, and privileged-access controls protect PowerVS?

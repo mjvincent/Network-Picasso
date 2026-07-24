@@ -1,0 +1,69 @@
+{
+  "project": {
+    "name": "OmniCare",
+    "client": "Example Healthcare Client",
+    "environment": "Production",
+    "diagram_goals": [
+      "Show a professional IBM Cloud deployment architecture",
+      "Highlight VPC networking, ingress, security, observability, and external EHR integration"
+    ]
+  },
+  "ibm_cloud": {
+    "regions": [
+      {
+        "name": "us-south",
+        "purpose": "Primary region"
+      },
+      {
+        "name": "us-east",
+        "purpose": "Disaster recovery region"
+      }
+    ],
+    "vpcs": [
+      {
+        "name": "omnicare-prod-vpc",
+        "purpose": "Production application network"
+      }
+    ],
+    "connectivity": [
+      {
+        "name": "Direct Link + Transit Gateway",
+        "purpose": "Private hybrid connectivity"
+      }
+    ],
+    "ingress": [
+      {
+        "name": "IBM Cloud Internet Services + Public Load Balancer",
+        "purpose": "Public web ingress"
+      }
+    ],
+    "compute": [
+      {
+        "name": "Red Hat OpenShift on IBM Cloud",
+        "purpose": "Application runtime"
+      }
+    ],
+    "data": [
+      {
+        "name": "PostgreSQL + Object Storage",
+        "purpose": "Application data and documents"
+      }
+    ],
+    "security": [
+      {
+        "name": "IAM + Secrets Manager + Key Protect",
+        "purpose": "Identity, secrets, and encryption keys"
+      }
+    ],
+    "observability": [
+      {
+        "name": "Monitoring + Logs + Activity Tracker",
+        "purpose": "Metrics, logs, and audit events"
+      }
+    ],
+    "assumptions": [
+      "Subnet CIDRs and zone placement still need customer confirmation.",
+      "Private endpoint requirements still need service-by-service review."
+    ]
+  }
+}

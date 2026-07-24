@@ -1,0 +1,84 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://network-picasso.local/schemas/architecture.schema.json",
+  "title": "Network Picasso Architecture Model",
+  "type": "object",
+  "required": ["project", "ibm_cloud"],
+  "properties": {
+    "project": {
+      "type": "object",
+      "required": ["name"],
+      "properties": {
+        "name": { "type": "string" },
+        "client": { "type": "string" },
+        "environment": { "type": "string" },
+        "diagram_goals": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      },
+      "additionalProperties": true
+    },
+    "ibm_cloud": {
+      "type": "object",
+      "properties": {
+        "regions": { "$ref": "#/$defs/componentList" },
+        "vpcs": { "$ref": "#/$defs/componentList" },
+        "zones": { "$ref": "#/$defs/componentList" },
+        "subnets": { "$ref": "#/$defs/componentList" },
+        "connectivity": { "$ref": "#/$defs/componentList" },
+        "ingress": { "$ref": "#/$defs/componentList" },
+        "compute": { "$ref": "#/$defs/componentList" },
+        "data": { "$ref": "#/$defs/componentList" },
+        "private_endpoints": { "$ref": "#/$defs/componentList" },
+        "dns": { "$ref": "#/$defs/componentList" },
+        "security": { "$ref": "#/$defs/componentList" },
+        "observability": { "$ref": "#/$defs/componentList" },
+        "backup_dr": { "$ref": "#/$defs/componentList" },
+        "assumptions": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      },
+      "additionalProperties": true
+    },
+    "questions": {
+      "type": "object",
+      "properties": {
+        "answered": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "open": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      },
+      "additionalProperties": true
+    }
+  },
+  "$defs": {
+    "componentList": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/component" }
+    },
+    "component": {
+      "type": "object",
+      "required": ["name"],
+      "properties": {
+        "name": { "type": "string" },
+        "type": { "type": "string" },
+        "purpose": { "type": "string" },
+        "region": { "type": "string" },
+        "zone": { "type": "string" },
+        "cidr": { "type": "string" },
+        "connections": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "notes": { "type": "string" }
+      },
+      "additionalProperties": true
+    }
+  }
+}

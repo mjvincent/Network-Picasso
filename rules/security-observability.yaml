@@ -1,0 +1,27 @@
+name: Security And Observability
+version: 0.1.0
+checks:
+  - id: iam
+    severity: high
+    question: Which IAM access groups, service IDs, trusted profiles, and least-privilege boundaries are required?
+  - id: secrets
+    severity: high
+    question: Where are application secrets, certificates, and rotation policies managed?
+  - id: encryption
+    severity: high
+    question: Are Key Protect or Hyper Protect Crypto Services required for customer-managed keys?
+  - id: audit
+    severity: high
+    question: Which Activity Tracker events must be captured and retained?
+  - id: logs
+    severity: medium
+    question: Which platform, application, network, and audit logs must be centralized?
+  - id: metrics
+    severity: medium
+    question: Which infrastructure and application metrics require dashboards and alert policies?
+  - id: flow-logs
+    severity: medium
+    question: Are VPC flow logs required for regulated, production, or troubleshooting use cases?
+  - id: backup-retention
+    severity: high
+    question: What retention, immutability, recovery, and evidence requirements apply to backups?
