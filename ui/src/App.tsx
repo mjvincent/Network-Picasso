@@ -179,8 +179,11 @@ export default function App() {
   const previewRef = useRef<HTMLIFrameElement>(null);
 
   // UI state
-  // Holds XML pending delivery to a diagrams.net popup (Option C)
+  // Holds XML pending delivery to a diagrams.net popup (Option C).
+  // Also store the window reference — required because we can't use noopener
+  // (that would null out window.opener, making event.source unusable).
   const pendingPopupXml = useRef<string | null>(null);
+  const popupWindowRef  = useRef<Window | null>(null);
 
   const [status, setStatus]   = useState('');
   const [error, setError]     = useState('');
@@ -525,12 +528,15 @@ export default function App() {
       const xml = await response.text();
       // Store the XML so the message listener can deliver it once the popup fires
       // its 'init' event — same protocol as the inline preview (Option D).
+      // Do NOT use noopener — it nullifies event.source in the message listener,
+      // making it impossible to postMessage back to the popup.
       pendingPopupXml.current = xml;
-      window.open(
+      const popup = window.open(
         'https://embed.diagrams.net/?embed=1&proto=json&spin=1&analytics=0',
-        '_blank',
-        'noopener,width=1200,height=800',
+        'drawio-popup',
+        'width=1200,height=800',
       );
+      popupWindowRef.current = popup;
       setStatus('Opening diagrams.net — diagram will load automatically when the editor is ready.');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Open failed');
@@ -592,14 +598,18 @@ export default function App() {
             setPreviewReady(true);
             return;
           }
-          // Option C — popup window: deliver pending XML then clear it
+          // Option C — popup window: deliver pending XML then clear it.
+          // Use the stored window ref — event.source is only reliable when
+          // the popup was opened without noopener.
           const xml = pendingPopupXml.current;
-          if (xml && event.source) {
-            (event.source as Window).postMessage(
+          const target = popupWindowRef.current ?? (event.source as Window | null);
+          if (xml && target) {
+            target.postMessage(
               JSON.stringify({ action: 'load', xml }),
               'https://embed.diagrams.net',
             );
             pendingPopupXml.current = null;
+            popupWindowRef.current = null;
             setStatus('Diagram loaded in diagrams.net editor.');
           }
         }
