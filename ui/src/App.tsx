@@ -25,6 +25,7 @@ import {
   Tile,
 } from '@carbon/react';
 import {
+  Checkmark,
   Diagram,
   DocumentImport,
   IbmCloud,
@@ -84,6 +85,21 @@ async function postForm<T>(url: string, body: FormData): Promise<T> {
   return response.json();
 }
 
+function questionKey(question: Question): string {
+  return `${question.area}:${question.question}`;
+}
+
+function mergeQuestions(existing: Question[], incoming: Question[]): Question[] {
+  const merged = new Map(existing.map((question) => [questionKey(question), question]));
+  incoming.forEach((question) => {
+    merged.set(questionKey(question), {
+      ...merged.get(questionKey(question)),
+      ...question,
+    });
+  });
+  return Array.from(merged.values());
+}
+
 export default function App() {
   const [projectName, setProjectName] = useState('');
   const [inputPath, setInputPath] = useState('examples/sample-inputs');
@@ -93,6 +109,7 @@ export default function App() {
   const [questions, setQuestions] = useState<Question[]>([]);
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [questionAnswers, setQuestionAnswers] = useState<Record<string, string>>({});
+  const [answeredQuestions, setAnsweredQuestions] = useState<Record<string, string>>({});
   const [diagramPath, setDiagramPath] = useState('');
   const [status, setStatus] = useState('');
   const [error, setError] = useState('');
@@ -103,7 +120,7 @@ export default function App() {
       .then((response) => response.json())
       .then((payload) => {
         setArchitecture(payload.architecture);
-        setQuestions(payload.questions);
+        setQuestions((current) => mergeQuestions(current, payload.questions));
         setArchitecturePath(payload.architecturePath);
         setProjectName('');
       })
@@ -125,6 +142,11 @@ export default function App() {
       .filter((item) => item.count > 0);
   }, [architecture]);
 
+  const openQuestions = useMemo(
+    () => questions.filter((question) => !answeredQuestions[questionKey(question)]),
+    [answeredQuestions, questions]
+  );
+
   async function runIntake() {
     setBusy(true);
     setError('');
@@ -140,7 +162,7 @@ export default function App() {
         outputPath: architecturePath,
       });
       setArchitecture(payload.architecture);
-      setQuestions(payload.questions);
+      setQuestions((current) => mergeQuestions(current, payload.questions));
       setArchitecturePath(payload.outputPath);
       setStatus('Architecture model updated');
     } catch (err) {
@@ -167,7 +189,7 @@ export default function App() {
         files: string[];
       }>('/api/upload-intake', body);
       setArchitecture(payload.architecture);
-      setQuestions(payload.questions);
+      setQuestions((current) => mergeQuestions(current, payload.questions));
       setInputPath(payload.inputPath);
       setArchitecturePath(payload.outputPath);
       setDiagramPath('');
@@ -199,6 +221,44 @@ export default function App() {
 
   function removeFile(name: string) {
     setSelectedFiles((current) => current.filter((file) => file.name !== name));
+  }
+
+  function updateAnswer(question: Question, answer: string) {
+    setQuestionAnswers((current) => ({
+      ...current,
+      [questionKey(question)]: answer,
+    }));
+  }
+
+  function saveAnswer(question: Question) {
+    const key = questionKey(question);
+    const answer = questionAnswers[key]?.trim();
+    if (!answer) {
+      setStatus('');
+      setError('Add an answer before marking the question complete.');
+      return;
+    }
+    setError('');
+    setAnsweredQuestions((current) => ({
+      ...current,
+      [key]: answer,
+    }));
+    setStatus('Design answer saved');
+  }
+
+  function acceptCoaching(question: Question) {
+    const key = questionKey(question);
+    const answer = question.guidance || question.question;
+    setQuestionAnswers((current) => ({
+      ...current,
+      [key]: answer,
+    }));
+    setAnsweredQuestions((current) => ({
+      ...current,
+      [key]: answer,
+    }));
+    setError('');
+    setStatus('Best-practice guidance accepted');
   }
 
   async function generateDiagram() {
@@ -359,8 +419,8 @@ export default function App() {
                   </p>
                 </div>
                 <div className="question-list">
-                  {questions.length === 0 && <p>No open questions detected.</p>}
-                  {questions.map((item, index) => (
+                  {openQuestions.length === 0 && <p>No open questions detected.</p>}
+                  {openQuestions.map((item, index) => (
                     <Layer key={`${item.area}-${item.question}`}>
                       <div className="question-item">
                         <Tag type="blue">{item.area}</Tag>
@@ -375,14 +435,19 @@ export default function App() {
                           id={`answer-${index}`}
                           labelText="Your answer"
                           placeholder="Capture the design decision, assumption, or follow-up needed."
-                          value={questionAnswers[item.question] || ''}
-                          onChange={(event) =>
-                            setQuestionAnswers((current) => ({
-                              ...current,
-                              [item.question]: event.target.value,
-                            }))
-                          }
+                          value={questionAnswers[questionKey(item)] || ''}
+                          onChange={(event) => updateAnswer(item, event.target.value)}
                         />
+                        <div className="question-actions">
+                          {item.guidance && (
+                            <Button kind="tertiary" size="sm" onClick={() => acceptCoaching(item)}>
+                              Accept coaching
+                            </Button>
+                          )}
+                          <Button renderIcon={Checkmark} size="sm" onClick={() => saveAnswer(item)}>
+                            Save answer
+                          </Button>
+                        </div>
                       </div>
                     </Layer>
                   ))}

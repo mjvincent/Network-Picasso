@@ -105,6 +105,12 @@ body {
   font-size: 0.75rem;
 }
 
+.question-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
 .source-item {
   border-bottom: 1px solid #e0e0e0;
   display: grid;
