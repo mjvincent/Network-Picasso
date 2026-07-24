@@ -1,13 +1,24 @@
 from __future__ import annotations
 
 import json
+import os
 import re
+from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 from .drawio import render_drawio
-from .intake import build_architecture_from_inputs
+from .intake import backfill_answer_into_model, build_architecture_from_inputs
+from . import ollama as _ollama
+from .projects import (
+    create_project,
+    list_projects,
+    project_architecture_path,
+    project_uploads_path,
+    resolve_projects_root,
+    safe_slug,
+)
 from .questions import find_design_gaps
 
 
@@ -16,6 +27,15 @@ DEFAULT_INPUT_PATH = "examples/sample-inputs"
 DEFAULT_ARCHITECTURE_PATH = "examples/sample/architecture.json"
 UPLOAD_INPUT_PATH = "inputs/uploads/current"
 UPLOAD_ARCHITECTURE_PATH = "inputs/uploads/current/architecture.json"
+SETTINGS_PATH = "inputs/settings.json"
+OLLAMA_BASE_URL = "http://localhost:11434"
+
+_SETTINGS_DEFAULTS: dict = {
+    "mode": "rules",
+    "ollamaModel": "phi4-mini:latest",
+    "confidenceThreshold": 0.8,
+    "projectsRoot": "inputs/projects",
+}
 
 
 def repo_path(value: str) -> Path:
@@ -48,13 +68,52 @@ class NetworkPicassoHandler(BaseHTTPRequestHandler):
         if parsed.path == "/api/example":
             architecture_path = REPO_ROOT / DEFAULT_ARCHITECTURE_PATH
             architecture = read_json_file(architecture_path)
+            answered = architecture.get("questions", {}).get("answered", [])
             self.send_json(
                 {
                     "architecture": architecture,
                     "questions": find_design_gaps(architecture),
                     "architecturePath": relative_to_repo(architecture_path),
+                    "answeredQuestions": answered,
                 }
             )
+            return
+        if parsed.path == "/api/ollama/models":
+            models = _ollama.list_models(OLLAMA_BASE_URL)
+            self.send_json({"models": models})
+            return
+        if parsed.path == "/api/settings":
+            self.send_json(load_settings())
+            return
+        if parsed.path == "/api/drawio-xml":
+            qs = parse_qs(parsed.query or "")
+            architecture_path = repo_path(
+                (qs.get("architecturePath") or [DEFAULT_ARCHITECTURE_PATH])[0]
+            )
+            diagram_type = (qs.get("diagramType") or ["deployment"])[0]
+            architecture = read_json_file(architecture_path)
+            self.send_xml(render_drawio(architecture, diagram_type=diagram_type))
+            return
+        if parsed.path == "/api/projects":
+            settings = load_settings()
+            root = resolve_projects_root(settings)
+            self.send_json({"projects": list_projects(root)})
+            return
+        if parsed.path == "/api/project-export":
+            qs = parse_qs(parsed.query or "")
+            project_path = repo_path((qs.get("path") or [""])[0])
+            arch_path = project_architecture_path(project_path)
+            if not arch_path.exists():
+                self.send_error_json(404, "No architecture.json found for this project")
+                return
+            body = arch_path.read_bytes()
+            self.send_response(200)
+            self.send_cors_headers()
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Content-Disposition", 'attachment; filename="architecture.json"')
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
             return
         self.send_error_json(404, "Route not found")
 
@@ -64,6 +123,9 @@ class NetworkPicassoHandler(BaseHTTPRequestHandler):
             if parsed.path == "/api/upload-intake":
                 self.handle_upload_intake()
                 return
+            if parsed.path == "/api/project-import":
+                self.handle_project_import()
+                return
 
             payload = self.read_json()
             if parsed.path == "/api/intake":
@@ -72,23 +134,52 @@ class NetworkPicassoHandler(BaseHTTPRequestHandler):
                 self.handle_questions(payload)
             elif parsed.path == "/api/generate-drawio":
                 self.handle_generate_drawio(payload)
+            elif parsed.path == "/api/drawio-xml":
+                self.handle_drawio_xml(payload)
+            elif parsed.path == "/api/answer":
+                self.handle_answer(payload)
+            elif parsed.path == "/api/confirm-components":
+                self.handle_confirm_components(payload)
+            elif parsed.path == "/api/settings":
+                self.handle_save_settings(payload)
+            elif parsed.path == "/api/projects":
+                self.handle_create_project(payload)
             else:
                 self.send_error_json(404, "Route not found")
         except Exception as exc:  # Keep the local UI useful during early iteration.
             self.send_error_json(500, str(exc))
 
     def handle_intake(self, payload: dict) -> None:
-        input_path = repo_path(payload.get("inputPath") or DEFAULT_INPUT_PATH)
+        # Support project-routed paths
+        settings = load_settings()
+        customer = payload.get("customer")
+        project = payload.get("project")
+        if customer:
+            proj_root = resolve_projects_root(settings)
+            proj_path = create_project(proj_root, customer, project or None)
+            input_path = project_uploads_path(proj_path)
+            output_path = project_architecture_path(proj_path)
+        else:
+            input_path = repo_path(payload.get("inputPath") or DEFAULT_INPUT_PATH)
+            output_path = repo_path(payload.get("outputPath") or DEFAULT_ARCHITECTURE_PATH)
+
         project_name = payload.get("projectName") or None
-        output_path = repo_path(payload.get("outputPath") or DEFAULT_ARCHITECTURE_PATH)
+        mode = str(payload.get("mode") or "rules")
+        ollama_model = str(payload.get("ollamaModel") or _SETTINGS_DEFAULTS["ollamaModel"])
 
-        architecture, gaps = run_intake(input_path, output_path, project_name=project_name)
+        architecture, gaps, pending = run_intake(
+            input_path, output_path, project_name=project_name,
+            mode=mode, ollama_model=ollama_model,
+        )
 
+        answered = architecture.get("questions", {}).get("answered", [])
         self.send_json(
             {
                 "architecture": architecture,
                 "questions": gaps,
                 "outputPath": relative_to_repo(output_path),
+                "answeredQuestions": answered,
+                "pendingComponents": pending,
             }
         )
 
@@ -98,7 +189,19 @@ class NetworkPicassoHandler(BaseHTTPRequestHandler):
             self.send_error_json(400, "Upload at least one BOM, pricing, spreadsheet, CSV, JSON, Markdown, or text file.")
             return
 
-        upload_dir = repo_path(UPLOAD_INPUT_PATH)
+        # Route to project folder when customer/project provided
+        settings = load_settings()
+        customer = fields.get("customer")
+        project = fields.get("project")
+        if customer:
+            proj_root = resolve_projects_root(settings)
+            proj_path = create_project(proj_root, customer, project or None)
+            upload_dir = project_uploads_path(proj_path)
+            output_path = project_architecture_path(proj_path)
+        else:
+            upload_dir = repo_path(UPLOAD_INPUT_PATH)
+            output_path = repo_path(UPLOAD_ARCHITECTURE_PATH)
+
         upload_dir.mkdir(parents=True, exist_ok=True)
         saved_files = []
         for uploaded in files:
@@ -108,9 +211,14 @@ class NetworkPicassoHandler(BaseHTTPRequestHandler):
             saved_files.append(relative_to_repo(target))
 
         project_name = fields.get("projectName") or "Customer Architecture"
-        output_path = repo_path(UPLOAD_ARCHITECTURE_PATH)
-        architecture, gaps = run_intake(upload_dir, output_path, project_name=project_name)
+        mode = fields.get("mode") or "rules"
+        ollama_model = fields.get("ollamaModel") or _SETTINGS_DEFAULTS["ollamaModel"]
+        architecture, gaps, pending = run_intake(
+            upload_dir, output_path, project_name=project_name,
+            mode=mode, ollama_model=ollama_model,
+        )
 
+        answered = architecture.get("questions", {}).get("answered", [])
         self.send_json(
             {
                 "architecture": architecture,
@@ -118,8 +226,98 @@ class NetworkPicassoHandler(BaseHTTPRequestHandler):
                 "inputPath": relative_to_repo(upload_dir),
                 "outputPath": relative_to_repo(output_path),
                 "files": saved_files,
+                "answeredQuestions": answered,
+                "pendingComponents": pending,
             }
         )
+
+    def handle_create_project(self, payload: dict) -> None:
+        customer = str(payload.get("customer") or "").strip()
+        project = str(payload.get("project") or "").strip() or None
+        if not customer:
+            self.send_error_json(400, "customer is required")
+            return
+        settings = load_settings()
+        proj_root = resolve_projects_root(settings)
+        proj_path = create_project(proj_root, customer, project)
+        self.send_json({
+            "path": relative_to_repo(proj_path),
+            "customer": safe_slug(customer),
+            "project": safe_slug(project) if project else "",
+        })
+
+    def handle_project_import(self) -> None:
+        fields, files = self.read_multipart()
+        project_path_str = fields.get("path")
+        if not project_path_str:
+            self.send_error_json(400, "path field is required")
+            return
+        arch_files = [f for f in files if f.get("filename", "").endswith(".json")]
+        if not arch_files:
+            self.send_error_json(400, "Upload a .json architecture file")
+            return
+        proj_path = repo_path(project_path_str)
+        arch_path = project_architecture_path(proj_path)
+        arch_path.parent.mkdir(parents=True, exist_ok=True)
+        arch_path.write_bytes(arch_files[0]["content"])
+        self.send_json({"ok": True, "outputPath": relative_to_repo(arch_path)})
+
+    def handle_answer(self, payload: dict) -> None:
+        architecture_path = repo_path(payload.get("architecturePath") or DEFAULT_ARCHITECTURE_PATH)
+        area = str(payload.get("area") or "")
+        question = str(payload.get("question") or "")
+        answer = str(payload.get("answer") or "").strip()
+        source = str(payload.get("source") or "architect")
+
+        if not area or not question or not answer:
+            self.send_error_json(400, "area, question, and answer are required")
+            return
+
+        architecture = read_json_file(architecture_path)
+        questions_block = architecture.setdefault("questions", {"answered": [], "open": []})
+
+        # Append structured answered entry.
+        entry = {
+            "area": area,
+            "question": question,
+            "answer": answer,
+            "source": source,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }
+        questions_block.setdefault("answered", []).append(entry)
+
+        # Remove from open list (string comparison against question text).
+        questions_block["open"] = [q for q in questions_block.get("open", []) if q != question]
+
+        # Back-fill answer text into the ibm_cloud model.
+        backfill_answer_into_model(architecture, area, answer)
+
+        atomic_write_json(architecture_path, architecture)
+        self.send_json({"ok": True, "entry": entry})
+
+    def handle_confirm_components(self, payload: dict) -> None:
+        architecture_path = repo_path(payload.get("architecturePath") or DEFAULT_ARCHITECTURE_PATH)
+        confirmed: list[dict] = payload.get("confirmed") or []
+        # discarded items are simply not written — no action needed on server.
+
+        architecture = read_json_file(architecture_path)
+        ibm_cloud = architecture.setdefault("ibm_cloud", {})
+
+        for component in confirmed:
+            key = str(component.get("key") or "")
+            if not key:
+                continue
+            entry = {
+                "name": str(component.get("name") or ""),
+                "type": key,
+                "purpose": str(component.get("purpose") or ""),
+                "notes": str(component.get("notes") or ""),
+                "source": "confirm-components",
+            }
+            ibm_cloud.setdefault(key, []).append(entry)
+
+        atomic_write_json(architecture_path, architecture)
+        self.send_json({"ok": True, "confirmed": len(confirmed)})
 
     def handle_questions(self, payload: dict) -> None:
         architecture = payload.get("architecture")
@@ -127,6 +325,26 @@ class NetworkPicassoHandler(BaseHTTPRequestHandler):
             architecture_path = repo_path(payload.get("architecturePath") or DEFAULT_ARCHITECTURE_PATH)
             architecture = read_json_file(architecture_path)
         self.send_json({"questions": find_design_gaps(architecture)})
+
+    def handle_save_settings(self, payload: dict) -> None:
+        settings = load_settings()
+        for key in ("mode", "ollamaModel", "confidenceThreshold", "projectsRoot"):
+            if key in payload:
+                settings[key] = payload[key]
+        settings_path = repo_path(SETTINGS_PATH)
+        atomic_write_json(settings_path, settings)
+        self.send_json({"ok": True, "settings": settings})
+
+    def handle_drawio_xml(self, payload: dict) -> None:
+        architecture = payload.get("architecture")
+        if not architecture:
+            architecture_path_str = payload.get("architecturePath")
+            if not architecture_path_str:
+                self.send_error_json(400, "architecture or architecturePath is required")
+                return
+            architecture = read_json_file(repo_path(architecture_path_str))
+        diagram_type = str(payload.get("diagramType") or "deployment")
+        self.send_xml(render_drawio(architecture, diagram_type=diagram_type))
 
     def handle_generate_drawio(self, payload: dict) -> None:
         architecture = payload.get("architecture")
@@ -181,6 +399,15 @@ class NetworkPicassoHandler(BaseHTTPRequestHandler):
                 fields[name] = content.decode("utf-8", errors="replace")
         return fields, files
 
+    def send_xml(self, xml: str, *, status: int = 200) -> None:
+        body = xml.encode("utf-8")
+        self.send_response(status)
+        self.send_cors_headers()
+        self.send_header("Content-Type", "application/xml; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
     def send_json(self, payload: dict, *, status: int = 200) -> None:
         body = json.dumps(payload, indent=2).encode("utf-8")
         self.send_response(status)
@@ -206,14 +433,116 @@ def read_json_file(path: Path) -> dict:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def run_intake(input_path: Path, output_path: Path, *, project_name: str | None) -> tuple[dict, list[dict[str, str]]]:
+def atomic_write_json(path: Path, data: dict) -> None:
+    """Write *data* as JSON to *path* atomically (tmp file + os.replace)."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path = path.with_suffix(".tmp")
+    tmp_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+    os.replace(tmp_path, path)
+
+
+def load_settings() -> dict:
+    """Return current settings, falling back to defaults for any missing key."""
+    settings = dict(_SETTINGS_DEFAULTS)
+    settings_path = repo_path(SETTINGS_PATH)
+    if settings_path.exists():
+        try:
+            on_disk = json.loads(settings_path.read_text(encoding="utf-8"))
+            settings.update(on_disk)
+        except Exception:
+            pass
+    return settings
+
+
+def run_intake(
+    input_path: Path,
+    output_path: Path,
+    *,
+    project_name: str | None,
+    mode: str = "rules",
+    ollama_model: str | None = None,
+) -> tuple[dict, list[dict], list[dict]]:
+    """
+    Run the intake pipeline.
+
+    Returns (architecture, gaps, pending_components).
+    pending_components is a list of low-confidence LLM extractions (empty in rules-only mode).
+    """
+    settings = load_settings()
+    threshold: float = float(settings.get("confidenceThreshold", 0.8))
+
     architecture = build_architecture_from_inputs(input_path, project_name=project_name)
     normalize_sources(architecture)
+
+    pending_components: list[dict] = []
+
+    if mode == "ollama":
+        model = ollama_model or settings.get("ollamaModel") or _SETTINGS_DEFAULTS["ollamaModel"]
+        # Concatenate all uploaded text files for LLM extraction.
+        text_parts: list[str] = []
+        iter_files = list(input_path.iterdir()) if input_path.is_dir() else [input_path]
+        for p in iter_files:
+            if p.suffix.lower() in {".txt", ".md", ".csv", ".tsv", ".json"}:
+                try:
+                    text_parts.append(p.read_text(encoding="utf-8", errors="replace"))
+                except OSError:
+                    pass
+        combined_text = "\n\n".join(text_parts)
+        if combined_text.strip():
+            extracted = _ollama.extract_components(combined_text, model, OLLAMA_BASE_URL)
+            ibm_cloud = architecture.setdefault("ibm_cloud", {})
+            for item in extracted:
+                confidence = float(item.get("confidence", 0.0))
+                key = str(item.get("suggested_key") or "")
+                if not key:
+                    continue
+                component = {
+                    "name": str(item.get("name") or ""),
+                    "type": key,
+                    "purpose": str(item.get("purpose") or ""),
+                    "notes": str(item.get("notes") or ""),
+                    "source": "llm",
+                }
+                if confidence >= threshold:
+                    ibm_cloud.setdefault(key, []).append(component)
+                else:
+                    pending_components.append({
+                        "id": f"llm-{len(pending_components)}",
+                        "name": component["name"],
+                        "suggestedKey": key,
+                        "confidence": confidence,
+                        "notes": component["notes"],
+                    })
+
+    # Preserve answered entries from any pre-existing architecture file so
+    # re-running intake does not lose architect answers.
+    if output_path.exists():
+        try:
+            existing = read_json_file(output_path)
+            prior_answered = existing.get("questions", {}).get("answered", [])
+            if prior_answered:
+                architecture["questions"]["answered"] = prior_answered
+        except Exception:
+            pass  # Corrupt or missing file — proceed with empty answered list.
+
     gaps = find_design_gaps(architecture)
-    architecture["questions"]["open"] = [gap["question"] for gap in gaps]
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(json.dumps(architecture, indent=2), encoding="utf-8")
-    return architecture, gaps
+
+    # In Ollama mode, append LLM-generated gap questions (dedup by question text).
+    if mode == "ollama":
+        model = ollama_model or settings.get("ollamaModel") or _SETTINGS_DEFAULTS["ollamaModel"]
+        llm_gaps = _ollama.generate_questions(architecture, model, OLLAMA_BASE_URL)
+        existing_texts = {g["question"] for g in gaps}
+        for g in llm_gaps:
+            if g.get("question") and g["question"] not in existing_texts:
+                gaps.append(g)
+                existing_texts.add(g["question"])
+
+    # Exclude questions already answered when building the open list.
+    answered_questions = {entry["question"] for entry in architecture["questions"].get("answered", []) if isinstance(entry, dict)}
+    architecture["questions"]["open"] = [gap["question"] for gap in gaps if gap["question"] not in answered_questions]
+
+    atomic_write_json(output_path, architecture)
+    return architecture, gaps, pending_components
 
 
 def normalize_sources(architecture: dict) -> None:

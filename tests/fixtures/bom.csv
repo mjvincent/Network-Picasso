@@ -1,0 +1,3 @@
+Component,Category,Region,Notes
+Red Hat OpenShift on IBM Cloud,Compute,us-south,Production application runtime
+IBM Cloud Databases for PostgreSQL,Data,us-south,Primary relational database

@@ -40,6 +40,7 @@ KEYWORDS = {
 CATEGORY_ALIASES = {
     "availability zone": "zones",
     "backup": "backup_dr",
+    "backup and recovery": "backup_dr",
     "compute": "compute",
     "connectivity": "connectivity",
     "data": "data",
@@ -47,15 +48,38 @@ CATEGORY_ALIASES = {
     "dns": "dns",
     "dr": "backup_dr",
     "ingress": "ingress",
+    "monitoring": "observability",
+    "network": "connectivity",
+    "networking": "connectivity",
+    "object storage": "data",
     "observability": "observability",
     "private endpoint": "private_endpoints",
     "security": "security",
+    "storage": "data",
     "subnet": "subnets",
     "vpc": "vpcs",
+    "vpc infrastructure": "vpcs",
+    "vpe": "private_endpoints",
     "zone": "zones",
 }
 
 IBM_REGION_PATTERN = re.compile(r"\b(?:us|eu|ca|jp|au|br)-[a-z]+\b")
+
+# Maps the question `area` label (from questions.py) to the ibm_cloud key(s)
+# that a backfill should target.
+AREA_TO_KEYS: dict[str, list[str]] = {
+    "Regions and availability": ["regions"],
+    "VPC topology": ["vpcs"],
+    "Subnet design": ["subnets", "zones"],
+    "Connectivity": ["connectivity"],
+    "Ingress": ["ingress"],
+    "Compute": ["compute"],
+    "Security controls": ["security"],
+    "Private service access": ["private_endpoints"],
+    "DNS and name resolution": ["dns"],
+    "Observability": ["observability"],
+    "Backup and DR": ["backup_dr"],
+}
 
 
 def discover_inputs(path: Path) -> list[Path]:
@@ -76,13 +100,19 @@ def build_architecture_from_inputs(input_path: Path, *, project_name: str | None
 
     for file_path in files:
         rows = list(read_input_rows(file_path))
-        sources.append(
-            {
-                "file": str(file_path),
-                "type": file_path.suffix.lower().lstrip("."),
-                "records": len(rows),
-            }
-        )
+        source_entry: dict[str, object] = {
+            "file": str(file_path),
+            "type": file_path.suffix.lower().lstrip("."),
+            "records": len(rows),
+        }
+        if file_path.suffix.lower() == ".xlsx":
+            try:
+                with zipfile.ZipFile(file_path) as _arc:
+                    if is_solutioning_workbook(_arc):
+                        source_entry["source_format"] = "ibm-solutioning"
+            except Exception:
+                pass
+        sources.append(source_entry)
         for row_index, row in enumerate(rows, start=1):
             text = " | ".join(value for value in row.values() if value)
             source = f"{file_path.name}:{row_index}"
@@ -124,6 +154,10 @@ def read_input_rows(path: Path) -> Iterable[dict[str, str]]:
     elif suffix in {".csv", ".tsv"}:
         yield from read_delimited(path, delimiter="\t" if suffix == ".tsv" else ",")
     elif suffix == ".xlsx":
+        with zipfile.ZipFile(path) as archive:
+            if is_solutioning_workbook(archive):
+                yield from read_solutioning_xlsx(path)
+                return
         yield from read_xlsx(path)
 
 
@@ -157,6 +191,138 @@ def read_delimited(path: Path, *, delimiter: str) -> Iterable[dict[str, str]]:
     with path.open("r", encoding="utf-8-sig", newline="") as handle:
         for row in csv.reader(handle, delimiter=delimiter):
             yield {f"column_{index + 1}": value.strip() for index, value in enumerate(row)}
+
+
+# ---------------------------------------------------------------------------
+# IBM Cloud Solutioning workbook helpers
+# ---------------------------------------------------------------------------
+
+#: Sheet names recognised as IBM Cloud Solutioning exports (priority order).
+_SOLUTIONING_SHEETS = ("Detailed Estimate", "Summary")
+
+#: Column headers that must appear in row 1 for the file to be detected.
+_SOLUTIONING_SENTINEL_COLUMN = "Part Number"
+
+#: Ordered list of Solutioning column names and the normalised row key each
+#: maps to.  Matching is case-insensitive and whitespace-normalised.
+_SOLUTIONING_COLUMNS: list[tuple[str, str]] = [
+    ("Part Number", "part_number"),
+    ("Part Description", "component"),
+    ("Category", "category"),
+    ("Region", "region"),
+    ("Notes", "notes"),
+    ("Description", "notes"),  # alternative column name for notes
+    ("Quantity", "quantity"),
+]
+
+
+def is_solutioning_workbook(archive: zipfile.ZipFile) -> bool:
+    """Return True if *archive* looks like an IBM Cloud Solutioning workbook.
+
+    Detection is cheap — it only reads workbook metadata and the first row of
+    the candidate sheet.  The archive is **not** consumed (caller can still
+    iterate it afterwards by opening a new :class:`zipfile.ZipFile`).
+    """
+    try:
+        shared_strings = parse_shared_strings(archive)
+        workbook_sheets = parse_workbook_sheets(archive)
+        relationships = parse_workbook_relationships(archive)
+    except Exception:
+        return False
+
+    candidate_sheets = [
+        (name, rid)
+        for name, rid in workbook_sheets
+        if name in _SOLUTIONING_SHEETS
+    ]
+    if not candidate_sheets:
+        return False
+
+    sentinel = _SOLUTIONING_SENTINEL_COLUMN.lower()
+    for sheet_name, relationship_id in candidate_sheets:
+        target = relationships.get(relationship_id)
+        if not target:
+            continue
+        sheet_path = "xl/" + target.lstrip("/")
+        if sheet_path not in archive.namelist():
+            sheet_path = "xl/worksheets/" + Path(target).name
+        if sheet_path not in archive.namelist():
+            continue
+        rows = parse_sheet_rows(archive.read(sheet_path), shared_strings)
+        if rows and any(cell.lower() == sentinel for cell in rows[0]):
+            return True
+
+    return False
+
+
+def read_solutioning_xlsx(path: Path) -> Iterable[dict[str, str]]:
+    """Parse an IBM Cloud Solutioning workbook and yield normalised rows.
+
+    Each yielded dict has consistent keys defined by :data:`_SOLUTIONING_COLUMNS`
+    (``component``, ``category``, ``region``, ``notes``, ``part_number``,
+    ``quantity``).  Empty cells produce empty strings; missing columns are
+    omitted from the yielded dict.  Reuses all low-level XML helpers so no
+    duplicate parsing logic is introduced.
+    """
+    with zipfile.ZipFile(path) as archive:
+        shared_strings = parse_shared_strings(archive)
+        workbook_sheets = parse_workbook_sheets(archive)
+        relationships = parse_workbook_relationships(archive)
+
+        # Choose the first available Solutioning sheet in priority order.
+        sheet_map = {name: rid for name, rid in workbook_sheets}
+        target_sheet_name: str | None = None
+        for candidate in _SOLUTIONING_SHEETS:
+            if candidate in sheet_map:
+                target_sheet_name = candidate
+                break
+
+        if target_sheet_name is None:
+            return
+
+        relationship_id = sheet_map[target_sheet_name]
+        target = relationships.get(relationship_id)
+        if not target:
+            return
+
+        sheet_path = "xl/" + target.lstrip("/")
+        if sheet_path not in archive.namelist():
+            sheet_path = "xl/worksheets/" + Path(target).name
+        if sheet_path not in archive.namelist():
+            return
+
+        rows = parse_sheet_rows(archive.read(sheet_path), shared_strings)
+        if not rows:
+            return
+
+        raw_headers = rows[0]
+        # Build a mapping from normalised column name → column index.
+        header_index: dict[str, int] = {
+            h.lower().strip(): i for i, h in enumerate(raw_headers) if h
+        }
+
+        # Pre-resolve which output key maps to which column index.
+        col_map: list[tuple[str, int]] = []
+        for col_header, output_key in _SOLUTIONING_COLUMNS:
+            idx = header_index.get(col_header.lower())
+            if idx is not None:
+                col_map.append((output_key, idx))
+
+        if not col_map:
+            return
+
+        for raw_row in rows[1:]:
+            row: dict[str, str] = {}
+            for output_key, col_idx in col_map:
+                value = raw_row[col_idx] if col_idx < len(raw_row) else ""
+                # If the same output_key appears twice (e.g. "Notes" and
+                # "Description" both map to "notes"), keep the first non-empty
+                # value.
+                if output_key not in row or not row[output_key]:
+                    row[output_key] = value.strip()
+            if not any(row.values()):
+                continue
+            yield row
 
 
 def read_xlsx(path: Path) -> Iterable[dict[str, str]]:
@@ -401,6 +567,32 @@ def infer_environment(facts: dict[str, list[dict[str, str]]]) -> str | None:
     if "test" in text or "qa" in text:
         return "Test"
     return None
+
+
+def backfill_answer_into_model(architecture: dict, area: str, answer: str) -> None:
+    """Parse *answer* text for component hints and append detected entries to the
+    relevant ``ibm_cloud`` keys for *area*.  Reuses :func:`add_detected_facts` and
+    :func:`dedupe_components` — no logic is duplicated.
+    """
+    ibm_cloud = architecture.setdefault("ibm_cloud", {})
+    target_keys = AREA_TO_KEYS.get(area, [])
+    if not target_keys:
+        # Unknown area — fall back to scanning all categories.
+        target_keys = list(KEYWORDS.keys())
+
+    # add_detected_facts iterates all KEYWORDS keys, so we must pass a full-width
+    # facts dict.  Seed non-target keys with empty lists so the function can write
+    # to them without error, then discard their values afterwards.
+    full_facts: dict[str, list[dict[str, str]]] = {key: [] for key in KEYWORDS}
+    for key in target_keys:
+        full_facts[key] = list(ibm_cloud.get(key, []))
+
+    source = f"architect-answer:{area}"
+    add_detected_facts(full_facts, answer, source=source)
+
+    # Write back only the target keys.
+    for key in target_keys:
+        ibm_cloud[key] = dedupe_components(full_facts[key])
 
 
 def build_assumptions(ibm_cloud: dict) -> list[str]:

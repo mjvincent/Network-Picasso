@@ -81,6 +81,6 @@ def find_design_gaps(architecture: dict) -> list[dict[str, str]]:
 
     for area, value, question, guidance in checks:
         if _missing(value):
-            questions.append({"area": area, "question": question, "guidance": guidance})
+            questions.append({"area": area, "question": question, "guidance": guidance, "source": "rules"})
 
     return questions

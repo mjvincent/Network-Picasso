@@ -47,7 +47,7 @@
       "properties": {
         "answered": {
           "type": "array",
-          "items": { "type": "string" }
+          "items": { "$ref": "#/$defs/answeredQuestion" }
         },
         "open": {
           "type": "array",
@@ -58,6 +58,18 @@
     }
   },
   "$defs": {
+    "answeredQuestion": {
+      "type": "object",
+      "required": ["area", "question", "answer", "source", "timestamp"],
+      "properties": {
+        "area":      { "type": "string" },
+        "question":  { "type": "string" },
+        "answer":    { "type": "string" },
+        "source":    { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" }
+      },
+      "additionalProperties": false
+    },
     "componentList": {
       "type": "array",
       "items": { "$ref": "#/$defs/component" }
@@ -76,7 +88,9 @@
           "type": "array",
           "items": { "type": "string" }
         },
-        "notes": { "type": "string" }
+        "notes": { "type": "string" },
+        "part_number": { "type": "string" },
+        "quantity": { "type": "string" }
       },
       "additionalProperties": true
     }

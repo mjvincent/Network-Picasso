@@ -15,6 +15,8 @@ body {
   padding: 2rem;
 }
 
+/* ── Page heading ─────────────────────────────────────────────────────────── */
+
 .page-heading {
   align-items: flex-start;
   display: flex;
@@ -45,14 +47,22 @@ body {
   min-height: 2rem;
 }
 
+/* ── Progress bar ─────────────────────────────────────────────────────────── */
+
+.progress-bar {
+  margin-bottom: 2rem;
+  overflow-x: auto;
+}
+
+/* ── Panels ───────────────────────────────────────────────────────────────── */
+
 .panel {
   border-radius: 0;
-  min-height: 100%;
 }
 
 .panel h2 {
   font-size: 1.125rem;
-  font-weight: 400;
+  font-weight: 600;
 }
 
 .panel .cds--text-input {
@@ -61,9 +71,60 @@ body {
 
 .panel-copy {
   color: #525252;
-  line-height: 1.4;
-  margin: 0.5rem 0 0;
+  line-height: 1.5;
+  margin: 0;
 }
+
+/* ── Step layout ──────────────────────────────────────────────────────────── */
+
+.step-header {
+  align-items: center;
+  display: flex;
+  gap: 0.5rem;
+}
+
+.step-header h2 {
+  margin: 0;
+}
+
+.step-actions {
+  border-top: 1px solid #e0e0e0;
+  display: flex;
+  gap: 0.75rem;
+  padding-top: 1.25rem;
+}
+
+/* ── Info tooltip button ──────────────────────────────────────────────────── */
+
+.info-tip {
+  align-items: center;
+  background: none;
+  border: none;
+  color: #525252;
+  cursor: pointer;
+  display: inline-flex;
+  flex-shrink: 0;
+  padding: 0.125rem;
+}
+
+.info-tip:hover {
+  color: #161616;
+}
+
+/* ── Field label row (label + info tip) ───────────────────────────────────── */
+
+.field-label-row {
+  align-items: center;
+  display: flex;
+  gap: 0.375rem;
+  margin-bottom: 0.5rem;
+}
+
+.field-label-row .cds--label {
+  margin-bottom: 0;
+}
+
+/* ── Upload panel ─────────────────────────────────────────────────────────── */
 
 .upload-panel .cds--file__drop-container {
   max-width: none;
@@ -74,8 +135,37 @@ body {
   gap: 0.5rem;
 }
 
-.question-list,
-.source-list {
+/* ── AI badge ─────────────────────────────────────────────────────────────── */
+
+.ai-badge {
+  color: #6929c4;
+  font-weight: 500;
+}
+
+/* ── Diagram action cards ─────────────────────────────────────────────────── */
+
+.diagram-actions {
+  display: grid;
+  gap: 1rem;
+}
+
+.diagram-action-card {
+  background: #f7f8fa;
+  border: 1px solid #e0e0e0;
+  display: grid;
+  gap: 0.75rem;
+  padding: 1.25rem;
+}
+
+.diagram-action-header {
+  align-items: center;
+  display: flex;
+  gap: 0.5rem;
+}
+
+/* ── Questions ────────────────────────────────────────────────────────────── */
+
+.question-list {
   display: grid;
   gap: 0.75rem;
 }
@@ -89,7 +179,7 @@ body {
 }
 
 .question-item p {
-  line-height: 1.4;
+  line-height: 1.5;
   margin: 0;
 }
 
@@ -103,12 +193,22 @@ body {
 .coaching span {
   color: #525252;
   font-size: 0.75rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 
 .question-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
+}
+
+/* ── Sources ──────────────────────────────────────────────────────────────── */
+
+.source-list {
+  display: grid;
+  gap: 0.75rem;
 }
 
 .source-item {
@@ -118,23 +218,35 @@ body {
   padding-bottom: 0.75rem;
 }
 
-.source-item span,
-.artifact-path span {
+.source-item span {
   color: #6f6f6f;
   font-size: 0.875rem;
 }
 
+/* ── Artifact path ────────────────────────────────────────────────────────── */
+
 .artifact-path {
   background: #ffffff;
+  border: 1px solid #e0e0e0;
   display: grid;
   gap: 0.25rem;
-  padding: 1rem;
+  padding: 0.75rem 1rem;
+}
+
+.artifact-path span {
+  color: #6f6f6f;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 
 .artifact-path code {
   font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.875rem;
   overflow-wrap: anywhere;
 }
+
+/* ── Responsive ───────────────────────────────────────────────────────────── */
 
 @media (max-width: 1055px) {
   .app-content {

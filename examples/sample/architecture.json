@@ -66,6 +66,8 @@
         "type": "ingress",
         "purpose": "Routes traffic to OpenShift",
         "region": "us-south",
+        "zone": "zone-1",
+        "subnet_tier": "Public",
         "source": "bom.csv:3",
         "notes": "Public Load Balancer | Ingress | us-south | Routes traffic to OpenShift"
       }
@@ -76,6 +78,8 @@
         "type": "compute",
         "purpose": "Production application runtime",
         "region": "us-south",
+        "zone": "zone-1",
+        "subnet_tier": "Private",
         "source": "bom.csv:4",
         "notes": "Red Hat OpenShift on IBM Cloud | Compute | us-south | Production application runtime"
       }
@@ -86,6 +90,8 @@
         "type": "data",
         "purpose": "Primary relational database",
         "region": "us-south",
+        "zone": "zone-1",
+        "subnet_tier": "Data",
         "source": "bom.csv:5",
         "notes": "IBM Cloud Databases for PostgreSQL | Data | us-south | Primary relational database"
       },
@@ -104,6 +110,8 @@
         "type": "security",
         "purpose": "Application secrets",
         "region": "us-south",
+        "zone": "zone-1",
+        "subnet_tier": "Management",
         "source": "bom.csv:9",
         "notes": "Secrets Manager | Security | us-south | Application secrets"
       },

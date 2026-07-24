@@ -1,0 +1,8 @@
+{
+  "project": {"name": "Test Project", "environment": "Production"},
+  "ibm_cloud": {
+    "regions": [{"name": "us-south", "type": "regions", "purpose": "", "source": "test", "notes": ""}]
+  },
+  "sources": [],
+  "questions": {"answered": [], "open": []}
+}
