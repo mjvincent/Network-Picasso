@@ -5,3 +5,7 @@ __pycache__/
 dist/
 build/
 outputs/
+node_modules/
+.vite-temp/
+ui/dist/
+ui/node_modules/

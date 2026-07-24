@@ -21,6 +21,24 @@ PYTHONPATH=src python3 -B -m network_picasso.cli generate examples/omnicare/arch
 
 Open the generated `.drawio` file in diagrams.net or the Draw.io desktop app.
 
+## Carbon UI
+
+Start the local API:
+
+```bash
+PYTHONPATH=src python3 -B -m network_picasso.server
+```
+
+Start the Carbon React UI:
+
+```bash
+cd ui
+npm install
+npm run dev
+```
+
+Then open `http://127.0.0.1:5173`.
+
 ## Direction
 
 The agentic flow should use AI for intake, extraction, gap analysis, question generation, and review. Diagram rendering should stay deterministic so architects get repeatable, professional diagrams that can be versioned in Git.

@@ -1,0 +1,119 @@
+@use '@carbon/react';
+
+body {
+  margin: 0;
+  background: #f4f4f4;
+}
+
+.app-content {
+  margin-left: 16rem;
+  min-height: 100vh;
+  padding-top: 3rem;
+}
+
+.workspace {
+  padding: 2rem;
+}
+
+.page-heading {
+  align-items: flex-start;
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 1.5rem;
+}
+
+.page-heading h1,
+.panel h2 {
+  margin: 0;
+}
+
+.page-heading h1 {
+  font-size: 2rem;
+  font-weight: 400;
+  line-height: 1.2;
+}
+
+.eyebrow {
+  color: #525252;
+  font-size: 0.875rem;
+  margin: 0 0 0.25rem;
+}
+
+.status-line {
+  align-items: center;
+  display: flex;
+  min-height: 2rem;
+}
+
+.panel {
+  border-radius: 0;
+  min-height: 100%;
+}
+
+.panel h2 {
+  font-size: 1.125rem;
+  font-weight: 400;
+}
+
+.panel .cds--text-input {
+  min-width: 0;
+}
+
+.question-list,
+.source-list {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.question-item {
+  background: #ffffff;
+  border-left: 3px solid #0f62fe;
+  display: grid;
+  gap: 0.5rem;
+  padding: 1rem;
+}
+
+.question-item p {
+  line-height: 1.4;
+  margin: 0;
+}
+
+.source-item {
+  border-bottom: 1px solid #e0e0e0;
+  display: grid;
+  gap: 0.25rem;
+  padding-bottom: 0.75rem;
+}
+
+.source-item span,
+.artifact-path span {
+  color: #6f6f6f;
+  font-size: 0.875rem;
+}
+
+.artifact-path {
+  background: #ffffff;
+  display: grid;
+  gap: 0.25rem;
+  padding: 1rem;
+}
+
+.artifact-path code {
+  font-family: 'IBM Plex Mono', monospace;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 1055px) {
+  .app-content {
+    margin-left: 0;
+  }
+
+  .workspace {
+    padding: 1rem;
+  }
+
+  .page-heading {
+    display: grid;
+    gap: 1rem;
+  }
+}
