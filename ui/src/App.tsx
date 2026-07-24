@@ -179,6 +179,9 @@ export default function App() {
   const previewRef = useRef<HTMLIFrameElement>(null);
 
   // UI state
+  // Holds XML pending delivery to a diagrams.net popup (Option C)
+  const pendingPopupXml = useRef<string | null>(null);
+
   const [status, setStatus]   = useState('');
   const [error, setError]     = useState('');
   const [busy, setBusy]       = useState(false);
@@ -493,7 +496,9 @@ export default function App() {
   }
 
   async function openInDiagramsNet() {
+    if (!architecture) return;
     setBusy(true);
+    setError('');
     try {
       const response = await fetch('/api/drawio-xml', {
         method: 'POST', headers: API_HEADERS,
@@ -501,13 +506,15 @@ export default function App() {
       });
       if (!response.ok) throw new Error('Failed to get XML');
       const xml = await response.text();
-      // Encode XML as a data URI so diagrams.net receives the full content
-      // regardless of URL length limits. The #U fragment loads a URL-encoded
-      // data: URI; base64-encoding the XML avoids issues with special characters.
-      const b64 = btoa(unescape(encodeURIComponent(xml)));
-      const dataUri = `data:application/xml;base64,${b64}`;
-      window.open(`https://app.diagrams.net/#U${encodeURIComponent(dataUri)}`, '_blank', 'noopener,noreferrer');
-      setStatus('Opened in diagrams.net');
+      // Store the XML so the message listener can deliver it once the popup fires
+      // its 'init' event — same protocol as the inline preview (Option D).
+      pendingPopupXml.current = xml;
+      window.open(
+        'https://embed.diagrams.net/?embed=1&proto=json&spin=1&analytics=0',
+        '_blank',
+        'noopener,width=1200,height=800',
+      );
+      setStatus('Opening diagrams.net — diagram will load automatically when the editor is ready.');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Open failed');
     } finally {
@@ -555,14 +562,29 @@ export default function App() {
     } catch { setSettingsStatus('Failed to save'); }
   }
 
-  // Listen for diagrams.net embed init event and send XML
+  // Listen for diagrams.net embed init event.
+  // Handles both the inline preview iframe (Option D) and popup windows (Option C).
   useEffect(() => {
     function handleMessage(event: MessageEvent) {
       if (event.origin !== 'https://embed.diagrams.net') return;
       try {
         const msg = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
         if (msg?.event === 'init') {
-          setPreviewReady(true);
+          // Option D — inline preview iframe
+          if (event.source === previewRef.current?.contentWindow) {
+            setPreviewReady(true);
+            return;
+          }
+          // Option C — popup window: deliver pending XML then clear it
+          const xml = pendingPopupXml.current;
+          if (xml && event.source) {
+            (event.source as Window).postMessage(
+              JSON.stringify({ action: 'load', xml }),
+              'https://embed.diagrams.net',
+            );
+            pendingPopupXml.current = null;
+            setStatus('Diagram loaded in diagrams.net editor.');
+          }
         }
       } catch { /* ignore */ }
     }
@@ -1155,7 +1177,7 @@ export default function App() {
                     <div className="diagram-action-card">
                       <div className="diagram-action-header">
                         <strong>Option C — Open in diagrams.net</strong>
-                        <InfoTip text="Opens diagrams.net in a new browser tab with your diagram pre-loaded. Works with both the browser version and the desktop app (via the diagrams:// URL scheme). An internet connection is required to open the diagrams.net website." />
+                        <InfoTip text="Opens diagrams.net in a new window using the embed API. The diagram XML is delivered automatically via postMessage once the editor loads — nothing is uploaded externally. Requires internet access and that your browser permits the popup." />
                       </div>
                       <p className="panel-copy">Open your diagram directly in diagrams.net in a new tab.</p>
                       <Button kind="secondary" renderIcon={Launch} onClick={openInDiagramsNet} disabled={busy || !architecture}>

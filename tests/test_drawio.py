@@ -2,7 +2,13 @@ from __future__ import annotations
 
 from xml.etree import ElementTree
 
-from network_picasso.drawio import render_drawio
+from network_picasso.drawio import (
+    DEPLOYMENT_GUIDE,
+    LOGICAL_GUIDE,
+    STYLE_GUIDE,
+    render_drawio,
+    _stencil_shape,
+)
 
 SAMPLE_ARCH = {
     "project": {"name": "Test Healthcare", "environment": "Production"},
@@ -71,3 +77,55 @@ def test_subnet_bands_in_deployment():
     xml = render_drawio(SAMPLE_ARCH, diagram_type="deployment")
     for tier in ("Public", "Private", "Management", "Data"):
         assert tier in xml, f"Expected subnet tier '{tier}' in deployment XML"
+
+
+def test_ibm_stencil_shapes_present():
+    """Deployment output uses IBM stencil shapes for known service types."""
+    xml = render_drawio(SAMPLE_ARCH, diagram_type="deployment")
+    assert "mxgraph.ibm_cloud" in xml, "Expected IBM stencil shape references in deployment XML"
+
+
+def test_stencil_shape_lookup():
+    """_stencil_shape maps known service names to IBM stencil identifiers."""
+    assert _stencil_shape("Public Load Balancer") == "load-balancer--application"
+    assert _stencil_shape("Transit Gateway") == "ibm-cloud--transit-gateway"
+    assert _stencil_shape("Direct Link Connect 1 Gbps") == "ibm-cloud--direct-link-2--connect"
+    assert _stencil_shape("Cloud Object Storage") == "object-storage"
+    assert _stencil_shape("Secrets Manager") == "ibm-cloud--secrets-manager"
+    assert _stencil_shape("Red Hat OpenShift on IBM Cloud") == "logo--openshift"
+    assert _stencil_shape("VPC VSI (bx2d-2x8)") == "ibm-cloud--virtual-server-vpc"
+    assert _stencil_shape("IBM Cloud Monitoring") == "cloud--monitoring"
+    assert _stencil_shape("unknown random service") == ""  # no match → empty string
+
+
+def test_md_files_loaded():
+    """LLM Architecture MD Files are loaded at import time (non-empty when present)."""
+    # If the files exist they must contain meaningful content.
+    # If missing (e.g. test environment without LLM dir), empty string is acceptable.
+    for guide, name in [
+        (STYLE_GUIDE, "00-style-guide.md"),
+        (LOGICAL_GUIDE, "02-logical-architecture.md"),
+        (DEPLOYMENT_GUIDE, "03-deployment-architecture.md"),
+    ]:
+        if guide:  # only check if file was found
+            assert len(guide) > 10, f"{name} was loaded but appears empty"
+
+
+def test_transit_gateway_stencil():
+    """Transit Gateway renders with IBM stencil shape when detected."""
+    arch = {
+        "project": {"name": "TGW Test"},
+        "ibm_cloud": {
+            "regions": [{"name": "us-south"}],
+            "vpcs": [{"name": "vpc1"}],
+            "connectivity": [{"name": "Transit Gateway", "type": "connectivity"}],
+        },
+    }
+    xml = render_drawio(arch, diagram_type="deployment")
+    assert "ibm-cloud--transit-gateway" in xml
+
+
+def test_xml_has_mxfile_wrapper():
+    """Output XML starts with mxfile wrapper as required by Draw.io desktop app."""
+    xml = render_drawio(SAMPLE_ARCH, diagram_type="deployment")
+    assert xml.strip().startswith("<?xml") or "<mxfile" in xml
