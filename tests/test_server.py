@@ -63,7 +63,8 @@ def test_run_intake_preserves_answers(tmp_path):
 def test_backfill_subnets():
     """backfill_answer_into_model with 'subnet' in answer adds to ibm_cloud.subnets."""
     arch: dict = {"ibm_cloud": {}, "questions": {"answered": [], "open": []}}
-    backfill_answer_into_model(arch, "Subnet design", "We need public, private, and management subnets.")
+    # Use a short name-like answer so concise_name produces a usable component name
+    backfill_answer_into_model(arch, "Subnet design", "public subnet tier")
     assert len(arch["ibm_cloud"].get("subnets", [])) >= 1
 
 

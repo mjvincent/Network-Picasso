@@ -448,6 +448,77 @@ def flatten_mapping(data: dict, *, prefix: str = "") -> dict[str, str]:
     return flattened
 
 
+# Generic words that appear constantly in spreadsheets and are not meaningful
+# IBM Cloud component names.
+_NOISE_NAMES: frozenset[str] = frozenset({
+    "total", "subtotal", "grand total", "description", "notes", "name",
+    "service", "item", "component", "resource", "category", "type",
+    "value", "storage", "compute", "network", "security", "data",
+    "yes", "no", "n/a", "na", "tbd", "none", "other", "unknown",
+    "customer architecture", "unlabeled component", "devicename",
+    "per connection charges apply over", "charges apply",
+    "zone name", "subnet name", "region name", "server name",
+    "cross-region resiliency", "cross-region", "name or #",
+    "added grs", "added powerdra prices", "online sizing tool",
+})
+
+# Names containing "SPP_" or similar internal replication group prefixes
+_INTERNAL_PREFIX_PATTERN = re.compile(r'^(SPP_|VEEAM_|TSM_|DR_|BKP_)', re.IGNORECASE)
+
+# Names that look like internal hostnames or server identifiers:
+#   - all alphanumeric + underscore, no spaces
+#   - contain at least one digit
+#   - do NOT look like IBM Cloud service names (those have spaces or IBM branding)
+_HOSTNAME_PATTERN = re.compile(r'^[A-Za-z0-9_]{4,30}$')
+
+# Names starting with non-letter characters (*, (, #, digits, "c.")
+_SENTENCE_PATTERN = re.compile(r'^[^A-Za-z]')
+
+# IBM Cloud service name indicators — if any of these appear the name is likely real
+_IBM_SERVICE_SIGNALS = (
+    "ibm", "cloud", "vpc", "openshift", "roks", "power", "direct link",
+    "transit gateway", "load balancer", "object storage", "database",
+    "secrets", "key protect", "activity tracker", "monitoring", "logging",
+    "firewall", "juniper", "vsrx", "virtual server", "bare metal", "block",
+    "file storage", "scc", "hpcs", "certificate", "dns", "flow log",
+)
+
+
+def _is_meaningful_name(name: str) -> bool:
+    """Return True if *name* looks like a real IBM Cloud component name."""
+    stripped = name.strip()
+    # Too short or pure numbers
+    if len(stripped) < 5 or stripped.isdigit():
+        return False
+    # Discard known noise words (exact match, case-insensitive)
+    if stripped.lower() in _NOISE_NAMES:
+        return False
+    # Discard names that start with non-letter characters (*, (, #, digits)
+    if _SENTENCE_PATTERN.match(stripped):
+        return False
+    # Discard internal backup/replication group names
+    if _INTERNAL_PREFIX_PATTERN.match(stripped):
+        return False
+    # Discard names that are just punctuation/symbols
+    if re.match(r'^[\W_]+$', stripped):
+        return False
+    # Discard names that are very long sentences (> 10 words)
+    if len(stripped.split()) > 10:
+        return False
+    # If the name has no spaces (single token) and contains digits mixed with
+    # letters, it is likely a hostname/device ID — only accept if it contains
+    # a known IBM service signal word.
+    lower = stripped.lower()
+    if _HOSTNAME_PATTERN.match(stripped) and any(sig in lower for sig in _IBM_SERVICE_SIGNALS):
+        return True
+    if _HOSTNAME_PATTERN.match(stripped) and not any(c.isspace() for c in stripped):
+        # Single-token alphanumeric — only keep if it has NO digits
+        # (pure alphabetic short names might still be junk, but at least not hostnames)
+        if any(c.isdigit() for c in stripped):
+            return False
+    return True
+
+
 def add_detected_facts(facts: dict[str, list[dict[str, str]]], text: str, *, source: str) -> None:
     normalized = text.lower()
 
@@ -466,9 +537,12 @@ def add_detected_facts(facts: dict[str, list[dict[str, str]]], text: str, *, sou
         if category == "regions":
             continue
         if any(keyword in normalized for keyword in keywords):
+            name = concise_name(text)
+            if not _is_meaningful_name(name):
+                continue
             facts[category].append(
                 {
-                    "name": concise_name(text),
+                    "name": name,
                     "type": category,
                     "purpose": "",
                     "source": source,
@@ -536,9 +610,13 @@ def concise_name(text: str) -> str:
     for separator in ["|", ":", "-", "–"]:
         if separator in cleaned:
             candidate = cleaned.split(separator, 1)[0].strip()
-            if 3 <= len(candidate) <= 80:
+            # Require 5–80 chars and not a sentence (≤ 6 words)
+            if 5 <= len(candidate) <= 80 and len(candidate.split()) <= 6:
                 return candidate
-    return cleaned[:80] or "Unlabeled component"
+    # Only use the full text if it's short enough to be a name, not a sentence
+    if len(cleaned.split()) <= 6:
+        return cleaned[:80] or "Unlabeled component"
+    return "Unlabeled component"
 
 
 def dedupe_components(components: list[dict[str, str]]) -> list[dict[str, str]]:
