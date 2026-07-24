@@ -15,6 +15,7 @@ Network Picasso converts customer materials into professional IBM Cloud architec
    - Preserve source facts.
    - Mark assumptions explicitly.
    - Leave unknown values empty so the question engine can ask about them.
+   - Keep source references so architects can trace diagram content back to customer materials.
 
 3. Ask pointed architecture questions.
    - IBM Cloud regions
@@ -46,3 +47,23 @@ The MVP can run entirely on a Mac with Python and Ollama. Recommended model role
 - Deterministic Python renderer for Draw.io output.
 
 Future iterations can add a lightweight web UI, spreadsheet upload, RAG over IBM Cloud design guidance, and optional remote model support for teams that allow it.
+
+## Local MVP Commands
+
+Create a first-pass architecture model from customer inputs:
+
+```bash
+PYTHONPATH=src python3 -B -m network_picasso.cli intake examples/customer-inputs --project-name OmniCare --output examples/omnicare/intake-architecture.json
+```
+
+Review missing design decisions:
+
+```bash
+PYTHONPATH=src python3 -B -m network_picasso.cli ask examples/omnicare/intake-architecture.json
+```
+
+Generate a starter Draw.io file:
+
+```bash
+PYTHONPATH=src python3 -B -m network_picasso.cli generate examples/omnicare/intake-architecture.json --type deployment --output outputs/omnicare-intake-deployment.drawio
+```

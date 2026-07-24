@@ -1,0 +1,12 @@
+Component,Category,Region,Notes
+omnicare-prod-vpc,VPC,us-south,Production application VPC
+IBM Cloud Internet Services,Ingress,global,Public DNS and edge protection
+Public Load Balancer,Ingress,us-south,Routes traffic to OpenShift
+Red Hat OpenShift on IBM Cloud,Compute,us-south,Production application runtime
+IBM Cloud Databases for PostgreSQL,Data,us-south,Primary relational database
+IBM Cloud Object Storage,Data,cross-region,Document storage
+Direct Link,Connectivity,us-south,Private customer connectivity
+Transit Gateway,Connectivity,us-south,Hub connectivity across VPCs
+Secrets Manager,Security,us-south,Application secrets
+Key Protect,Security,us-south,Customer-managed keys
+Activity Tracker,Observability,us-south,Audit event capture

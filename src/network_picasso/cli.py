@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 
 from .drawio import render_drawio
+from .intake import build_architecture_from_inputs
 from .questions import find_design_gaps
 
 
@@ -32,6 +33,18 @@ def ask(args: argparse.Namespace) -> None:
         print(f"{index}. [{gap['area']}] {gap['question']}")
 
 
+def intake(args: argparse.Namespace) -> None:
+    architecture = build_architecture_from_inputs(args.input, project_name=args.project_name)
+    gaps = find_design_gaps(architecture)
+    architecture["questions"]["open"] = [gap["question"] for gap in gaps]
+
+    args.output.parent.mkdir(parents=True, exist_ok=True)
+    args.output.write_text(json.dumps(architecture, indent=2), encoding="utf-8")
+    print(f"Wrote {args.output}")
+    print(f"Sources: {len(architecture.get('sources', []))}")
+    print(f"Open questions: {len(gaps)}")
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="network-picasso",
@@ -53,6 +66,12 @@ def build_parser() -> argparse.ArgumentParser:
     ask_parser = subparsers.add_parser("ask", help="List pointed design questions for missing details.")
     ask_parser.add_argument("input", type=Path, help="Architecture JSON input.")
     ask_parser.set_defaults(func=ask)
+
+    intake_parser = subparsers.add_parser("intake", help="Extract a first-pass architecture JSON from input files.")
+    intake_parser.add_argument("input", type=Path, help="Input file or directory.")
+    intake_parser.add_argument("--output", "-o", type=Path, required=True, help="Output architecture JSON path.")
+    intake_parser.add_argument("--project-name", help="Override inferred project name.")
+    intake_parser.set_defaults(func=intake)
 
     return parser
 

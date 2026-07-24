@@ -14,6 +14,7 @@ Network Picasso is a local-first workflow for turning architecture notes, bills 
 ## Try It Locally
 
 ```bash
+PYTHONPATH=src python3 -B -m network_picasso.cli intake examples/customer-inputs --project-name OmniCare --output examples/omnicare/intake-architecture.json
 PYTHONPATH=src python3 -B -m network_picasso.cli ask examples/omnicare/architecture.json
 PYTHONPATH=src python3 -B -m network_picasso.cli generate examples/omnicare/architecture.json --type deployment --output outputs/omnicare-deployment.drawio
 ```

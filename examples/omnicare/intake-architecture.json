@@ -1,0 +1,225 @@
+{
+  "project": {
+    "name": "OmniCare",
+    "environment": "Production",
+    "diagram_goals": [
+      "Generate professional IBM Cloud architecture diagrams",
+      "Identify missing network design decisions before rendering final diagrams"
+    ]
+  },
+  "ibm_cloud": {
+    "regions": [
+      {
+        "name": "us-south",
+        "type": "regions",
+        "purpose": "",
+        "source": "architecture-notes.md:2",
+        "notes": "The application runs in IBM Cloud us-south with disaster recovery planned for us-east."
+      },
+      {
+        "name": "us-east",
+        "type": "regions",
+        "purpose": "",
+        "source": "architecture-notes.md:2",
+        "notes": "The application runs in IBM Cloud us-south with disaster recovery planned for us-east."
+      }
+    ],
+    "vpcs": [
+      {
+        "name": "The application runtime is Red Hat OpenShift on IBM Cloud inside the production ",
+        "type": "vpcs",
+        "purpose": "",
+        "source": "architecture-notes.md:4",
+        "notes": "The application runtime is Red Hat OpenShift on IBM Cloud inside the production VPC."
+      },
+      {
+        "name": "Monitoring, logging, Activity Tracker, and VPC flow logs are required for operat",
+        "type": "vpcs",
+        "purpose": "",
+        "source": "architecture-notes.md:8",
+        "notes": "Monitoring, logging, Activity Tracker, and VPC flow logs are required for operations and audit."
+      },
+      {
+        "name": "omnicare-prod-vpc",
+        "type": "vpcs",
+        "purpose": "Production application VPC",
+        "region": "us-south",
+        "source": "bom.csv:1",
+        "notes": "omnicare-prod-vpc | VPC | us-south | Production application VPC"
+      }
+    ],
+    "connectivity": [
+      {
+        "name": "Private connectivity to the customer network uses Direct Link and Transit Gatewa",
+        "type": "connectivity",
+        "purpose": "",
+        "source": "architecture-notes.md:5",
+        "notes": "Private connectivity to the customer network uses Direct Link and Transit Gateway."
+      },
+      {
+        "name": "Direct Link",
+        "type": "connectivity",
+        "purpose": "Private customer connectivity",
+        "region": "us-south",
+        "source": "bom.csv:7",
+        "notes": "Direct Link | Connectivity | us-south | Private customer connectivity"
+      },
+      {
+        "name": "Transit Gateway",
+        "type": "connectivity",
+        "purpose": "Hub connectivity across VPCs",
+        "region": "us-south",
+        "source": "bom.csv:8",
+        "notes": "Transit Gateway | Connectivity | us-south | Hub connectivity across VPCs"
+      }
+    ],
+    "ingress": [
+      {
+        "name": "Traffic enters through IBM Cloud Internet Services and a public load balancer.",
+        "type": "ingress",
+        "purpose": "",
+        "source": "architecture-notes.md:3",
+        "notes": "Traffic enters through IBM Cloud Internet Services and a public load balancer."
+      },
+      {
+        "name": "Private connectivity to the customer network uses Direct Link and Transit Gatewa",
+        "type": "ingress",
+        "purpose": "",
+        "source": "architecture-notes.md:5",
+        "notes": "Private connectivity to the customer network uses Direct Link and Transit Gateway."
+      },
+      {
+        "name": "IBM Cloud Internet Services",
+        "type": "ingress",
+        "purpose": "Public DNS and edge protection",
+        "region": "global",
+        "source": "bom.csv:2",
+        "notes": "IBM Cloud Internet Services | Ingress | global | Public DNS and edge protection"
+      },
+      {
+        "name": "Public Load Balancer",
+        "type": "ingress",
+        "purpose": "Routes traffic to OpenShift",
+        "region": "us-south",
+        "source": "bom.csv:3",
+        "notes": "Public Load Balancer | Ingress | us-south | Routes traffic to OpenShift"
+      }
+    ],
+    "compute": [
+      {
+        "name": "The application runtime is Red Hat OpenShift on IBM Cloud inside the production ",
+        "type": "compute",
+        "purpose": "",
+        "source": "architecture-notes.md:4",
+        "notes": "The application runtime is Red Hat OpenShift on IBM Cloud inside the production VPC."
+      },
+      {
+        "name": "Red Hat OpenShift on IBM Cloud",
+        "type": "compute",
+        "purpose": "Production application runtime",
+        "region": "us-south",
+        "source": "bom.csv:4",
+        "notes": "Red Hat OpenShift on IBM Cloud | Compute | us-south | Production application runtime"
+      }
+    ],
+    "data": [
+      {
+        "name": "Application data is stored in PostgreSQL and IBM Cloud Object Storage.",
+        "type": "data",
+        "purpose": "",
+        "source": "architecture-notes.md:6",
+        "notes": "Application data is stored in PostgreSQL and IBM Cloud Object Storage."
+      },
+      {
+        "name": "IBM Cloud Databases for PostgreSQL",
+        "type": "data",
+        "purpose": "Primary relational database",
+        "region": "us-south",
+        "source": "bom.csv:5",
+        "notes": "IBM Cloud Databases for PostgreSQL | Data | us-south | Primary relational database"
+      },
+      {
+        "name": "IBM Cloud Object Storage",
+        "type": "data",
+        "purpose": "Document storage",
+        "region": "cross-region",
+        "source": "bom.csv:6",
+        "notes": "IBM Cloud Object Storage | Data | cross-region | Document storage"
+      }
+    ],
+    "security": [
+      {
+        "name": "Secrets Manager and Key Protect are required for secrets and encryption keys.",
+        "type": "security",
+        "purpose": "",
+        "source": "architecture-notes.md:7",
+        "notes": "Secrets Manager and Key Protect are required for secrets and encryption keys."
+      },
+      {
+        "name": "Secrets Manager",
+        "type": "security",
+        "purpose": "Application secrets",
+        "region": "us-south",
+        "source": "bom.csv:9",
+        "notes": "Secrets Manager | Security | us-south | Application secrets"
+      },
+      {
+        "name": "Key Protect",
+        "type": "security",
+        "purpose": "Customer-managed keys",
+        "region": "us-south",
+        "source": "bom.csv:10",
+        "notes": "Key Protect | Security | us-south | Customer-managed keys"
+      }
+    ],
+    "observability": [
+      {
+        "name": "Monitoring, logging, Activity Tracker, and VPC flow logs are required for operat",
+        "type": "observability",
+        "purpose": "",
+        "source": "architecture-notes.md:8",
+        "notes": "Monitoring, logging, Activity Tracker, and VPC flow logs are required for operations and audit."
+      },
+      {
+        "name": "Activity Tracker",
+        "type": "observability",
+        "purpose": "Audit event capture",
+        "region": "us-south",
+        "source": "bom.csv:11",
+        "notes": "Activity Tracker | Observability | us-south | Audit event capture"
+      }
+    ],
+    "backup_dr": [
+      {
+        "name": "The application runs in IBM Cloud us",
+        "type": "backup_dr",
+        "purpose": "",
+        "source": "architecture-notes.md:2",
+        "notes": "The application runs in IBM Cloud us-south with disaster recovery planned for us-east."
+      }
+    ],
+    "assumptions": [
+      "Subnet tiers, CIDR ranges, and zone placement require customer confirmation."
+    ]
+  },
+  "sources": [
+    {
+      "file": "examples/customer-inputs/architecture-notes.md",
+      "type": "md",
+      "records": 8
+    },
+    {
+      "file": "examples/customer-inputs/bom.csv",
+      "type": "csv",
+      "records": 11
+    }
+  ],
+  "questions": {
+    "answered": [],
+    "open": [
+      "Which public, private, management, and data subnets are needed in each availability zone?",
+      "Which IBM Cloud services need private endpoints or VPE gateways instead of public service access?",
+      "What DNS pattern is required for public, private, hybrid, and PowerVS name resolution?"
+    ]
+  }
+}

@@ -77,6 +77,19 @@ def _label(item: dict, fallback: str) -> str:
     return name
 
 
+def _preferred(items: list[dict] | None, fallback: dict) -> dict:
+    if not items:
+        return fallback
+    return sorted(
+        items,
+        key=lambda item: (
+            0 if item.get("purpose") else 1,
+            0 if item.get("region") else 1,
+            len(item.get("name", "")),
+        ),
+    )[0]
+
+
 def render_drawio(architecture: dict, *, diagram_type: str) -> str:
     project = architecture.get("project", {})
     ibm_cloud = architecture.get("ibm_cloud", {})
@@ -141,8 +154,7 @@ def render_drawio(architecture: dict, *, diagram_type: str) -> str:
         )
         region_nodes.append(region_node)
 
-        vpcs = ibm_cloud.get("vpcs") or [{"name": "VPC TBD", "purpose": "Application network"}]
-        vpc = vpcs[min(index, len(vpcs) - 1)]
+        vpc = _preferred(ibm_cloud.get("vpcs"), {"name": "VPC TBD", "purpose": "Application network"})
         vpc_node = builder.box(
             _label(vpc, "VPC"),
             x + 30,
@@ -156,23 +168,23 @@ def render_drawio(architecture: dict, *, diagram_type: str) -> str:
         )
         builder.edge(region_node, vpc_node, "")
 
-        ingress = ibm_cloud.get("ingress") or [{"name": "Ingress TBD"}]
-        ingress_node = builder.box(_label(ingress[0], "Ingress"), x + 60, 285, 150, 70, fill="#dae8fc")
-        compute = ibm_cloud.get("compute") or [{"name": "Compute TBD"}]
-        compute_node = builder.box(_label(compute[0], "Compute"), x + 245, 285, 150, 70, fill="#d5e8d4")
-        data = ibm_cloud.get("data") or [{"name": "Data Services TBD"}]
-        data_node = builder.box(_label(data[0], "Data"), x + 430, 285, 150, 70, fill="#e1d5e7")
+        ingress = _preferred(ibm_cloud.get("ingress"), {"name": "Ingress TBD"})
+        ingress_node = builder.box(_label(ingress, "Ingress"), x + 60, 285, 150, 70, fill="#dae8fc")
+        compute = _preferred(ibm_cloud.get("compute"), {"name": "Compute TBD"})
+        compute_node = builder.box(_label(compute, "Compute"), x + 245, 285, 150, 70, fill="#d5e8d4")
+        data = _preferred(ibm_cloud.get("data"), {"name": "Data Services TBD"})
+        data_node = builder.box(_label(data, "Data"), x + 430, 285, 150, 70, fill="#e1d5e7")
         builder.edge(ingress_node, compute_node, "app traffic")
         builder.edge(compute_node, data_node, "private data access")
 
-        security = ibm_cloud.get("security") or [{"name": "IAM / Secrets / Keys TBD"}]
-        security_node = builder.box(_label(security[0], "Security"), x + 60, 440, 240, 70, fill="#ffe6cc")
-        observability = ibm_cloud.get("observability") or [{"name": "Monitoring / Logging TBD"}]
-        obs_node = builder.box(_label(observability[0], "Observability"), x + 340, 440, 240, 70, fill="#fff2cc")
+        security = _preferred(ibm_cloud.get("security"), {"name": "IAM / Secrets / Keys TBD"})
+        security_node = builder.box(_label(security, "Security"), x + 60, 440, 240, 70, fill="#ffe6cc")
+        observability = _preferred(ibm_cloud.get("observability"), {"name": "Monitoring / Logging TBD"})
+        obs_node = builder.box(_label(observability, "Observability"), x + 340, 440, 240, 70, fill="#fff2cc")
         builder.edge(security_node, compute_node, "identity and secrets")
         builder.edge(compute_node, obs_node, "logs and metrics")
 
-    connectivity = ibm_cloud.get("connectivity") or [{"name": "Connectivity TBD"}]
+    connectivity = [_preferred(ibm_cloud.get("connectivity"), {"name": "Connectivity TBD"})]
     connectivity_node = builder.box(
         _label(connectivity[0], "Connectivity"),
         380,
