@@ -171,6 +171,9 @@ export default function App() {
   const [pendingComponents, setPendingComponents] = useState<PendingComponent[]>([]);
   const [pendingAssignments, setPendingAssignments] = useState<Record<string, string>>({});
   const [diagramPath, setDiagramPath]     = useState('');
+  const [requirementsText, setRequirementsText] = useState('');
+  const [requirementsSaved, setRequirementsSaved] = useState(false);
+  const requirementsFileRef = useRef<HTMLInputElement>(null);
   const [previewXml, setPreviewXml]       = useState<string | null>(null);
   const [previewReady, setPreviewReady]   = useState(false);
   const previewRef = useRef<HTMLIFrameElement>(null);
@@ -408,6 +411,26 @@ export default function App() {
     } catch { console.warn('Failed to persist coaching answer'); }
   }
 
+  async function saveRequirements(text: string, source: 'text' | 'file', filename = '') {
+    if (!text.trim()) return;
+    try {
+      await postJson('/api/requirements', {
+        architecturePath,
+        requirements: text.trim(),
+        source,
+        filename,
+      });
+      setRequirementsSaved(true);
+      setTimeout(() => setRequirementsSaved(false), 3000);
+    } catch { /* non-fatal — requirements are still shown in the UI */ }
+  }
+
+  async function loadRequirementsFromFile(file: File) {
+    const text = await file.text();
+    setRequirementsText(text);
+    await saveRequirements(text, 'file', file.name);
+  }
+
   async function confirmComponents(
     confirmed: { id: string; name: string; key: string; purpose: string; notes: string }[],
     discarded: string[],
@@ -478,7 +501,12 @@ export default function App() {
       });
       if (!response.ok) throw new Error('Failed to get XML');
       const xml = await response.text();
-      window.open(`https://app.diagrams.net/?src=np#U${encodeURIComponent(xml)}`, '_blank', 'noopener,noreferrer');
+      // Encode XML as a data URI so diagrams.net receives the full content
+      // regardless of URL length limits. The #U fragment loads a URL-encoded
+      // data: URI; base64-encoding the XML avoids issues with special characters.
+      const b64 = btoa(unescape(encodeURIComponent(xml)));
+      const dataUri = `data:application/xml;base64,${b64}`;
+      window.open(`https://app.diagrams.net/#U${encodeURIComponent(dataUri)}`, '_blank', 'noopener,noreferrer');
       setStatus('Opened in diagrams.net');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Open failed');
@@ -916,6 +944,82 @@ export default function App() {
           ══════════════════════════════════════════════════════════════════ */}
           {activeNav === 'wizard' && step === 'questions' && (
             <Column sm={4} md={8} lg={12}>
+              <Stack gap={5}>
+
+              {/* ── Customer requirements ──────────────────────────────────── */}
+              <Tile className="panel">
+                <Stack gap={4}>
+                  <div className="step-header">
+                    <h2>Customer requirements</h2>
+                    <InfoTip text="Paste or upload the customer's documented requirements before answering the design questions. This context helps you give accurate, specific answers and will be saved alongside your architecture model." />
+                  </div>
+                  <p className="panel-copy">
+                    Provide a comprehensive list of requirements. Be as detailed and specific as possible, including:
+                    functional requirements, data sources, workflow steps, non-functional requirements,
+                    performance expectations, compliance or regulatory needs, and scalability considerations.
+                  </p>
+                  <TextArea
+                    id="customer-requirements"
+                    labelText=""
+                    placeholder={[
+                      'Provide a comprehensive list of requirements. Be as detailed and specific as possible, including:',
+                      '  - Functional requirements',
+                      '    - Data sources to be used',
+                      '    - Workflow steps and logic',
+                      '    - Automation needs or triggers',
+                      '  - Non-functional requirements',
+                      '    - Performance expectations',
+                      '    - Compliance or regulatory needs',
+                      '    - Formatting and layout preferences',
+                      '    - Accessibility considerations',
+                      '    - Scalability or future-proofing needs',
+                    ].join('\n')}
+                    rows={10}
+                    value={requirementsText}
+                    onChange={(e) => setRequirementsText(e.target.value)}
+                  />
+                  <div className="requirements-actions">
+                    <Button
+                      size="sm"
+                      renderIcon={requirementsSaved ? Checkmark : DocumentImport}
+                      onClick={() => saveRequirements(requirementsText, 'text')}
+                      disabled={!requirementsText.trim()}
+                    >
+                      {requirementsSaved ? 'Saved' : 'Save requirements'}
+                    </Button>
+                    <Button
+                      kind="ghost"
+                      size="sm"
+                      renderIcon={Upload}
+                      onClick={() => requirementsFileRef.current?.click()}
+                    >
+                      Upload requirements file
+                    </Button>
+                    <input
+                      ref={requirementsFileRef}
+                      type="file"
+                      accept=".txt,.md,.pdf,.docx"
+                      style={{ display: 'none' }}
+                      onChange={(e) => {
+                        const f = e.target.files?.[0];
+                        if (f) loadRequirementsFromFile(f);
+                        e.target.value = '';
+                      }}
+                    />
+                  </div>
+                  {requirementsSaved && (
+                    <InlineNotification
+                      kind="success"
+                      title="Requirements saved"
+                      subtitle="Stored in your architecture model."
+                      lowContrast
+                      hideCloseButton
+                    />
+                  )}
+                </Stack>
+              </Tile>
+
+              {/* ── Design questions ───────────────────────────────────────── */}
               <Tile className="panel">
                 <Stack gap={5}>
                   <div className="step-header">
@@ -984,6 +1088,8 @@ export default function App() {
                   </div>
                 </Stack>
               </Tile>
+
+              </Stack>
             </Column>
           )}
 

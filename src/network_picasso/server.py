@@ -138,6 +138,8 @@ class NetworkPicassoHandler(BaseHTTPRequestHandler):
                 self.handle_drawio_xml(payload)
             elif parsed.path == "/api/answer":
                 self.handle_answer(payload)
+            elif parsed.path == "/api/requirements":
+                self.handle_requirements(payload)
             elif parsed.path == "/api/confirm-components":
                 self.handle_confirm_components(payload)
             elif parsed.path == "/api/settings":
@@ -292,6 +294,29 @@ class NetworkPicassoHandler(BaseHTTPRequestHandler):
         # Back-fill answer text into the ibm_cloud model.
         backfill_answer_into_model(architecture, area, answer)
 
+        atomic_write_json(architecture_path, architecture)
+        self.send_json({"ok": True, "entry": entry})
+
+    def handle_requirements(self, payload: dict) -> None:
+        """Persist customer requirements text into the architecture JSON."""
+        architecture_path = repo_path(payload.get("architecturePath") or DEFAULT_ARCHITECTURE_PATH)
+        requirements = str(payload.get("requirements") or "").strip()
+        source = str(payload.get("source") or "text")  # "text" or "file"
+        filename = str(payload.get("filename") or "")
+
+        if not requirements:
+            self.send_error_json(400, "requirements text is required")
+            return
+
+        architecture = read_json_file(architecture_path)
+        reqs_block = architecture.setdefault("requirements", [])
+        entry = {
+            "text": requirements,
+            "source": source,
+            "filename": filename,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }
+        reqs_block.append(entry)
         atomic_write_json(architecture_path, architecture)
         self.send_json({"ok": True, "entry": entry})
 

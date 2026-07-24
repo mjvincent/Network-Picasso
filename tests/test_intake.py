@@ -12,6 +12,8 @@ from network_picasso.intake import (
     dedupe_components,
     infer_environment,
     is_solutioning_workbook,
+    is_unified_pricing_workbook,
+    read_unified_pricing_xlsx,
 )
 
 FIXTURES = pathlib.Path(__file__).parent / "fixtures"
@@ -97,3 +99,51 @@ def test_solutioning_detection():
     buf.seek(0)
     with zf_mod.ZipFile(buf) as zf3:
         assert is_solutioning_workbook(zf3) is False
+
+
+UNIFIED_PRICING_XLSX = pathlib.Path(__file__).parents[1] / "samples/Cognizant-unified-Omni-pricing-2026-6-26.xlsx"
+
+
+def test_unified_pricing_detection():
+    """is_unified_pricing_workbook detects the Cognizant unified pricing sample."""
+    if not UNIFIED_PRICING_XLSX.exists():
+        pytest.skip("Unified pricing sample not in samples/ (gitignored)")
+    with zipfile.ZipFile(UNIFIED_PRICING_XLSX) as zf:
+        assert is_unified_pricing_workbook(zf) is True
+
+
+def test_unified_pricing_extraction():
+    """Unified pricing workbook yields VPCs, regions, compute, connectivity, and data."""
+    if not UNIFIED_PRICING_XLSX.exists():
+        pytest.skip("Unified pricing sample not in samples/ (gitignored)")
+    arch = build_architecture_from_inputs(UNIFIED_PRICING_XLSX)
+    ibm = arch["ibm_cloud"]
+    # Regions: should find us-south and us-east (DAL + WDC)
+    region_names = [r["name"] for r in ibm.get("regions", [])]
+    assert "us-south" in region_names
+    assert "us-east" in region_names
+    # VPCs: DAL VPC and WDC VPC
+    vpc_names = [v["name"].lower() for v in ibm.get("vpcs", [])]
+    assert any("dal" in n for n in vpc_names)
+    assert any("wdc" in n for n in vpc_names)
+    # Connectivity: Transit Gateway and Direct Link
+    conn_names = " ".join(c["name"].lower() for c in ibm.get("connectivity", []))
+    assert "transit gateway" in conn_names
+    assert "direct link" in conn_names
+    # Compute: VSI instances
+    assert len(ibm.get("compute", [])) >= 1
+    # Data: Cloud Object Storage
+    data_names = " ".join(d["name"].lower() for d in ibm.get("data", []))
+    assert "cloud object storage" in data_names or "object storage" in data_names
+
+
+def test_unified_pricing_not_detected_for_plain():
+    """is_unified_pricing_workbook returns False for a non-matching zip."""
+    import io
+    import zipfile as zf_mod
+    buf = io.BytesIO()
+    with zf_mod.ZipFile(buf, "w") as zf2:
+        zf2.writestr("dummy.txt", "not an xlsx")
+    buf.seek(0)
+    with zf_mod.ZipFile(buf) as zf3:
+        assert is_unified_pricing_workbook(zf3) is False

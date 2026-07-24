@@ -204,6 +204,15 @@ body {
   gap: 0.5rem;
 }
 
+/* ── Requirements panel ───────────────────────────────────────────────────── */
+
+.requirements-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+}
+
 /* ── Sources ──────────────────────────────────────────────────────────────── */
 
 .source-list {

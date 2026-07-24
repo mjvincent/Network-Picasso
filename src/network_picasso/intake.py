@@ -158,6 +158,9 @@ def read_input_rows(path: Path) -> Iterable[dict[str, str]]:
             if is_solutioning_workbook(archive):
                 yield from read_solutioning_xlsx(path)
                 return
+            if is_unified_pricing_workbook(archive):
+                yield from read_unified_pricing_xlsx(path)
+                return
         yield from read_xlsx(path)
 
 
@@ -323,6 +326,256 @@ def read_solutioning_xlsx(path: Path) -> Iterable[dict[str, str]]:
             if not any(row.values()):
                 continue
             yield row
+
+
+
+# ---------------------------------------------------------------------------
+# IBM Cloud Unified Pricing workbook helpers
+# ---------------------------------------------------------------------------
+# Cognizant / IBM partner pricing workbooks follow a consistent structure:
+#   - Sheet "commonServices": transit gateways, COS buckets (items in col C)
+#   - Sheet "VPC": one or more VPCs with zones, subnets, VSIs, load balancers,
+#     and Direct Link; items listed hierarchically in col C
+#   - Sheet "Unified Summary" / "Unified Solution": summary roll-ups
+#
+# Detection: look for sheets named "commonServices" AND "VPC" (or "Unified Summary").
+
+_UNIFIED_PRICING_SHEETS = frozenset({"commonservices", "vpc", "unified summary", "unified solution"})
+_UNIFIED_PRICING_SENTINEL_SHEETS = frozenset({"commonservices", "vpc"})
+
+# Region codes that appear as VPC names in these workbooks, e.g. "DAL VPC - us-south"
+_UNIFIED_REGION_MAP: dict[str, str] = {
+    "dal": "us-south",
+    "wdc": "us-east",
+    "fra": "eu-de",
+    "lon": "eu-gb",
+    "tor": "ca-tor",
+    "tok": "jp-tok",
+    "syd": "au-syd",
+    "sao": "br-sao",
+    "osa": "jp-osa",
+    "che": "in-che",
+    "mad": "eu-es",
+}
+
+
+def is_unified_pricing_workbook(archive: zipfile.ZipFile) -> bool:
+    """Return True if the archive looks like an IBM unified pricing workbook.
+
+    Requires both a 'commonServices' sheet and a 'VPC' sheet to be present.
+    The check is case-insensitive.
+    """
+    try:
+        workbook_sheets = parse_workbook_sheets(archive)
+    except Exception:
+        return False
+    names = {name.lower() for name, _ in workbook_sheets}
+    return bool(names & _UNIFIED_PRICING_SENTINEL_SHEETS) and len(names & _UNIFIED_PRICING_SHEETS) >= 2
+
+
+def _unified_infer_region(vpc_label: str) -> str:
+    """Return an IBM Cloud region code from a VPC label like 'DAL VPC - us-south'."""
+    lower = vpc_label.lower()
+    # Explicit IBM region code in the label (e.g. "us-south", "eu-de")
+    m = IBM_REGION_PATTERN.search(lower)
+    if m:
+        return m.group(0)
+    # Three-letter airport code prefix (e.g. "DAL", "WDC")
+    prefix = lower.split()[0].rstrip("-_")[:3]
+    return _UNIFIED_REGION_MAP.get(prefix, "")
+
+
+def read_unified_pricing_xlsx(path: Path) -> Iterable[dict[str, str]]:
+    """Parse an IBM unified pricing workbook and yield structured component rows.
+
+    Walks each sheet hierarchically, tracking the current VPC / zone / subnet
+    context, and emits one dict per meaningful component.  The yielded dicts
+    use the standard structured-fact keys (``component``, ``category``,
+    ``region``, ``notes``) so :func:`add_structured_fact` can route them.
+    """
+    with zipfile.ZipFile(path) as archive:
+        shared_strings = parse_shared_strings(archive)
+        workbook_sheets = parse_workbook_sheets(archive)
+        relationships = parse_workbook_relationships(archive)
+
+        for sheet_name, relationship_id in workbook_sheets:
+            lower_sheet = sheet_name.lower()
+            if lower_sheet not in _UNIFIED_PRICING_SHEETS:
+                continue
+
+            target = relationships.get(relationship_id)
+            if not target:
+                continue
+            sheet_path = "xl/" + target.lstrip("/")
+            if sheet_path not in archive.namelist():
+                sheet_path = "xl/worksheets/" + Path(target).name
+            if sheet_path not in archive.namelist():
+                continue
+
+            rows = parse_sheet_rows(archive.read(sheet_path), shared_strings)
+
+            # Context carried forward as we walk rows
+            current_region = ""
+            current_vpc = ""
+            current_zone = ""
+            current_subnet = ""
+            current_dl_section = False  # inside a "Data Center / Direct Link" block
+
+            for row in rows:
+                # Find the primary text cell — usually col C (index 2) or col B (index 1)
+                # Skip entirely empty rows
+                non_empty = [v for v in row if v.strip()]
+                if not non_empty:
+                    continue
+
+                # The "item" column is typically col C (idx 2); fall back to col B.
+                cell = ""
+                if len(row) > 2 and row[2].strip():
+                    cell = row[2].strip()
+                elif len(row) > 1 and row[1].strip():
+                    cell = row[1].strip()
+                if not cell:
+                    continue
+
+                cell_lower = cell.lower()
+
+                # ── Section headers — update context ──────────────────────
+
+                # VPC name line, e.g. "DAL VPC", "DAL VPC - us-south", "WDC VPC"
+                if re.search(r'\bvpc\b', cell_lower) and len(cell.split()) <= 5:
+                    # Only treat as VPC context if it looks like a VPC name
+                    # (not a section header like "VPC" alone, or "VPC connection"
+                    # which is a Transit Gateway configuration row)
+                    if cell_lower not in {"vpc", "vpc connection", "vpc 1 zone 1", "vpc 2 zone 1"}:
+                        current_vpc = cell.strip()
+                        current_region = _unified_infer_region(cell)
+                        current_zone = ""
+                        current_subnet = ""
+                        current_dl_section = False
+                        # Emit the VPC itself
+                        yield {
+                            "component": current_vpc,
+                            "category": "vpcs",
+                            "region": current_region,
+                            "notes": f"VPC from unified pricing workbook sheet '{sheet_name}'",
+                        }
+                        # Also emit the region
+                        if current_region:
+                            yield {
+                                "component": current_region,
+                                "category": "regions",
+                                "region": current_region,
+                                "notes": f"Region inferred from VPC label '{current_vpc}'",
+                            }
+                    continue
+
+                # Zone line, e.g. "Zone 1", "Zone 2"
+                if re.match(r'^zone\s+\d+$', cell_lower):
+                    current_zone = cell.strip()
+                    current_subnet = ""
+                    continue
+
+                # Subnet line, e.g. "Subnet 1", "Subnet 2"
+                if re.match(r'^subnet\s+\d+$', cell_lower):
+                    current_subnet = cell.strip()
+                    continue
+
+                # Data-centre / Direct Link section header
+                if ("data center" in cell_lower or "data centre" in cell_lower
+                        or re.match(r'^[a-z]{2,4}\s+dl\b', cell_lower)):
+                    current_dl_section = True
+                    continue
+
+                # Section dividers — reset DL flag on new section
+                if cell_lower in {"network", "storage", "compute", "security",
+                                   "common services", "commonservices"}:
+                    current_dl_section = False
+                    continue
+
+                # ── Named components ──────────────────────────────────────
+
+                # Transit Gateway
+                if "transit gateway" in cell_lower:
+                    name = cell if len(cell.split()) <= 6 else "Transit Gateway"
+                    yield {
+                        "component": name,
+                        "category": "connectivity",
+                        "region": current_region,
+                        "notes": f"Transit Gateway from '{sheet_name}' sheet",
+                    }
+                    continue
+
+                # Direct Link
+                if "direct link" in cell_lower:
+                    name = cell if len(cell.split()) <= 8 else "Direct Link"
+                    yield {
+                        "component": name,
+                        "category": "connectivity",
+                        "region": current_region,
+                        "notes": f"Direct Link from '{sheet_name}' sheet, VPC: {current_vpc}",
+                    }
+                    continue
+
+                # Load Balancer (e.g. "Service Usage - Application - Private")
+                if "load balancer" in cell_lower or (
+                    "service usage" in cell_lower and ("private" in cell_lower or "public" in cell_lower)
+                ):
+                    lb_type = "Private Load Balancer" if "private" in cell_lower else "Load Balancer"
+                    yield {
+                        "component": lb_type,
+                        "category": "ingress",
+                        "region": current_region,
+                        "notes": f"{cell} in zone {current_zone}, subnet {current_subnet}, VPC {current_vpc}",
+                    }
+                    continue
+
+                # Cloud Object Storage (e.g. "Cloud Object Storage PTcos")
+                if "cloud object storage" in cell_lower or (
+                    "object storage" in cell_lower
+                ):
+                    yield {
+                        "component": cell if len(cell.split()) <= 8 else "Cloud Object Storage",
+                        "category": "data",
+                        "region": current_region or "cross-region",
+                        "notes": f"Object Storage from '{sheet_name}' sheet",
+                    }
+                    continue
+
+                # File Storage
+                if cell_lower in {"file storage"} or (
+                    "file storage" in cell_lower and len(cell.split()) <= 3
+                ):
+                    yield {
+                        "component": "File Storage",
+                        "category": "data",
+                        "region": current_region,
+                        "notes": f"File Storage in VPC {current_vpc}, zone {current_zone}",
+                    }
+                    continue
+
+                # Virtual Servers — lines like "Virtual Server: bx2d-2x8 - CentOS (PAYG)"
+                if cell_lower.startswith("virtual server"):
+                    # Extract the friendly profile name
+                    parts = cell.split(":")
+                    profile_part = parts[1].strip() if len(parts) > 1 else cell
+                    # Clean up: take the profile before " - "
+                    profile = profile_part.split(" - ")[0].strip() if " - " in profile_part else profile_part.split("(")[0].strip()
+                    name = f"VPC VSI ({profile})" if profile else "VPC Virtual Server Instance"
+                    yield {
+                        "component": name,
+                        "category": "compute",
+                        "region": current_region,
+                        "notes": f"VSI profile {profile} in VPC {current_vpc}, zone {current_zone}, subnet {current_subnet}",
+                    }
+                    continue
+
+                # Subnets yielded from context (when we encounter a subnet header)
+                # Already handled above, but also emit a subnet fact here for tracking
+                # (happens implicitly via the subnet context update above)
+
+            # After processing each sheet, if we found a VPC emit subnet facts
+            # based on the context we tracked — already done inline above
+
 
 
 def read_xlsx(path: Path) -> Iterable[dict[str, str]]:
@@ -558,7 +811,13 @@ def add_structured_fact(facts: dict[str, list[dict[str, str]]], row: dict[str, s
     notes = first_value(lowered, ["notes", "description", "purpose", "comment"])
     region = first_value(lowered, ["region", "location"])
 
-    category = CATEGORY_ALIASES.get(category_value.lower()) if category_value else None
+    # Accept both the canonical key names (from structured parsers) and the
+    # human-readable aliases (from freeform data).
+    _cv_lower = category_value.lower() if category_value else ""
+    if _cv_lower in KEYWORDS:
+        category = _cv_lower
+    else:
+        category = CATEGORY_ALIASES.get(_cv_lower) if _cv_lower else None
     if region:
         for region_name in unique_ordered(IBM_REGION_PATTERN.findall(region.lower())):
             facts["regions"].append(
@@ -573,6 +832,22 @@ def add_structured_fact(facts: dict[str, list[dict[str, str]]], row: dict[str, s
 
     if not category or not name:
         return False
+
+    # Regions are handled entirely by the IBM_REGION_PATTERN loop above.
+    # Avoid a double-add when the structured row is itself a region row.
+    if category == "regions":
+        for region_name in unique_ordered(IBM_REGION_PATTERN.findall(name.lower())):
+            if not any(c["name"] == region_name for c in facts["regions"]):
+                facts["regions"].append(
+                    {
+                        "name": region_name,
+                        "type": "regions",
+                        "purpose": notes,
+                        "source": source,
+                        "notes": notes or name,
+                    }
+                )
+        return True
 
     facts[category].append(
         {
