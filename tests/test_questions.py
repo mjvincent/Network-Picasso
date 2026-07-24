@@ -2,220 +2,291 @@ from __future__ import annotations
 
 from network_picasso.questions import find_design_gaps
 
-ALL_KEYS = ["regions", "vpcs", "subnets", "connectivity", "ingress", "compute",
-            "security", "private_endpoints", "dns", "observability", "backup_dr"]
+ALL_IBMCLOUD_KEYS = [
+    "regions", "vpcs", "subnets", "connectivity", "ingress", "compute",
+    "security", "private_endpoints", "dns", "observability", "backup_dr", "data",
+]
 
 
 def _full_architecture() -> dict:
     """
-    Architecture with all ibm_cloud keys populated and rich enough to satisfy
-    every Tier-2 depth check — should produce zero gap questions.
+    A richly-populated architecture that satisfies every Tier-2 depth check.
+    Tier 0 questions (always-asked) will still appear — that is correct behaviour.
     """
     return {
         "ibm_cloud": {
-            # Two regions so single-region DR check does not fire
             "regions": [
-                {"name": "us-south", "type": "regions", "purpose": "primary", "source": "test", "notes": ""},
-                {"name": "us-east", "type": "regions", "purpose": "dr", "source": "test", "notes": ""},
+                {"name": "us-south", "type": "regions", "source": "test", "notes": ""},
+                {"name": "us-east",  "type": "regions", "source": "test", "notes": ""},
             ],
-            # Two VPCs so single-VPC check does not fire
             "vpcs": [
-                {"name": "workload-vpc", "type": "vpcs", "purpose": "workload", "source": "test", "notes": ""},
-                {"name": "management-vpc", "type": "vpcs", "purpose": "management", "source": "test", "notes": ""},
+                {"name": "edge-vpc",    "type": "vpcs", "source": "test", "notes": ""},
+                {"name": "workload-vpc","type": "vpcs", "source": "test", "notes": ""},
             ],
-            # Subnets across all three zones
             "subnets": [
-                {"name": "sub-zone-1", "zone": "zone-1", "type": "subnets", "source": "test", "notes": ""},
-                {"name": "sub-zone-2", "zone": "zone-2", "type": "subnets", "source": "test", "notes": ""},
-                {"name": "sub-zone-3", "zone": "zone-3", "type": "subnets", "source": "test", "notes": ""},
+                {"name": "pub-zone-1", "zone": "zone-1", "type": "subnets", "source": "test"},
+                {"name": "pub-zone-2", "zone": "zone-2", "type": "subnets", "source": "test"},
+                {"name": "pub-zone-3", "zone": "zone-3", "type": "subnets", "source": "test"},
             ],
-            # Direct Link + Transit Gateway so hybrid and TGW checks do not fire
             "connectivity": [
-                {"name": "Direct Link 2.0", "type": "connectivity", "purpose": "hybrid", "source": "test", "notes": "direct link"},
-                {"name": "Transit Gateway", "type": "connectivity", "purpose": "inter-vpc", "source": "test", "notes": "transit gateway"},
+                {"name": "Direct Link 2.0", "type": "connectivity", "notes": "direct link"},
+                {"name": "Transit Gateway", "type": "connectivity", "notes": "transit gateway tgw"},
             ],
-            # Public + private ingress so private-only check does not fire
             "ingress": [
-                {"name": "IBM Cloud Internet Services", "type": "ingress", "purpose": "public edge", "source": "test", "notes": "public cis"},
-                {"name": "Private Load Balancer", "type": "ingress", "purpose": "internal", "source": "test", "notes": "private"},
+                {"name": "IBM Cloud Internet Services", "type": "ingress", "notes": "cis public"},
+                {"name": "Private Load Balancer",       "type": "ingress", "notes": "private internal"},
             ],
-            # Non-ROKS compute so OpenShift Router check does not fire
             "compute": [
-                {"name": "VPC VSI", "type": "compute", "purpose": "app tier", "source": "test", "notes": "vsi"},
+                {"name": "VPC VSI bx2-2x8", "type": "compute", "notes": "vsi virtual server"},
             ],
-            # IAM + security groups + NACLs so all security checks satisfied
             "security": [
-                {"name": "IAM Policies", "type": "security", "purpose": "identity", "source": "test", "notes": "iam identity access"},
-                {"name": "Security Groups", "type": "security", "purpose": "sg", "source": "test", "notes": "security group nacl acl"},
+                {"name": "IAM Access Groups",    "type": "security", "notes": "iam identity access"},
+                {"name": "Key Protect",          "type": "security", "notes": "key protect encryption"},
+                {"name": "Security Groups/NACLs","type": "security", "notes": "security group nacl acl"},
+                {"name": "SCC",                  "type": "security", "notes": "scc security and compliance"},
             ],
             "private_endpoints": [
-                {"name": "VPE Gateway", "type": "private_endpoints", "source": "test", "notes": ""},
+                {"name": "COS VPE",      "type": "private_endpoints", "notes": ""},
             ],
             "dns": [
-                {"name": "IBM Cloud DNS Services", "type": "dns", "source": "test", "notes": ""},
+                {"name": "IBM Cloud DNS Services", "type": "dns", "notes": ""},
             ],
-            # Monitoring + flow logs so both observability checks satisfied
             "observability": [
-                {"name": "IBM Cloud Monitoring", "type": "observability", "source": "test", "notes": "monitoring metrics"},
-                {"name": "VPC Flow Logs", "type": "observability", "source": "test", "notes": "flow log"},
+                {"name": "IBM Cloud Monitoring", "type": "observability", "notes": "monitoring metrics platform sysdig"},
+                {"name": "VPC Flow Logs",        "type": "observability", "notes": "flow log"},
             ],
-            # RPO/RTO + replication so both DR checks satisfied
             "backup_dr": [
-                {"name": "Backup Plan", "type": "backup_dr", "purpose": "rpo rto target objective", "source": "test",
-                 "notes": "cross-region replication sync"},
+                {"name": "Backup Plan", "type": "backup_dr", "notes": "rpo rto objective"},
+            ],
+            "data": [
+                {"name": "Cloud Object Storage", "type": "data", "notes": ""},
             ],
         }
     }
 
 
-def test_all_gaps_when_empty():
-    """Empty ibm_cloud dict returns exactly the 11 Tier-1 absence questions."""
-    gaps = find_design_gaps({"ibm_cloud": {}})
-    assert len(gaps) == 11
+# ── Tier 0 — always asked ────────────────────────────────────────────────────
 
-
-def test_no_gaps_when_full():
-    """A richly-populated architecture returns zero gap questions."""
+def test_tier0_pattern_question_always_asked():
+    """Architecture pattern question fires even when all keys are populated."""
     gaps = find_design_gaps(_full_architecture())
-    assert gaps == [], [g["question"] for g in gaps]
-
-
-def test_partial_gaps_absence():
-    """Architecture missing only subnets and dns returns exactly those 2 Tier-1 questions."""
-    arch = _full_architecture()
-    del arch["ibm_cloud"]["subnets"]
-    del arch["ibm_cloud"]["dns"]
-    gaps = find_design_gaps(arch)
-    areas = {g["area"] for g in gaps}
-    # Only absence questions should fire (subnets absent, dns absent)
-    assert "Subnet design" in areas
-    assert "DNS and name resolution" in areas
-    # No Tier-2 zone-spread question because subnets key is gone (Tier-1 fires instead)
-    tier1_texts = [g["question"] for g in gaps if g["question"].startswith("Which")]
-    assert any("subnet" in t.lower() for t in tier1_texts)
-
-
-def test_single_region_triggers_dr_question():
-    """Architecture with a single region fires the DR sub-question."""
-    arch = _full_architecture()
-    arch["ibm_cloud"]["regions"] = [
-        {"name": "us-south", "type": "regions", "purpose": "primary", "source": "test", "notes": ""}
-    ]
-    gaps = find_design_gaps(arch)
     questions = [g["question"] for g in gaps]
-    assert any("disaster recovery" in q.lower() for q in questions)
+    assert any("reference architecture pattern" in q.lower() for q in questions)
 
 
-def test_no_zone_spread_triggers_question():
-    """Components with no zone tags fire the AZ placement sub-question."""
+def test_tier0_region_question_always_asked():
+    """Primary region question fires even when regions key is populated."""
+    gaps = find_design_gaps(_full_architecture())
+    questions = [g["question"] for g in gaps]
+    assert any("primary deployment region" in q.lower() for q in questions)
+
+
+def test_tier0_account_question_always_asked():
+    """Account and resource group question fires regardless of populated keys."""
+    gaps = find_design_gaps(_full_architecture())
+    questions = [g["question"] for g in gaps]
+    assert any("resource group" in q.lower() for q in questions)
+
+
+# ── Tier 1 — absent keys ─────────────────────────────────────────────────────
+
+def test_tier1_empty_model_has_all_gaps():
+    """Empty ibm_cloud produces at least the 11 Tier-1 topology questions plus Tier-0."""
+    gaps = find_design_gaps({"ibm_cloud": {}})
+    areas = {g["area"] for g in gaps}
+    assert "VPC topology" in areas
+    assert "Subnet design" in areas
+    assert "Hybrid connectivity" in areas
+    assert "Ingress and load balancing" in areas
+    assert "Compute platform" in areas
+    assert "Security controls" in areas
+    assert "Private service access" in areas
+    assert "DNS and name resolution" in areas
+    assert "Observability" in areas
+    assert "Backup and DR" in areas
+    assert "Data services" in areas
+    # At least 3 Tier-0 questions plus the 11 Tier-1 questions
+    assert len(gaps) >= 14
+
+
+def test_tier1_vpcs_absent():
+    """VPC topology question fires when vpcs key is missing."""
+    arch = {"ibm_cloud": {k: [{"name": k}] for k in ALL_IBMCLOUD_KEYS if k != "vpcs"}}
+    gaps = find_design_gaps(arch)
+    assert any("VPC" in g["area"] for g in gaps)
+    assert any("how many vpcs" in g["question"].lower() for g in gaps)
+
+
+def test_tier1_connectivity_absent():
+    """Hybrid connectivity question fires when connectivity key is missing."""
+    arch = {"ibm_cloud": {k: [{"name": k}] for k in ALL_IBMCLOUD_KEYS if k != "connectivity"}}
+    gaps = find_design_gaps(arch)
+    assert any("on-premises" in g["question"].lower() for g in gaps)
+
+
+def test_tier1_guidance_is_nonempty():
+    """Every Tier-1 question has meaningful guidance text (> 100 chars)."""
+    gaps = find_design_gaps({"ibm_cloud": {}})
+    for g in gaps:
+        assert len(g.get("guidance", "")) > 100, f"Short guidance for: {g['question'][:60]}"
+
+
+# ── Tier 2 — present but shallow ─────────────────────────────────────────────
+
+def test_tier2_single_region_triggers_dr():
+    """Single region fires DR question."""
     arch = _full_architecture()
-    # Remove zone tags from all subnets
+    arch["ibm_cloud"]["regions"] = [{"name": "us-south", "source": "test"}]
+    gaps = find_design_gaps(arch)
+    assert any("disaster recovery region" in g["question"].lower() for g in gaps)
+
+
+def test_tier2_no_zone_spread():
+    """No zone tags fires AZ placement question."""
+    arch = _full_architecture()
     for item in arch["ibm_cloud"]["subnets"]:
         item.pop("zone", None)
     gaps = find_design_gaps(arch)
-    questions = [g["question"] for g in gaps]
-    assert any("zone" in q.lower() for q in questions)
+    assert any("zone-1" in g["question"].lower() or "availability zone" in g["question"].lower() for g in gaps)
 
 
-def test_single_vpc_triggers_management_question():
-    """Architecture with only one VPC fires the management VPC sub-question."""
+def test_tier2_single_vpc_triggers_edge_vpc():
+    """Single VPC fires Hub-and-Spoke / Edge VPC question."""
     arch = _full_architecture()
-    arch["ibm_cloud"]["vpcs"] = [
-        {"name": "workload-vpc", "type": "vpcs", "purpose": "workload", "source": "test", "notes": ""}
+    arch["ibm_cloud"]["vpcs"] = [{"name": "single-vpc", "source": "test"}]
+    gaps = find_design_gaps(arch)
+    assert any("edge vpc" in g["question"].lower() or "management vpc" in g["question"].lower() for g in gaps)
+
+
+def test_tier2_no_dl_vpn_triggers_hybrid_question():
+    """Connectivity present but without DL or VPN fires hybrid question."""
+    arch = _full_architecture()
+    arch["ibm_cloud"]["connectivity"] = [
+        {"name": "Transit Gateway", "notes": "transit gateway tgw"}
     ]
     gaps = find_design_gaps(arch)
-    questions = [g["question"] for g in gaps]
-    assert any("management" in q.lower() or "shared" in q.lower() for q in questions)
+    assert any("internet-facing" in g["question"].lower() or "on-premises" in g["question"].lower() for g in gaps)
 
 
-def test_no_private_ingress_triggers_question():
-    """Public-only ingress fires the private load balancer sub-question."""
+def test_tier2_no_cis_triggers_waf_question():
+    """Public LB without CIS fires WAF/DDoS question."""
     arch = _full_architecture()
     arch["ibm_cloud"]["ingress"] = [
-        {"name": "IBM Cloud Internet Services", "type": "ingress", "source": "test", "notes": "public cis"}
+        {"name": "Public ALB", "notes": "public application load balancer alb"},
+        {"name": "Private LB", "notes": "private internal"},
     ]
     gaps = find_design_gaps(arch)
-    questions = [g["question"] for g in gaps]
-    assert any("private" in q.lower() for q in questions)
+    assert any("cis" in g["question"].lower() or "waf" in g["question"].lower() for g in gaps)
 
 
-def test_security_missing_iam_triggers_question():
-    """Security present but without IAM fires the IAM sub-question."""
+def test_tier2_no_private_ingress():
+    """Public-only ingress fires private LB question."""
+    arch = _full_architecture()
+    arch["ibm_cloud"]["ingress"] = [
+        {"name": "IBM Cloud Internet Services", "notes": "cis public"}
+    ]
+    gaps = find_design_gaps(arch)
+    assert any("private load balancer" in g["question"].lower() for g in gaps)
+
+
+def test_tier2_roks_fires_ingress_question():
+    """ROKS compute without CIS fires ingress controller question."""
+    arch = _full_architecture()
+    arch["ibm_cloud"]["compute"] = [
+        {"name": "ROKS cluster", "notes": "openshift roks ocp"}
+    ]
+    arch["ibm_cloud"]["ingress"] = [
+        {"name": "Private LB", "notes": "private"},
+    ]
+    gaps = find_design_gaps(arch)
+    assert any("roks" in g["question"].lower() or "openshift" in g["question"].lower() for g in gaps)
+
+
+def test_tier2_no_iam_triggers_question():
+    """Security without IAM fires IAM question."""
     arch = _full_architecture()
     arch["ibm_cloud"]["security"] = [
-        {"name": "Key Protect", "type": "security", "source": "test", "notes": "key management nacl security group acl"}
+        {"name": "Key Protect", "notes": "key protect encryption nacl security group acl scc compliance"}
     ]
     gaps = find_design_gaps(arch)
-    questions = [g["question"] for g in gaps]
-    assert any("iam" in q.lower() or "identity" in q.lower() for q in questions)
+    assert any("iam" in g["question"].lower() or "trusted profile" in g["question"].lower() for g in gaps)
 
 
-def test_observability_missing_flow_logs():
-    """Observability present but without flow logs fires the flow-log sub-question."""
+def test_tier2_no_key_mgmt_triggers_question():
+    """Security without key management fires encryption question."""
+    arch = _full_architecture()
+    arch["ibm_cloud"]["security"] = [
+        {"name": "IAM", "notes": "iam identity access nacl security group acl scc compliance"}
+    ]
+    gaps = find_design_gaps(arch)
+    assert any("key" in g["question"].lower() or "encrypt" in g["question"].lower() for g in gaps)
+
+
+def test_tier2_no_flow_logs():
+    """Observability without flow logs fires flow-log question."""
     arch = _full_architecture()
     arch["ibm_cloud"]["observability"] = [
-        {"name": "IBM Cloud Monitoring", "type": "observability", "source": "test", "notes": "monitoring metrics platform"}
+        {"name": "IBM Cloud Monitoring", "notes": "monitoring metrics sysdig platform"}
     ]
     gaps = find_design_gaps(arch)
-    questions = [g["question"] for g in gaps]
-    assert any("flow log" in q.lower() for q in questions)
+    assert any("flow log" in g["question"].lower() for g in gaps)
 
 
-def test_observability_missing_monitoring():
-    """Observability present but without metrics fires the platform-metrics sub-question."""
+def test_tier2_no_monitoring():
+    """Observability without metrics fires platform-metrics question."""
     arch = _full_architecture()
     arch["ibm_cloud"]["observability"] = [
-        {"name": "VPC Flow Logs", "type": "observability", "source": "test", "notes": "flow log"}
+        {"name": "VPC Flow Logs", "notes": "flow log"}
     ]
     gaps = find_design_gaps(arch)
-    questions = [g["question"] for g in gaps]
-    assert any("metric" in q.lower() or "monitoring" in q.lower() for q in questions)
+    assert any("metrics" in g["question"].lower() or "monitoring" in g["question"].lower() for g in gaps)
 
 
-def test_dr_missing_rpo_rto():
-    """Backup/DR present but without RPO/RTO fires the recovery-objectives sub-question."""
+def test_tier2_no_rpo_rto():
+    """Backup/DR without RPO/RTO fires recovery objectives question."""
     arch = _full_architecture()
-    arch["ibm_cloud"]["backup_dr"] = [
-        {"name": "Backup", "type": "backup_dr", "source": "test", "notes": "cross-region replication sync"}
-    ]
+    arch["ibm_cloud"]["backup_dr"] = [{"name": "Daily snapshots", "notes": "snapshot backup"}]
     gaps = find_design_gaps(arch)
-    questions = [g["question"] for g in gaps]
-    assert any("rpo" in q.lower() or "rto" in q.lower() for q in questions)
+    assert any("rpo" in g["question"].lower() or "rto" in g["question"].lower() for g in gaps)
 
 
-def test_dr_missing_replication():
-    """Backup/DR present but without replication fires the cross-region backup sub-question."""
-    arch = _full_architecture()
-    arch["ibm_cloud"]["backup_dr"] = [
-        {"name": "Backup Plan", "type": "backup_dr", "source": "test", "notes": "rpo rto target objective"}
-    ]
-    gaps = find_design_gaps(arch)
-    questions = [g["question"] for g in gaps]
-    assert any("replication" in q.lower() or "regional failure" in q.lower() for q in questions)
-
+# ── Shape and source ─────────────────────────────────────────────────────────
 
 def test_question_shape():
     """Every returned question has area, question, guidance, and source keys."""
     gaps = find_design_gaps({"ibm_cloud": {}})
-    for gap in gaps:
-        assert "area" in gap
-        assert "question" in gap
-        assert "guidance" in gap
-        assert "source" in gap
+    for g in gaps:
+        assert "area" in g
+        assert "question" in g
+        assert "guidance" in g
+        assert "source" in g
 
 
 def test_source_is_rules():
-    """All rule-based questions are tagged source: 'rules'."""
+    """All questions produced by rules are tagged source: 'rules'."""
     gaps = find_design_gaps({"ibm_cloud": {}})
-    for gap in gaps:
-        assert gap["source"] == "rules"
+    for g in gaps:
+        assert g["source"] == "rules"
 
 
 def test_no_duplicate_questions():
     """find_design_gaps never returns the same question text twice."""
     arch = _full_architecture()
-    # Remove a few keys to trigger both tiers simultaneously
     del arch["ibm_cloud"]["subnets"]
     gaps = find_design_gaps(arch)
     texts = [g["question"] for g in gaps]
-    assert len(texts) == len(set(texts))
+    assert len(texts) == len(set(texts)), f"Duplicates: {[t for t in texts if texts.count(t) > 1]}"
+
+
+def test_ibm_reference_coverage():
+    """Questions cover the key IBM Cloud reference architecture pattern areas."""
+    gaps = find_design_gaps({"ibm_cloud": {}})
+    all_text = " ".join(g["guidance"] for g in gaps).lower()
+    # Each major reference pattern should be mentioned
+    assert "multi-zone" in all_text or "mzr" in all_text
+    assert "hub-and-spoke" in all_text or "edge vpc" in all_text
+    assert "transit gateway" in all_text
+    assert "direct link" in all_text
+    assert "financial services" in all_text or "fsc" in all_text or "fs cloud" in all_text
+    assert "openshift" in all_text or "roks" in all_text
+    assert "virtual private endpoint" in all_text or "vpe" in all_text

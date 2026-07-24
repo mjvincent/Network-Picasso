@@ -268,8 +268,22 @@ export default function App() {
   }
 
   function selectProject(node: ProjectNode) {
+    // Reset all intake state so the new project starts completely fresh.
     setActiveProject(node);
     setArchitecturePath(`${node.path}/architecture.json`);
+    setArchitecture(null);
+    setQuestions([]);
+    setAnsweredQuestions([]);
+    setQuestionAnswers({});
+    setPendingComponents([]);
+    setPendingAssignments({});
+    setSelectedFiles([]);
+    setDiagramPath('');
+    setPreviewXml(null);
+    setRequirementsText('');
+    setRequirementsSaved(false);
+    setStatus('');
+    setError('');
     setActiveNav('wizard');
     setStep('upload');
   }
@@ -339,10 +353,13 @@ export default function App() {
         answeredQuestions?: AnsweredQuestion[];
         pendingComponents?: PendingComponent[];
       }>('/api/upload-intake', body);
+      // Always reset answered/question state on a fresh intake run so answers
+      // from previous projects don't bleed into the new one.
       const answered: AnsweredQuestion[] = payload.answeredQuestions || [];
       setAnsweredQuestions(answered);
+      setQuestionAnswers({});
       setArchitecture(payload.architecture);
-      setQuestions((current) => mergeQuestions(current, payload.questions, answered));
+      setQuestions(mergeQuestions([], payload.questions, answered));
       setArchitecturePath(payload.outputPath);
       setDiagramPath('');
       if (payload.pendingComponents?.length) {
