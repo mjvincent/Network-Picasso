@@ -1,16 +1,21 @@
 from __future__ import annotations
 
+import io
 import pathlib
-import zipfile
+import zipfile as zf_mod
 
 import pytest
 
 from network_picasso.intake import (
     KEYWORDS,
+    _normalise_name,
+    _semantic_key,
     add_detected_facts,
     build_architecture_from_inputs,
+    classify_file,
     dedupe_components,
     infer_environment,
+    is_pricing_catalog,
     is_solutioning_workbook,
     is_unified_pricing_workbook,
     read_unified_pricing_xlsx,
@@ -74,6 +79,134 @@ def test_dedupe():
     assert len(result) == 1
 
 
+def test_dedupe_semantic_transit_gateway():
+    """Near-duplicate Transit Gateway names all collapse to one component."""
+    names = [
+        "Transit Gateway DAL TG",
+        "Transit Gateway",
+        "Transit Gateway DallasTG",
+        "Transit GW",
+    ]
+    components = [{"name": n, "type": "connectivity", "source": f"file{i}"} for i, n in enumerate(names)]
+    result = dedupe_components(components)
+    assert len(result) == 1, f"Expected 1, got {len(result)}: {[r['name'] for r in result]}"
+    # Merged source should reference multiple files
+    assert result[0]["source"].count("file") >= 2
+
+
+def test_dedupe_semantic_direct_link_bandwidth_variants():
+    """Direct Link variants at different bandwidths are kept as separate components
+    only when they differ meaningfully; the generic 'Direct Link' collapes with them."""
+    dl1 = {"name": "IBM Direct Link Dedicated", "type": "connectivity", "source": "a"}
+    dl2 = {"name": "Direct Link", "type": "connectivity", "source": "b"}
+    result = dedupe_components([dl1, dl2])
+    # Both normalise similarly — should collapse to 1
+    assert len(result) == 1
+
+
+def test_dedupe_preserves_different_types():
+    """Components with the same name but different types are NOT deduplicated."""
+    a = {"name": "Load Balancer", "type": "ingress", "source": "x"}
+    b = {"name": "Load Balancer", "type": "compute", "source": "y"}
+    result = dedupe_components([a, b])
+    assert len(result) == 2
+
+
+def test_normalise_name_strips_profile_suffix():
+    """VSI profile suffixes like bx2d-2x8 are stripped during normalisation."""
+    n1 = _normalise_name("VPC VSI (bx2d-2x8)")
+    n2 = _normalise_name("VPC VSI (mx2-16x128)")
+    # After stripping, both should normalise to the same base
+    assert n1 == n2
+
+
+def test_normalise_name_abbreviation_expansion():
+    """'TG' expands to 'transit gateway' for dedup purposes."""
+    n_tg = _normalise_name("DAL TG")
+    n_full = _normalise_name("Transit Gateway Dallas")
+    assert n_tg == n_full
+
+
+def test_classify_file_json(tmp_path):
+    """JSON files are classified as existing_architecture."""
+    f = tmp_path / "arch.json"
+    f.write_text("{}")
+    assert classify_file(f) == "existing_architecture"
+
+
+def test_classify_file_markdown(tmp_path):
+    """Markdown files are classified as solution_description."""
+    f = tmp_path / "notes.md"
+    f.write_text("# Notes")
+    assert classify_file(f) == "solution_description"
+
+
+def test_classify_file_pricing_catalog_by_filename(tmp_path):
+    """Files with 'price estimat' in the name are classified as pricing_catalog."""
+    f = tmp_path / "Price Estimator IBM Power Virtual Server OMNI_RFP.xlsx"
+    # File does not need to exist for filename-based classification
+    f.write_bytes(b"dummy")
+    assert classify_file(f) == "pricing_catalog"
+
+
+def test_classify_file_csv_is_bom(tmp_path):
+    """Plain CSV files are classified as bom."""
+    f = tmp_path / "solution.csv"
+    f.write_text("Component,Category\n")
+    assert classify_file(f) == "bom"
+
+
+def test_is_pricing_catalog_true(tmp_path):
+    """is_pricing_catalog returns True for a pricing-catalog filename."""
+    f = tmp_path / "IBM Price Estimator Catalog.xlsx"
+    f.write_bytes(b"dummy")
+    assert is_pricing_catalog(f) is True
+
+
+def test_is_pricing_catalog_false(tmp_path):
+    """is_pricing_catalog returns False for a normal BOM CSV."""
+    f = tmp_path / "solution-bom.csv"
+    f.write_text("Component,Category\n")
+    assert is_pricing_catalog(f) is False
+
+
+def test_pricing_catalog_skipped_in_build(tmp_path):
+    """A pricing-catalog-named file contributes 0 components to the model."""
+    catalog = tmp_path / "Price Estimator IBM Cloud OMNI.xlsx"
+    # Write a minimal valid XLSX (ZIP with two sheets full of random data)
+    buf = io.BytesIO()
+    with zf_mod.ZipFile(buf, "w") as zf:
+        zf.writestr("dummy.txt", "not a real xlsx")
+    catalog.write_bytes(buf.getvalue())
+
+    arch = build_architecture_from_inputs(tmp_path)
+    # No ibm_cloud keys (other than assumptions) should have components
+    for key, value in arch.get("ibm_cloud", {}).items():
+        if key == "assumptions":
+            continue
+        assert isinstance(value, list)
+        assert len(value) == 0, f"Unexpected components in {key}: {value}"
+
+    # Source entry should show skipped=True
+    skipped = [s for s in arch.get("sources", []) if s.get("skipped")]
+    assert len(skipped) == 1
+    assert "catalog" in skipped[0].get("skip_reason", "").lower()
+
+
+def test_stale_upload_clear(tmp_path):
+    """_clear_upload_dir removes supported-extension files but leaves others."""
+    from network_picasso.server import _clear_upload_dir
+    (tmp_path / "old.csv").write_text("old data")
+    (tmp_path / "old.md").write_text("old notes")
+    (tmp_path / ".gitkeep").write_text("")
+    (tmp_path / "subdir").mkdir()
+    _clear_upload_dir(tmp_path)
+    assert not (tmp_path / "old.csv").exists()
+    assert not (tmp_path / "old.md").exists()
+    assert (tmp_path / ".gitkeep").exists()
+    assert (tmp_path / "subdir").is_dir()
+
+
 def test_infer_environment():
     """Text containing 'production' triggers environment inference."""
     facts = {"compute": [{"name": "VSI", "type": "compute", "purpose": "production workload", "source": "x", "notes": "production"}]}
@@ -85,14 +218,11 @@ def test_solutioning_detection():
     """is_solutioning_workbook returns True for the Solutioning fixture and False for a plain XLSX."""
     if not SOLUTIONING_XLSX.exists():
         pytest.skip("solutioning-sample.xlsx not found")
-    with zipfile.ZipFile(SOLUTIONING_XLSX) as zf:
+    with zf_mod.ZipFile(SOLUTIONING_XLSX) as zf:
         assert is_solutioning_workbook(zf) is True
 
     # Build a minimal plain XLSX (no Solutioning columns) and confirm detection returns False.
-    import io
-    import zipfile as zf_mod
-    # We cannot easily build a full .xlsx inline here — check that a real non-Solutioning CSV-turned-path is not detected.
-    # Instead, just verify is_solutioning_workbook with a minimal zipfile that has no workbook raises gracefully.
+    # Verify is_solutioning_workbook with a minimal zipfile that has no workbook raises gracefully.
     buf = io.BytesIO()
     with zf_mod.ZipFile(buf, "w") as zf2:
         zf2.writestr("dummy.txt", "not an xlsx")
@@ -108,7 +238,7 @@ def test_unified_pricing_detection():
     """is_unified_pricing_workbook detects the Cognizant unified pricing sample."""
     if not UNIFIED_PRICING_XLSX.exists():
         pytest.skip("Unified pricing sample not in samples/ (gitignored)")
-    with zipfile.ZipFile(UNIFIED_PRICING_XLSX) as zf:
+    with zf_mod.ZipFile(UNIFIED_PRICING_XLSX) as zf:
         assert is_unified_pricing_workbook(zf) is True
 
 
@@ -139,8 +269,6 @@ def test_unified_pricing_extraction():
 
 def test_unified_pricing_not_detected_for_plain():
     """is_unified_pricing_workbook returns False for a non-matching zip."""
-    import io
-    import zipfile as zf_mod
     buf = io.BytesIO()
     with zf_mod.ZipFile(buf, "w") as zf2:
         zf2.writestr("dummy.txt", "not an xlsx")

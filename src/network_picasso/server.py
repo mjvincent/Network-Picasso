@@ -18,7 +18,12 @@ from .drawio import (
     DEPLOYMENT_GUIDE,
     STYLE_GUIDE,
 )
-from .intake import backfill_answer_into_model, build_architecture_from_inputs
+from .intake import (
+    backfill_answer_into_model,
+    build_architecture_from_inputs,
+    classify_file,
+    SUPPORTED_EXTENSIONS,
+)
 from . import mcp_bridge as _mcp
 from . import ollama as _ollama
 from .projects import (
@@ -260,13 +265,21 @@ class NetworkPicassoHandler(BaseHTTPRequestHandler):
             upload_dir = repo_path(UPLOAD_INPUT_PATH)
             output_path = repo_path(UPLOAD_ARCHITECTURE_PATH)
 
+        # Clear stale files from a previous intake run before writing new
+        # uploads.  This prevents old demo/sample data from polluting the
+        # model when the user starts a fresh upload session.
+        _clear_upload_dir(upload_dir)
+
         upload_dir.mkdir(parents=True, exist_ok=True)
         saved_files = []
+        file_roles: list[dict] = []
         for uploaded in files:
             filename = safe_filename(uploaded["filename"])
             target = upload_dir / filename
             target.write_bytes(uploaded["content"])
             saved_files.append(relative_to_repo(target))
+            role = classify_file(target)
+            file_roles.append({"file": filename, "role": role})
 
         project_name = fields.get("projectName") or "Customer Architecture"
         mode = fields.get("mode") or "rules"
@@ -284,6 +297,7 @@ class NetworkPicassoHandler(BaseHTTPRequestHandler):
                 "inputPath": relative_to_repo(upload_dir),
                 "outputPath": relative_to_repo(output_path),
                 "files": saved_files,
+                "fileRoles": file_roles,
                 "answeredQuestions": answered,
                 "pendingComponents": pending,
             }
@@ -887,6 +901,23 @@ def multipart_attribute(disposition: str, name: str) -> str:
 def safe_filename(filename: str) -> str:
     name = Path(filename).name
     return re.sub(r"[^A-Za-z0-9._ -]", "_", name) or "uploaded-file"
+
+
+def _clear_upload_dir(upload_dir: Path) -> None:
+    """Remove all supported input files from *upload_dir*.
+
+    Preserves sub-directories and the directory itself.  Only files with
+    extensions in :data:`SUPPORTED_EXTENSIONS` are removed so that any
+    non-input artifacts (e.g. ``.gitkeep``) are left untouched.
+    """
+    if not upload_dir.exists():
+        return
+    for child in upload_dir.iterdir():
+        if child.is_file() and child.suffix.lower() in SUPPORTED_EXTENSIONS:
+            try:
+                child.unlink()
+            except OSError:
+                pass
 
 
 def run(host: str = "127.0.0.1", port: int = 8787) -> None:

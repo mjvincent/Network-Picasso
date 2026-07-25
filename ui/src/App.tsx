@@ -78,7 +78,12 @@ type Component = {
 type Architecture = {
   project: { name: string; environment?: string };
   ibm_cloud: Record<string, Component[] | string[]>;
-  sources?: Array<{ file: string; type: string; records: number }>;
+  sources?: Array<{ file: string; type: string; records: number; role?: string; skipped?: boolean; skip_reason?: string }>;
+};
+
+type FileRole = {
+  file: string;
+  role: string;
 };
 
 type AppSettings = {
@@ -154,6 +159,18 @@ const DEFAULT_SETTINGS: AppSettings = {
   projectsRoot: 'inputs/projects',
 };
 
+/** Return Carbon Tag props for a file role string, or null if no badge needed. */
+function roleTagProps(role?: string): { type: string; label: string } | null {
+  switch (role) {
+    case 'bom':                  return { type: 'green',     label: 'BOM' };
+    case 'unified_pricing':      return { type: 'teal',      label: 'Unified pricing' };
+    case 'pricing_catalog':      return { type: 'red',       label: 'Pricing catalog' };
+    case 'solution_description': return { type: 'blue',      label: 'Notes' };
+    case 'existing_architecture':return { type: 'purple',    label: 'Architecture' };
+    default:                     return null;
+  }
+}
+
 // Re-export utilities for tests
 export { questionKey, mergeQuestions };
 
@@ -180,6 +197,7 @@ export default function App() {
   const [answeredQuestions, setAnsweredQuestions] = useState<AnsweredQuestion[]>([]);
   const [pendingComponents, setPendingComponents] = useState<PendingComponent[]>([]);
   const [pendingAssignments, setPendingAssignments] = useState<Record<string, string>>({});
+  const [fileRoles, setFileRoles] = useState<FileRole[]>([]);
   const [diagramPath, setDiagramPath]     = useState('');
   const [requirementsText, setRequirementsText] = useState('');
   const [requirementsSaved, setRequirementsSaved] = useState(false);
@@ -504,6 +522,7 @@ export default function App() {
         inputPath: string;
         outputPath: string;
         files: string[];
+        fileRoles?: FileRole[];
         answeredQuestions?: AnsweredQuestion[];
         pendingComponents?: PendingComponent[];
       }>('/api/upload-intake', body);
@@ -516,6 +535,7 @@ export default function App() {
       setQuestions(mergeQuestions([], payload.questions, answered));
       setArchitecturePath(payload.outputPath);
       setDiagramPath('');
+      setFileRoles(payload.fileRoles || []);
       if (payload.pendingComponents?.length) {
         setPendingComponents(payload.pendingComponents);
       }
@@ -1302,14 +1322,31 @@ export default function App() {
                 {(architecture?.sources || []).length > 0 && (
                   <Tile className="panel">
                     <Stack gap={4}>
-                      <h2>Source files parsed</h2>
+                      <div className="step-header">
+                        <h2>Source files parsed</h2>
+                        <InfoTip text="Each file is classified by role. Pricing catalogs are skipped — they contain SKU rows, not topology. BOM and unified pricing files are the primary architecture sources." />
+                      </div>
                       <div className="source-list">
-                        {(architecture?.sources || []).map((src) => (
-                          <div className="source-item" key={src.file}>
-                            <strong>{src.file}</strong>
-                            <span>{src.type} · {src.records} records</span>
-                          </div>
-                        ))}
+                        {(architecture?.sources || []).map((src) => {
+                          const basename = src.file.split('/').pop() || src.file;
+                          const roleBadge = roleTagProps(src.role);
+                          return (
+                            <div className="source-item" key={src.file}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                                <strong>{basename}</strong>
+                                {roleBadge && (
+                                  <Tag type={roleBadge.type} size="sm">{roleBadge.label}</Tag>
+                                )}
+                                {src.skipped && (
+                                  <Tag type="warm-gray" size="sm">skipped</Tag>
+                                )}
+                              </div>
+                              <span style={{ color: src.skipped ? '#8d8d8d' : undefined }}>
+                                {src.type}{src.skipped ? ' · ' + (src.skip_reason || 'skipped') : ` · ${src.records} records`}
+                              </span>
+                            </div>
+                          );
+                        })}
                       </div>
                     </Stack>
                   </Tile>

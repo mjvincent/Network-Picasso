@@ -11,6 +11,42 @@ from xml.etree import ElementTree
 
 SUPPORTED_EXTENSIONS = {".csv", ".json", ".md", ".txt", ".tsv", ".xlsx"}
 
+# ---------------------------------------------------------------------------
+# File-role classification
+# ---------------------------------------------------------------------------
+# Each uploaded file is tagged with a role so the intake pipeline can weight
+# it appropriately.  Roles:
+#   "bom"                  – primary bill of materials / solution design
+#   "pricing_catalog"      – IBM pricing estimator export (skip architecture extraction)
+#   "unified_pricing"      – Cognizant/partner unified pricing workbook (structured parse)
+#   "solution_description" – narrative/notes document
+#   "existing_architecture"– JSON architecture model
+#   "unknown"              – anything else
+
+FILE_ROLES = frozenset({
+    "bom",
+    "pricing_catalog",
+    "unified_pricing",
+    "solution_description",
+    "existing_architecture",
+    "unknown",
+})
+
+# Sheet/filename fragments that identify pure pricing-catalog exports.
+# These files contain SKU catalogs and should NOT be parsed as architecture.
+_CATALOG_FILENAME_SIGNALS = re.compile(
+    r'(price[\s_-]*estimat|estimat.*price|ibm[\s_-]*price|pricing[\s_-]*catalog'
+    r'|catalog[\s_-]*price|power[\s_-]*vs[\s_-]*estimat|powervs.*estimat'
+    r'|estimat.*powervs)',
+    re.IGNORECASE,
+)
+
+# Sheet names inside XLSX that indicate a pricing catalog sheet (skip these sheets).
+_CATALOG_SHEET_SIGNALS = re.compile(
+    r'(price[\s_-]*list|catalog|estimat|billing|invoice|sku\s*list)',
+    re.IGNORECASE,
+)
+
 KEYWORDS = {
     "regions": [
         "region",
@@ -118,17 +154,109 @@ def discover_inputs(path: Path) -> list[Path]:
     return sorted(files)
 
 
+def classify_file(path: Path) -> str:
+    """Return the role string for *path* without fully parsing it.
+
+    Classification is cheap — it only inspects the filename and, for XLSX,
+    the workbook sheet names.  The archive is opened at most once.
+    """
+    suffix = path.suffix.lower()
+    name_lower = path.name.lower()
+
+    # JSON files that look like an already-extracted architecture model
+    if suffix == ".json":
+        return "existing_architecture"
+
+    # Markdown / plain text — narrative descriptions
+    if suffix in {".md", ".txt"}:
+        return "solution_description"
+
+    # Check if filename signals a pricing catalog
+    if _CATALOG_FILENAME_SIGNALS.search(name_lower):
+        return "pricing_catalog"
+
+    if suffix == ".xlsx":
+        try:
+            with zipfile.ZipFile(path) as arc:
+                if is_solutioning_workbook(arc):
+                    return "bom"
+                if is_unified_pricing_workbook(arc):
+                    return "unified_pricing"
+                # Inspect sheet names for catalog signals
+                sheets = parse_workbook_sheets(arc)
+                sheet_names = [n for n, _ in sheets]
+                if any(_CATALOG_SHEET_SIGNALS.search(s) for s in sheet_names):
+                    return "pricing_catalog"
+        except Exception:
+            pass
+
+    if suffix in {".csv", ".tsv"}:
+        return "bom"
+
+    return "unknown"
+
+
+def is_pricing_catalog(path: Path) -> bool:
+    """Return True if *path* should be skipped during architecture extraction.
+
+    Pricing catalog files contain SKU / cost rows, not topology.  Parsing
+    them would introduce thousands of spurious components.
+    """
+    return classify_file(path) == "pricing_catalog"
+
+
 def build_architecture_from_inputs(input_path: Path, *, project_name: str | None = None) -> dict:
     files = discover_inputs(input_path)
     facts: dict[str, list[dict[str, str]]] = {key: [] for key in KEYWORDS}
     sources: list[dict[str, object]] = []
 
     for file_path in files:
+        role = classify_file(file_path)
+
+        # Skip pure pricing catalogs — they contain SKU rows, not topology.
+        if role == "pricing_catalog":
+            sources.append({
+                "file": str(file_path),
+                "type": file_path.suffix.lower().lstrip("."),
+                "records": 0,
+                "role": role,
+                "skipped": True,
+                "skip_reason": "Pricing catalog — no architecture components extracted",
+            })
+            continue
+
+        # Existing architecture JSON — fold its ibm_cloud facts in directly
+        # rather than re-parsing as raw text (avoids double-counts).
+        # Only do this when the JSON file actually has an "ibm_cloud" key;
+        # otherwise fall through and parse it as generic keyword text.
+        if role == "existing_architecture":
+            try:
+                arch_data = json.loads(file_path.read_text(encoding="utf-8"))
+                if "ibm_cloud" in arch_data:
+                    for key, items in arch_data["ibm_cloud"].items():
+                        if key == "assumptions" or not isinstance(items, list):
+                            continue
+                        facts.setdefault(key, []).extend(items)
+                    sources.append({
+                        "file": str(file_path),
+                        "type": "json",
+                        "records": sum(
+                            len(v) for v in arch_data["ibm_cloud"].values()
+                            if isinstance(v, list)
+                        ),
+                        "role": role,
+                    })
+                    continue  # fully handled — skip generic row parsing
+            except Exception:
+                pass
+            # JSON without ibm_cloud key — fall through to generic text parsing
+
         rows = list(read_input_rows(file_path))
         source_entry: dict[str, object] = {
             "file": str(file_path),
             "type": file_path.suffix.lower().lstrip("."),
             "records": len(rows),
+            "role": role,
         }
         if file_path.suffix.lower() == ".xlsx":
             try:
@@ -919,15 +1047,149 @@ def concise_name(text: str) -> str:
     return "Unlabeled component"
 
 
+# ---------------------------------------------------------------------------
+# Semantic deduplication helpers
+# ---------------------------------------------------------------------------
+
+# VSI profile strings like "bx2d-2x8", "cx2-4x8", "mx2-16x128"
+_PROFILE_SUFFIX = re.compile(r'\b[a-z]+x?\d+-?\d+x\d+\b', re.IGNORECASE)
+
+# Trailing parenthetical annotations, e.g. "(PAYG)", "(hourly)"
+_PAREN_ANNOT = re.compile(r'\s*\([^)]*\)')
+
+# Filler words to remove *after* canonical mapping.
+# Kept intentionally short so canonical service tokens are preserved.
+_FILLER_WORDS = re.compile(
+    r'\b(ibm|cloud|the|a|an|for|in|on|of|with|and|or|to|at|by'
+    r'|dedicated|connect(?:ion|or)?|service|platform|infrastructure'
+    r'|us-south|us-east|eu-de|eu-gb|ca-tor|jp-tok|au-syd|br-sao)\b',
+    re.IGNORECASE,
+)
+
+# Airport / city codes and region codes to strip
+_LOCATION_TOKENS = re.compile(
+    r'\b(dal|wdc|fra|lon|tok|syd|sao|tor|osa|che|mad|dallas|washington|dc'
+    r'|dc\d*|chicago|frankfurt|london|tokyo|sydney|toronto|osaka|chennai|madrid'
+    r'|us|eu|ca|jp|au|br)\b',
+    re.IGNORECASE,
+)
+
+# Canonical service name mapping: pattern → canonical token(s)
+# Each pattern is tried against the full lowercased, separator-normalised name.
+# Ordered most-specific first.
+# Canonical service patterns for types where location context is NOT meaningful
+# (e.g. "Transit Gateway DAL TG" == "Transit Gateway DallasTG" — same service).
+# VPCs and subnets are intentionally excluded because their location IS meaningful.
+_CANONICAL_PATTERNS: list[tuple[re.Pattern, str]] = [
+    (re.compile(r'transit\s*gate?way|tg\b|transit\s*gw'), "transit-gateway"),
+    (re.compile(r'direct\s*link'), "direct-link"),
+    (re.compile(r'load\s*bal|alb\b|nlb\b|\blb\b'), "load-balancer"),
+    (re.compile(r'object\s*storage|cos\b'), "object-storage"),
+    (re.compile(r'open\s*shift|roks\b'), "openshift"),
+    (re.compile(r'kubernetes|k8s\b'), "kubernetes"),
+    (re.compile(r'postgre|pg\b'), "postgresql"),
+    (re.compile(r'private\s*endpoint|vpe\b'), "private-endpoint"),
+    (re.compile(r'key\s*protect|kp\b'), "key-protect"),
+    (re.compile(r'secrets\s*manager|sm\b'), "secrets-manager"),
+    (re.compile(r'activity\s*track|atracker\b'), "activity-tracker"),
+    (re.compile(r'hyper\s*protect|hpcs\b'), "hyper-protect"),
+    (re.compile(r'security.*compli|scc\b'), "scc"),
+    (re.compile(r'flow\s*log'), "flow-log"),
+    (re.compile(r'vpn\s*gate?way|\bvpn\b'), "vpn-gateway"),
+    # NOTE: vpc / vsi / subnet / zone are NOT in this list —
+    # their location qualifier is architecturally significant.
+    (re.compile(r'bare\s*metal'), "bare-metal"),
+    (re.compile(r'file\s*storage'), "file-storage"),
+    (re.compile(r'block\s*storage'), "block-storage"),
+    (re.compile(r'event\s*stream'), "event-streams"),
+    (re.compile(r'ibm\s*mq|\bmq\b'), "ibm-mq"),
+    (re.compile(r'internet\s*services|cis\b'), "cis"),
+    (re.compile(r'container\s*registry'), "container-registry"),
+    (re.compile(r'dns\s*service|\bdns\b'), "dns"),
+]
+
+# Location-aware canonical patterns: applied only for components where
+# the IBM Cloud type IS location-scoped (vpcs, subnets, zones).
+# These reduce the name to: <location-prefix> <service-type>
+_LOCATION_SCOPED_TYPES = frozenset({"vpcs", "subnets", "zones"})
+
+
+def _normalise_name(name: str, *, component_type: str = "") -> str:
+    """Return a canonical token-set string for semantic deduplication.
+
+    Strategy:
+    1. Lowercase, strip parens/annotations and VSI profile suffixes.
+    2. Replace separators (- _ / | :) with spaces.
+    3. For non-location-scoped types: apply canonical service patterns.
+       If a known IBM service is found, collapse to its canonical token(s).
+    4. For location-scoped types (vpcs, subnets, zones): skip canonical
+       collapse so location distinguishes DAL VPC from WDC VPC.
+    5. Strip remaining filler words; for non-location-scoped types also
+       strip location tokens.
+    6. Sort tokens for order-independence.
+    """
+    s = name.lower().strip()
+    s = _PAREN_ANNOT.sub("", s)
+    s = _PROFILE_SUFFIX.sub("", s)
+    # Replace separators with spaces so "DallasTG" → "dallastg" (single token)
+    s = re.sub(r'[-_/|:]+', ' ', s)
+
+    location_scoped = component_type in _LOCATION_SCOPED_TYPES
+
+    if not location_scoped:
+        # Try canonical pattern matching — reduces to service canonical token
+        canonical_tokens: list[str] = []
+        for pattern, canonical in _CANONICAL_PATTERNS:
+            if pattern.search(s):
+                canonical_tokens.append(canonical)
+        if canonical_tokens:
+            return " ".join(sorted(set(canonical_tokens)))
+
+    # Filler-word stripping fallback (also used for location-scoped types)
+    s = _FILLER_WORDS.sub(" ", s)
+    if not location_scoped:
+        # Strip location tokens only for non-location-scoped components
+        s = _LOCATION_TOKENS.sub(" ", s)
+    tokens = sorted(t for t in s.split() if len(t) >= 3)
+    return " ".join(tokens)
+
+
+def _semantic_key(component: dict) -> tuple[str, str]:
+    """Return (type, normalised_name) as the dedup key for *component*."""
+    ctype = component.get("type", "")
+    return (ctype, _normalise_name(component.get("name", ""), component_type=ctype))
+
+
 def dedupe_components(components: list[dict[str, str]]) -> list[dict[str, str]]:
-    seen: set[tuple[str, str]] = set()
-    deduped: list[dict[str, str]] = []
+    """Deduplicate *components* using both exact name match and semantic normalisation.
+
+    For each semantic group, keep the component whose name is longest
+    (most descriptive) and merge ``source`` provenance from all duplicates.
+    """
+    # Group by semantic key
+    groups: dict[tuple[str, str], list[dict[str, str]]] = {}
     for component in components:
-        key = (component["type"], component["name"].lower())
-        if key in seen:
+        key = _semantic_key(component)
+        if not key[1]:
+            # Normalised name is empty (all noise) — use exact lowercase key
+            key = (component.get("type", ""), component.get("name", "").lower())
+        groups.setdefault(key, []).append(component)
+
+    deduped: list[dict[str, str]] = []
+    for group in groups.values():
+        if len(group) == 1:
+            deduped.append(group[0])
             continue
-        seen.add(key)
-        deduped.append(component)
+        # Pick the representative: longest name wins (most descriptive)
+        representative = max(group, key=lambda c: len(c.get("name", "")))
+        # Merge source provenance
+        all_sources = ", ".join(
+            c.get("source", "") for c in group if c.get("source")
+        )
+        merged = dict(representative)
+        merged["source"] = all_sources
+        deduped.append(merged)
+
     return deduped
 
 

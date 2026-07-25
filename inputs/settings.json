@@ -1,0 +1,6 @@
+{
+  "mode": "ollama",
+  "ollamaModel": "phi4-mini:latest",
+  "confidenceThreshold": 0.8,
+  "projectsRoot": "inputs/projects"
+}
