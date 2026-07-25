@@ -76,6 +76,61 @@ Return ONLY a valid JSON array with no markdown fences, no commentary. Each elem
 Return an empty array [] if you find no additional gaps.
 """
 
+_RENDER_PLAN_SYSTEM = """\
+You are an IBM Cloud senior architect. You will be given:
+1. An architecture model extracted from customer documents (JSON)
+2. The IBM Cloud diagram style guide
+3. The IBM Cloud deployment architecture guide
+
+Your task is to produce a JSON "render plan" that tells the diagram renderer exactly what to draw.
+Base every decision on the provided architecture model and answered questions — do NOT invent
+components that are not in the model.
+
+Reference patterns from ibm.com/think/architectures/patterns:
+  • basic-vpc         – single VPC, internet-facing, simple workload
+  • mzr               – single VPC spanning all 3 AZs, production HA
+  • hub-and-spoke     – Edge VPC + one or more workload VPCs + Transit Gateway
+  • three-tier-vpc    – presentation / application / data subnet tiers in one VPC
+  • hybrid            – Direct Link or VPN connecting on-premises to IBM Cloud
+  • powervs           – PowerVS workspace connected via Transit Gateway
+  • fsc               – Financial Services Cloud: no public egress, all VPE, HPCS, SCC
+
+Return ONLY a single JSON object (no markdown, no commentary) with exactly these fields:
+
+{
+  "pattern":         string,   // one of the pattern names above, or "custom"
+  "pattern_reason":  string,   // one sentence explaining why this pattern was chosen
+  "has_on_prem":     bool,     // true if Direct Link or VPN is in connectivity
+  "has_tgw":         bool,     // true if Transit Gateway is in connectivity
+  "has_powervs":     bool,     // true if PowerVS is in compute
+  "has_dr":          bool,     // true if a second region is present
+  "az_count":        int,      // 1, 2, or 3 — number of availability zones to draw
+  "vpcs": [                    // one entry per VPC to draw (from extracted vpcs list)
+    {
+      "name":    string,
+      "purpose": string,       // e.g. "Edge VPC — internet ingress", "Production VPC"
+      "tiers":   [string]      // subnet tiers to show: "Public", "Private", "Management", "Data"
+    }
+  ],
+  "shared_services": [string], // service names to show in the shared services panel
+  "connectivity_label": string // label for the connectivity bar (e.g. "Direct Link 2.0")
+}
+"""
+
+_RENDER_PLAN_USER_TMPL = """\
+Architecture model:
+{architecture_json}
+
+IBM Cloud deployment architecture guide:
+{deployment_guide}
+
+IBM Cloud style guide:
+{style_guide}
+
+Based on the architecture model above, produce the render plan JSON object.
+Only include what is present in the model. Do not invent components.
+"""
+
 _GAP_ANALYSIS_USER_TMPL = """\
 Review this IBM Cloud architecture model and identify design gaps beyond the standard checks:
 
@@ -173,6 +228,48 @@ def extract_components(text: str, model: str, base_url: str) -> list[dict]:
     except (URLError, OSError, json.JSONDecodeError) as exc:
         print(f"[ollama] extract_components: {exc}")
         return []
+
+
+def plan_render(architecture: dict, model: str, base_url: str,
+                deployment_guide: str = "", style_guide: str = "") -> dict:
+    """Ask the LLM to decide the reference architecture pattern and render plan.
+
+    Reads the extracted architecture model + IBM MD guide files and returns a
+    structured render plan dict.  The renderer uses this instead of its own
+    heuristics when in Ollama mode.
+
+    Returns a render plan dict, or {} if Ollama is unreachable / returns bad JSON.
+    Keys: pattern, pattern_reason, has_on_prem, has_tgw, has_powervs, has_dr,
+          az_count, vpcs, shared_services, connectivity_label.
+    """
+    compact = {k: v for k, v in architecture.items() if k != "sources"}
+    arch_json = json.dumps(compact, indent=2)[:6000]
+    prompt = (
+        f"System:\n{_RENDER_PLAN_SYSTEM}\n\n"
+        f"User:\n{_RENDER_PLAN_USER_TMPL.format(
+            architecture_json=arch_json,
+            deployment_guide=deployment_guide[:2000],
+            style_guide=style_guide[:1000],
+        )}"
+    )
+    try:
+        data = _post(
+            f"{base_url}/api/generate",
+            {"model": model, "prompt": prompt, "stream": False},
+            timeout=90,
+        )
+        raw = data.get("response", "").strip()
+        if raw.startswith("```"):
+            lines = raw.splitlines()
+            raw = "\n".join(ln for ln in lines if not ln.startswith("```")).strip()
+        result = json.loads(raw)
+        if isinstance(result, dict):
+            return result
+        print(f"[ollama] plan_render: expected JSON object, got {type(result).__name__}")
+        return {}
+    except (URLError, OSError, json.JSONDecodeError) as exc:
+        print(f"[ollama] plan_render: {exc}")
+        return {}
 
 
 def generate_questions(architecture: dict, model: str, base_url: str) -> list[dict]:

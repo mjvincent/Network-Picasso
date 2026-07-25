@@ -70,18 +70,20 @@ def test_empty_model_fallback():
 
 
 def test_zone_labels_in_deployment():
-    """Deployment output contains AZ zone labels (Zone 1/2/3)."""
+    """Deployment output contains at least one AZ zone label derived from data."""
     xml = render_drawio(SAMPLE_ARCH, diagram_type="deployment")
-    for zone in ("Zone 1", "Zone 2", "Zone 3"):
-        assert zone in xml, f"Expected '{zone}' in deployment XML"
+    # Data-driven: zone count comes from zone tags in the model.
+    # Sample has zone-1 tagged → renderer draws Zone 1 only.
+    assert "Zone 1" in xml, "Expected 'Zone 1' in deployment XML"
 
 
 def test_subnet_bands_in_deployment():
-    """Deployment output contains subnet labels for each tier."""
+    """Deployment output contains subnet tier labels derived from extracted data."""
     xml = render_drawio(SAMPLE_ARCH, diagram_type="deployment")
-    # New hub-and-spoke renderer uses named subnets: edge-subnet-1, prod-subnet-1, mgmt-subnet-1
-    for label in ("edge-subnet-1", "prod-subnet-1", "mgmt-subnet-1"):
-        assert label in xml, f"Expected subnet label '{label}' in deployment XML"
+    # Data-driven: subnet names include the VPC name and tier from the model.
+    # Sample has 'sample-prod-vpc' with Public/Private/Management/Data tiers.
+    for tier in ("public-subnet", "private-subnet"):
+        assert tier in xml, f"Expected subnet tier label '{tier}' in deployment XML"
 
 
 def test_ibm_stencil_shapes_present():

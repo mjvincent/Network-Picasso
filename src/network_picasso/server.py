@@ -15,6 +15,8 @@ from .drawio import (
     render_ibm_node_snippet,
     render_multipage_drawio,
     STENCIL_MAP,
+    DEPLOYMENT_GUIDE,
+    STYLE_GUIDE,
 )
 from .intake import backfill_answer_into_model, build_architecture_from_inputs
 from . import mcp_bridge as _mcp
@@ -654,9 +656,28 @@ class NetworkPicassoHandler(BaseHTTPRequestHandler):
         diagram_type = payload.get("diagramType") or "deployment"
         output_path = repo_path(payload.get("outputPath") or f"outputs/network-picasso-{diagram_type}.drawio")
 
+        # Ollama mode: ask the LLM to choose the reference pattern and enrich
+        # the architecture with a render plan before generating the diagram.
+        settings = load_settings()
+        mode = str(payload.get("mode") or settings.get("mode") or "rules")
+        if mode == "ollama" and diagram_type == "deployment":
+            model = str(payload.get("ollamaModel") or settings.get("ollamaModel") or _SETTINGS_DEFAULTS["ollamaModel"])
+            render_plan = _ollama.plan_render(
+                architecture, model, OLLAMA_BASE_URL,
+                deployment_guide=DEPLOYMENT_GUIDE,
+                style_guide=STYLE_GUIDE,
+            )
+            if render_plan:
+                # Persist LLM pattern decision into architecture for logging / later use
+                architecture.setdefault("render_plan", {}).update(render_plan)
+                print(f"[generate] LLM render plan: {render_plan.get('pattern')} — {render_plan.get('pattern_reason', '')}")
+
         output_path.parent.mkdir(parents=True, exist_ok=True)
         output_path.write_text(render_drawio(architecture, diagram_type=diagram_type), encoding="utf-8")
-        self.send_json({"outputPath": relative_to_repo(output_path)})
+        self.send_json({
+            "outputPath": relative_to_repo(output_path),
+            "renderPlan": architecture.get("render_plan"),
+        })
 
     def read_json(self) -> dict:
         length = int(self.headers.get("Content-Length", "0") or "0")

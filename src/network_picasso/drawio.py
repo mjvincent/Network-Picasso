@@ -1109,364 +1109,357 @@ def _render_logical(builder: DrawioBuilder, project: dict, ibm_cloud: dict) -> N
 
 
 # ---------------------------------------------------------------------------
-# Deployment diagram — Hub-and-Spoke reference pattern
+# Deployment diagram — data-driven, no hardcoded topology
 # ---------------------------------------------------------------------------
-# Layout matches IBM ibm.com/think/architectures/patterns reference:
-#   Left:  Enterprise / on-premises (router, firewall, VPN, SDWAN)
-#   Center: Connectivity bar (Direct Link / VPN) → Transit Gateway
-#   Right: IBM Cloud Account
-#            └── Region (primary)
-#                  ├── Edge VPC  (Zone 1 → edge-subnet → Firewall, VPN GW, LB)
-#                  ├── Management VPC (Zone 1 → mgmt-subnet → Bastion, Jump)
-#                  └── Production VPC (Zone 1/2/3 → subnets → Compute, Data)
-#   Far right: Shared services (COS, Key Protect, Secrets, Monitoring, Activity Tracker)
-#   Second region (DR): collapsed summary box when present
+# The renderer reads ONLY what was extracted into ibm_cloud and the answered
+# questions.  It does NOT assume any specific pattern (hub-and-spoke, single
+# VPC, etc.) — those decisions come from the data.
+#
+# Pattern detection (from extracted data):
+#   has_on_prem    → Direct Link or VPN present in connectivity
+#   has_tgw        → Transit Gateway present → draw TGW node
+#   vpc_count      → number of extracted VPCs → draw that many VPC containers
+#   az_count       → detected from zone tags on subnets/compute, else 3 if MZR
+#   has_powervs    → Power VS in compute → draw PowerVS workspace
+#   has_dr         → two regions extracted → draw DR summary
+#
+# Layout rules (from 03-deployment-architecture.md + IBM style guide):
+#   - On-prem / Enterprise block only when DL or VPN is present
+#   - Connectivity column only when on-prem is present
+#   - One VPC container per extracted VPC (named from data)
+#   - Zones stacked inside each VPC, count derived from data (fallback: 3)
+#   - Subnets inside zones, labelled from extracted subnet_tier hints
+#   - Shared services (data, security, obs) on the right, always present
+#   - DR box only when second region extracted
 # ---------------------------------------------------------------------------
 
-# Layout constants for hub-and-spoke
-_ENT_X   = 20
-_ENT_Y   = 80
-_ENT_W   = 260
-_ENT_H   = 680
-
-_CONN_X  = _ENT_X + _ENT_W + 20      # 300
-_CONN_W  = 220
-_CONN_H  = _ENT_H
-
-_IBM_X   = _CONN_X + _CONN_W + 20    # 540
-_IBM_Y   = _ENT_Y
-_IBM_W   = 2060
-_IBM_H   = 1400
-
-# Inside IBM Cloud account: region starts at y=60 (label row)
-_REG_MARGIN = 20
-_REG_X   = _REG_MARGIN
-_REG_Y   = 60
-_REG_W   = _IBM_W - 2 * _REG_MARGIN  # 2020
-_REG_H   = _IBM_H - _REG_Y - 20      # 1320
-
-# VPC layout inside region (side by side)
-_VPC_TOP = 60           # y inside region
-_VPC_PAD = 20           # horizontal gap between VPCs
-_EDGE_VPC_W   = 440
-_MGMT_VPC_W   = 440
-_PROD_VPC_W   = _REG_W - _EDGE_VPC_W - _MGMT_VPC_W - 3 * _VPC_PAD  # ~680
-_VPC_H        = _REG_H - _VPC_TOP - 20
-
-# Zone height inside production VPC
-_ZONE_TOP    = 52
-_ZONE_H      = (_VPC_H - _ZONE_TOP - 10) // 3 - 4
-
-# Subnet / security-group heights inside a zone
-_SUBNET_TOP  = 40
-_SUBNET_H    = _ZONE_H - _SUBNET_TOP - 10
-_SG_MARGIN   = 8
-_SG_H        = _SUBNET_H - 2 * _SG_MARGIN - 20
-
-# Shared services panel (right of IBM Cloud)
-_SVC_X   = _IBM_X + _IBM_W + 20
-_SVC_W   = 260
-_SVC_H   = _IBM_H
-
-# Node sizes
-_NODE_D  = 48
-_NODE_GAP = 70   # horizontal gap between nodes
+# Layout geometry — everything is relative to these anchors
+_BASE_X   = 20
+_BASE_Y   = 80
+_NODE_D   = 48
+_NODE_GAP = 72
+_SG_M     = 8     # security-group / subnet inner margin
 
 
-def _subnet_label(vpc_short: str, tier: str, zone_num: int) -> str:
-    """Build a descriptive subnet label like 'prod-subnet-1 (10.240.1.0/24)'."""
-    prefix = {"Public": "edge", "Private": vpc_short, "Management": "mgmt", "Data": "data"}.get(tier, tier.lower())
-    return f"{prefix}-subnet-{zone_num}"
+def _az_count_from_data(ibm_cloud: dict) -> int:
+    """Detect how many AZs to draw from zone tags in the extracted model."""
+    seen: set[str] = set()
+    for key in ("subnets", "compute", "ingress", "data"):
+        for item in ibm_cloud.get(key, []):
+            z = str(item.get("zone") or "").strip()
+            if z:
+                seen.add(z.lower())
+    # Accept tags like "zone-1", "zone-2", "Zone 1", "dal10"
+    known = [z for z in seen if any(c.isdigit() for c in z)]
+    count = len(known)
+    return max(count, 1) if count else 3  # default 3 for MZR
+
+
+def _vpc_tier_items(ibm_cloud: dict, vpc_name: str) -> dict[str, list[dict]]:
+    """Return items for each subnet tier relevant to a given VPC.
+
+    Uses subnet_tier hints in the extracted model.  Falls back to category
+    mapping when no explicit hint is present.
+    """
+    tier_map: dict[str, list[dict]] = {
+        "Public": [], "Private": [], "Management": [], "Data": [],
+    }
+    category_to_tier = {
+        "ingress": "Public",
+        "compute": "Private",
+        "security": "Management",
+        "observability": "Management",
+        "data": "Data",
+    }
+    for cat, default_tier in category_to_tier.items():
+        for item in ibm_cloud.get(cat, []):
+            tier = item.get("subnet_tier") or default_tier
+            if tier in tier_map:
+                tier_map[tier].append(item)
+    return tier_map
 
 
 def _render_deployment(builder: DrawioBuilder, project: dict, ibm_cloud: dict) -> None:  # noqa: PLR0912, PLR0915
+    """Render a deployment diagram driven entirely by the extracted architecture model.
+
+    No topology is assumed.  Every structural element (on-prem block, VPC count,
+    AZ count, node types) is derived from the ibm_cloud dict.
+    """
     _render_title(builder, project, "deployment")
 
-    regions_data   = ibm_cloud.get("regions")         or [{"name": "Region TBD"}]
-    ingress_items  = ibm_cloud.get("ingress")          or [{"name": "Public Load Balancer"}]
-    compute_items  = ibm_cloud.get("compute")          or [{"name": "Compute TBD"}]
-    data_items     = ibm_cloud.get("data")             or [{"name": "Data TBD"}]
-    security_items = ibm_cloud.get("security")         or [{"name": "Security TBD"}]
-    obs_items      = ibm_cloud.get("observability")    or [{"name": "Monitoring"}]
-    conn_items     = ibm_cloud.get("connectivity")     or [{"name": "Direct Link"}]
-    vpcs_data      = ibm_cloud.get("vpcs")             or []
+    regions_data   = ibm_cloud.get("regions")          or [{"name": "Region TBD"}]
+    conn_items     = ibm_cloud.get("connectivity")      or []
+    vpcs_data      = ibm_cloud.get("vpcs")              or [{"name": "VPC", "purpose": ""}]
+    data_items     = ibm_cloud.get("data")              or []
+    security_items = ibm_cloud.get("security")          or []
+    obs_items      = ibm_cloud.get("observability")     or []
     private_eps    = ibm_cloud.get("private_endpoints") or []
 
-    # ── Enterprise / On-Premises (left column) ───────────────────────────
-    ent_id = builder.ibm_location(
-        "Enterprise / On-Premises", _ENT_X, _ENT_Y, _ENT_W, _ENT_H,
-        shape="network--enterprise", stroke_color=COLOR["grey"],
+    # ── Pattern detection — from extracted data, no assumptions ──────────
+    has_on_prem = any(
+        kw in (c.get("name") or "").lower()
+        for c in conn_items
+        for kw in ("direct link", "vpn", "direct-link")
     )
-    users_node = builder.ibm_actor("Users / Clients", _ENT_X + 20, _ENT_Y + 80,  "user",       d=_NODE_D)
-    ent_node   = builder.ibm_actor("Enterprise",      _ENT_X + 20, _ENT_Y + 200, "enterprise", d=_NODE_D)
-    # On-prem network equipment
-    ent_y_cur = _ENT_Y + 320
-    for ent_item in [
-        ("Router",   "router"),
-        ("Firewall", "group--security"),
-        ("VPN",      "ibm--vpn-for-vpc"),
-    ]:
-        builder.ibm_node(ent_item[0], _ENT_X + 20, ent_y_cur, ent_item[1], d=40)
-        ent_y_cur += 56
+    has_tgw     = _has_transit_gateway(ibm_cloud)
+    has_powervs = _has_powervs(ibm_cloud)
+    has_dr      = len(regions_data) > 1
+    az_count    = _az_count_from_data(ibm_cloud)
+    vpc_count   = len(vpcs_data)
 
-    # ── Connectivity bar (center column) ────────────────────────────────
-    conn_container = builder.ibm_location(
-        "Connectivity", _CONN_X, _ENT_Y, _CONN_W, _CONN_H,
-        shape="arrows--horizontal", stroke_color=COLOR["network"],
-    )
-    builder.edge(ent_node, conn_container, "")
-    builder.edge(users_node, conn_container, "HTTPS/API")
+    # ── Layout anchors — shift right if on-prem block is present ─────────
+    ent_w    = 260
+    conn_w   = 200
+    gap      = 20
 
-    # Direct Link and VPN nodes in connectivity column
-    dl_items  = [c for c in conn_items if "direct" in (c.get("name") or "").lower()]
-    vpn_items = [c for c in conn_items if "vpn" in (c.get("name") or "").lower()]
-    non_tgw   = [c for c in conn_items if "transit" not in (c.get("name") or "").lower()]
+    cursor_x = _BASE_X
 
-    conn_y = _ENT_Y + 80
-    conn_node_ids: list[str] = []
-    for citem in non_tgw[:3]:
-        cshape = _stencil_shape(citem.get("name") or "")
-        cid = builder.ibm_node(
-            citem.get("name") or "Connectivity",
-            _CONN_X + 20, conn_y,
-            cshape or "ibm-cloud--direct-link-2--connect", d=40,
+    # ── On-Premises block (only when Direct Link or VPN extracted) ───────
+    on_prem_node: str | None = None
+    users_node:   str | None = None
+
+    if has_on_prem:
+        ent_h = 360
+        builder.ibm_location(
+            "Enterprise / On-Premises", cursor_x, _BASE_Y, ent_w, ent_h,
+            shape="network--enterprise", stroke_color=COLOR["grey"],
         )
-        conn_node_ids.append(cid)
-        conn_y += 80
+        users_node  = builder.ibm_actor("Users",      cursor_x + 20, _BASE_Y + 60,  "user",       d=40)
+        on_prem_node = builder.ibm_actor("Enterprise", cursor_x + 20, _BASE_Y + 160, "enterprise", d=40)
 
-    # ── IBM Cloud Account boundary ───────────────────────────────────────
+        # Only draw connectivity equipment that was actually extracted
+        eq_y = _BASE_Y + 260
+        vpn_items = [c for c in conn_items if "vpn" in (c.get("name") or "").lower()]
+        if vpn_items:
+            builder.ibm_node(vpn_items[0].get("name") or "VPN", cursor_x + 20, eq_y, "ibm--vpn-for-vpc", d=36)
+            eq_y += 52
+
+        cursor_x += ent_w + gap
+
+        # Connectivity column — items from extracted connectivity
+        non_tgw = [c for c in conn_items if "transit" not in (c.get("name") or "").lower()]
+        if non_tgw:
+            conn_container = builder.ibm_location(
+                "Connectivity", cursor_x, _BASE_Y, conn_w, ent_h,
+                shape="arrows--horizontal", stroke_color=COLOR["network"],
+            )
+            if on_prem_node:
+                builder.edge(on_prem_node, conn_container, "")
+            if users_node:
+                builder.edge(users_node, conn_container, "HTTPS/API")
+
+            cy = _BASE_Y + 60
+            conn_anchor: str | None = None
+            for citem in non_tgw[:3]:
+                cshape = _stencil_shape(citem.get("name") or "")
+                cid = builder.ibm_node(
+                    citem.get("name") or "Connectivity",
+                    cursor_x + 20, cy,
+                    cshape or "ibm-cloud--direct-link-2--connect", d=36,
+                )
+                if conn_anchor is None:
+                    conn_anchor = cid
+                cy += 72
+            cursor_x += conn_w + gap
+    else:
+        # Internet-only: just show users on the left
+        users_node = builder.ibm_actor("Users / Clients", cursor_x + 10, _BASE_Y + 60, "user", d=40)
+        cursor_x += 80 + gap
+
+    # ── IBM Cloud Account ─────────────────────────────────────────────────
+    # Width: fit all VPCs side-by-side inside, plus shared services on right
+    per_vpc_w   = max(480, 1200 // max(vpc_count, 1))
+    ibm_inner_w = vpc_count * per_vpc_w + (vpc_count + 1) * gap
+    svc_panel_w = 280
+    ibm_w       = ibm_inner_w + svc_panel_w + gap * 2
+    ibm_h       = 80 + max(az_count * 280 + 120, 600)
+
     ibm_account = builder.ibm_location(
-        "IBM Cloud Account", _IBM_X, _IBM_Y, _IBM_W, _IBM_H,
+        "IBM Cloud Account", cursor_x, _BASE_Y, ibm_w, ibm_h,
         shape="ibm-cloud", stroke_color=COLOR["network"], stroke_width=2,
     )
-    # Edge from connectivity to IBM Cloud boundary
-    if conn_node_ids:
-        builder.edge(conn_node_ids[0], ibm_account, "")
+    if users_node and not has_on_prem:
+        builder.edge(users_node, ibm_account, "HTTPS/API")
 
-    # ── Primary region ───────────────────────────────────────────────────
-    primary_region = regions_data[0]
-    region_label   = _label(primary_region, "Region (Primary)")
-
+    # ── Region ───────────────────────────────────────────────────────────
+    reg_margin = 20
     region_id = builder.child_ibm_location(
-        region_label,
-        _REG_X, _REG_Y, _REG_W, _REG_H,
+        _label(regions_data[0], "Region"),
+        reg_margin, 60,
+        ibm_inner_w - reg_margin, ibm_h - 80,
         "location", COLOR["grey"], ibm_account,
     )
 
-    # ── Transit Gateway (if present) ────────────────────────────────────
+    # ── Transit Gateway (only if extracted) ──────────────────────────────
     tgw_id: str | None = None
-    if _has_transit_gateway(ibm_cloud):
+    if has_tgw:
         tgw_id = builder.child_ibm_node(
-            "Transit Gateway",
-            _REG_X + 20, _REG_Y + 20,
+            "Transit Gateway", reg_margin + 10, 20,
             "ibm-cloud--transit-gateway", region_id, d=40,
         )
 
-    # ── VPC Layout — Edge VPC / Management VPC / Production VPC ─────────
-    vpc_x = _VPC_PAD
+    # ── VPCs — one per extracted VPC, side by side ───────────────────────
+    vpc_ids: list[str] = []
+    vpc_x_offset = gap
 
-    # Determine VPC labels from extracted VPCs
-    vpc_names = [v.get("name", "") for v in vpcs_data]
-    edge_vpc_label = next((n for n in vpc_names if "edge" in n.lower()), "Edge VPC")
-    mgmt_vpc_label = next((n for n in vpc_names if "mgmt" in n.lower() or "management" in n.lower()), "Management VPC")
-    prod_vpc_label = next((n for n in vpc_names if n not in (edge_vpc_label, mgmt_vpc_label)), None) \
-                     or (vpcs_data[0].get("name") if vpcs_data else None) \
-                     or "Production VPC"
+    for v_idx, vpc in enumerate(vpcs_data):
+        vpc_label = vpc.get("name") or f"VPC {v_idx + 1}"
+        if vpc.get("purpose"):
+            vpc_label += f"\n{vpc['purpose']}"
 
-    # ── Edge VPC ─────────────────────────────────────────────────────────
-    edge_vpc_id = builder.child_ibm_location(
-        edge_vpc_label, vpc_x, _VPC_TOP, _EDGE_VPC_W, _VPC_H,
-        "ibm-cloud--vpc", COLOR["network"], region_id,
-    )
-    if tgw_id:
-        builder.edge(tgw_id, edge_vpc_id, "")
-    # Zone 1 inside edge VPC
-    edge_zone_id = builder.child_ibm_location(
-        "Zone 1", _SG_MARGIN, _ZONE_TOP, _EDGE_VPC_W - 2 * _SG_MARGIN, _VPC_H - _ZONE_TOP - 8,
-        "data--center", COLOR["grey"], edge_vpc_id, dashed=True,
-    )
-    # Edge subnet
-    edge_subnet_id = builder.container(
-        _subnet_label("edge", "Public", 1),
-        _SG_MARGIN, _SUBNET_TOP, _EDGE_VPC_W - 2 * _SG_MARGIN - 16, _SUBNET_H,
-        fill=COLOR["Public"], stroke=COLOR["az_stroke"], font_size=10,
-        parent=edge_zone_id,
-    )
-    # Security group inside edge subnet
-    edge_sg_id = builder.container(
-        "edge-sg", _SG_MARGIN, _SG_MARGIN + 20, _EDGE_VPC_W - 4 * _SG_MARGIN - 16, _SG_H,
-        fill="none", stroke=COLOR["security"], font_size=9, dashed=True,
-        parent=edge_subnet_id,
-    )
-    # Ingress / LB / Firewall inside edge-sg
-    ing_node_x = _SG_MARGIN
-    for ing in ingress_items[:2]:
-        ing_shape = _stencil_shape(ing.get("name") or "")
-        builder.child_ibm_node(
-            ing.get("name") or "Load Balancer",
-            ing_node_x, _SG_MARGIN,
-            ing_shape or "load-balancer--vpc", edge_sg_id, d=40,
+        vpc_w = per_vpc_w - gap
+        vpc_h = ibm_h - 80 - 60 - 20   # fill inside region
+
+        vpc_id = builder.child_ibm_location(
+            vpc_label, vpc_x_offset, 60, vpc_w, vpc_h,
+            "ibm-cloud--vpc", COLOR["network"], region_id,
         )
-        ing_node_x += _NODE_GAP
-    # Firewall if present (VPN gateway in edge)
-    if vpn_items:
-        builder.child_ibm_node(
-            "VPN Gateway", ing_node_x, _SG_MARGIN,
-            "ibm--vpn-for-vpc", edge_sg_id, d=40,
-        )
+        vpc_ids.append(vpc_id)
+        if tgw_id:
+            builder.edge(tgw_id, vpc_id, "")
 
-    # ── Management VPC ────────────────────────────────────────────────────
-    vpc_x += _EDGE_VPC_W + _VPC_PAD
-    mgmt_vpc_id = builder.child_ibm_location(
-        mgmt_vpc_label, vpc_x, _VPC_TOP, _MGMT_VPC_W, _VPC_H,
-        "ibm-cloud--vpc", COLOR["network"], region_id,
-    )
-    if tgw_id:
-        builder.edge(tgw_id, mgmt_vpc_id, "")
-    # Zone 1 inside management VPC
-    mgmt_zone_id = builder.child_ibm_location(
-        "Zone 1", _SG_MARGIN, _ZONE_TOP, _MGMT_VPC_W - 2 * _SG_MARGIN, _VPC_H - _ZONE_TOP - 8,
-        "data--center", COLOR["grey"], mgmt_vpc_id, dashed=True,
-    )
-    mgmt_subnet_id = builder.container(
-        _subnet_label("mgmt", "Management", 1),
-        _SG_MARGIN, _SUBNET_TOP, _MGMT_VPC_W - 2 * _SG_MARGIN - 16, _SUBNET_H,
-        fill=COLOR["Management"], stroke=COLOR["az_stroke"], font_size=10,
-        parent=mgmt_zone_id,
-    )
-    mgmt_sg_id = builder.container(
-        "mgmt-sg", _SG_MARGIN, _SG_MARGIN + 20, _MGMT_VPC_W - 4 * _SG_MARGIN - 16, _SG_H,
-        fill="none", stroke=COLOR["security"], font_size=9, dashed=True,
-        parent=mgmt_subnet_id,
-    )
-    # Bastion + Jump Server
-    builder.child_ibm_node("Bastion Host",  _SG_MARGIN,          _SG_MARGIN, "bastion-host",                 mgmt_sg_id, d=40)
-    builder.child_ibm_node("Jump Server",   _SG_MARGIN + _NODE_GAP, _SG_MARGIN, "ibm-cloud--virtual-server-vpc", mgmt_sg_id, d=40)
-    # Security items (IAM, Key Protect, Secrets) as separate nodes below
-    sec_y = _SG_H + _SG_MARGIN * 2 + 28
-    for si, sec in enumerate(security_items[:2]):
-        sec_shape = _stencil_shape(sec.get("name") or "")
-        builder.child_ibm_node(
-            sec.get("name") or "Security",
-            _SG_MARGIN + si * _NODE_GAP, sec_y,
-            sec_shape or "group--security", mgmt_zone_id, d=40,
-        )
+        # ── Determine tier items for this VPC ───────────────────────────
+        # Use all items if single VPC, otherwise try to match by vpc hint
+        if vpc_count == 1:
+            tier_items = _vpc_tier_items(ibm_cloud, vpc_label)
+        else:
+            # Filter items that reference this VPC by name
+            filtered: dict[str, list] = {"Public": [], "Private": [], "Management": [], "Data": []}
+            cat_tier = {"ingress": "Public", "compute": "Private",
+                        "security": "Management", "observability": "Management", "data": "Data"}
+            for cat, dtier in cat_tier.items():
+                for item in ibm_cloud.get(cat, []):
+                    item_vpc = str(item.get("vpc") or item.get("notes") or "").lower()
+                    if vpc_label.lower() in item_vpc or vpc_count == 1:
+                        tier = item.get("subnet_tier") or dtier
+                        if tier in filtered:
+                            filtered[tier].append(item)
+            # Fall back: distribute evenly if no vpc tags
+            if not any(filtered.values()):
+                tier_items = _vpc_tier_items(ibm_cloud, vpc_label)
+                # Split items across VPCs roughly
+                for tier, items in tier_items.items():
+                    chunk = len(items) // vpc_count
+                    start = v_idx * chunk
+                    filtered[tier] = items[start:start + max(chunk, 1)]
+            tier_items = filtered
 
-    # ── Production VPC ────────────────────────────────────────────────────
-    vpc_x += _MGMT_VPC_W + _VPC_PAD
-    prod_vpc_id = builder.child_ibm_location(
-        prod_vpc_label, vpc_x, _VPC_TOP, _PROD_VPC_W, _VPC_H,
-        "ibm-cloud--vpc", COLOR["network"], region_id,
-    )
-    if tgw_id:
-        builder.edge(tgw_id, prod_vpc_id, "")
+        # ── Availability Zones inside this VPC ──────────────────────────
+        zone_h_each = (vpc_h - 60 - az_count * _SG_M) // max(az_count, 1)
+        z_y = 60
 
-    # Zones 1–3 in production VPC (stacked vertically)
-    zone_y = _ZONE_TOP
-    for z in range(1, AZ_COUNT + 1):
-        z_h = (_VPC_H - _ZONE_TOP - 12) // AZ_COUNT - 4
-        zone_id = builder.child_ibm_location(
-            f"Zone {z}", _SG_MARGIN, zone_y, _PROD_VPC_W - 2 * _SG_MARGIN, z_h,
-            "data--center", COLOR["grey"], prod_vpc_id, dashed=True, icon_size=20,
-        )
+        for z in range(1, az_count + 1):
+            z_label = f"Zone {z}"
+            z_w = vpc_w - 2 * _SG_M
 
-        # Public subnet (ingress)
-        pub_sub_h = z_h // 3 - 4
-        pub_sub_id = builder.container(
-            _subnet_label("prod", "Public", z),
-            _SG_MARGIN, _SUBNET_TOP // 2, _PROD_VPC_W - 4 * _SG_MARGIN, pub_sub_h,
-            fill=COLOR["Public"], stroke=COLOR["az_stroke"], font_size=9,
-            parent=zone_id,
-        )
-        if z == 1 and ingress_items:
-            ing = ingress_items[0]
-            ing_shape = _stencil_shape(ing.get("name") or "")
-            builder.child_ibm_node(
-                ing.get("name") or "Load Balancer",
-                _SG_MARGIN, 6, ing_shape or "load-balancer--application", pub_sub_id, d=36,
+            zone_id = builder.child_ibm_location(
+                z_label, _SG_M, z_y, z_w, zone_h_each,
+                "data--center", COLOR["grey"], vpc_id, dashed=True, icon_size=20,
             )
 
-        # Private subnet (compute)
-        priv_y   = _SUBNET_TOP // 2 + pub_sub_h + 4
-        priv_h   = z_h - priv_y - 4
-        priv_sub_id = builder.container(
-            _subnet_label("prod", "Private", z),
-            _SG_MARGIN, priv_y, _PROD_VPC_W - 4 * _SG_MARGIN, priv_h,
-            fill=COLOR["Private"], stroke=COLOR["az_stroke"], font_size=9,
-            parent=zone_id,
-        )
-        if z == 1 and compute_items:
-            for ci, comp in enumerate(compute_items[:2]):
-                comp_shape = _stencil_shape(comp.get("name") or "")
-                builder.child_ibm_node(
-                    comp.get("name") or "Compute",
-                    _SG_MARGIN + ci * _NODE_GAP, 6,
-                    comp_shape or "ibm-cloud--virtual-server-vpc", priv_sub_id, d=36,
+            # Tiers with items → draw subnet bands inside this zone
+            node_x = _SG_M + 4
+            TIER_COLORS = {
+                "Public": COLOR["Public"], "Private": COLOR["Private"],
+                "Management": COLOR["Management"], "Data": COLOR["Data"],
+            }
+            band_h      = (zone_h_each - 40) // max(len([t for t, its in tier_items.items() if its]), 1)
+            band_h      = max(band_h, 60)
+            band_y_cur  = 36
+
+            for tier, items in tier_items.items():
+                if not items:
+                    continue
+                # Derive subnet label from first item's subnet_tier or tier name
+                first = items[0]
+                subnet_name = (
+                    first.get("name") if "subnet" in str(first.get("name") or "").lower()
+                    else f"{vpc_label.split()[0].lower()}-{tier.lower()}-subnet-{z}"
                 )
+                sub_id = builder.container(
+                    subnet_name,
+                    _SG_M, band_y_cur, z_w - 2 * _SG_M, band_h,
+                    fill=TIER_COLORS.get(tier, "#f4f4f4"),
+                    stroke=COLOR["az_stroke"], font_size=9,
+                    parent=zone_id,
+                )
+                # Place service nodes inside subnet (zone 1 only for clarity)
+                if z == 1:
+                    nx = _SG_M + 4
+                    for item in items[:3]:
+                        shape = _stencil_shape(item.get("name") or "")
+                        if shape:
+                            builder.child_ibm_node(
+                                item.get("name") or tier,
+                                nx, 8, shape, sub_id, d=36,
+                            )
+                        nx += _NODE_GAP
 
-        zone_y += z_h + 4
+                band_y_cur += band_h + _SG_M
 
-    # ── Shared Services panel (right side, outside IBM account) ──────────
-    svc_container = builder.ibm_location(
-        "Shared Services", _SVC_X, _IBM_Y, _SVC_W, _SVC_H,
-        shape="cloud-services", stroke_color=COLOR["data"],
+            z_y += zone_h_each + _SG_M
+
+        vpc_x_offset += per_vpc_w
+
+    # ── Shared Services panel (right side of IBM Cloud) ───────────────────
+    svc_x = ibm_inner_w + gap
+    svc_y_start = _BASE_Y + 70
+
+    svc_items: list[tuple[list[dict], str, str]] = [
+        (data_items,     "data--base",           "Data"),
+        (security_items, "ibm-cloud--key-protect","Security"),
+        (obs_items,      "cloud--monitoring",     "Observability"),
+    ]
+    if private_eps:
+        svc_items.append((private_eps[:3], "ibm-cloud--vpc-endpoints", "VPE"))
+
+    svc_node_count = sum(len(lst) for lst, _, _ in svc_items)
+    svc_h_total    = svc_node_count * 64 + 80
+    svc_container  = builder.child_ibm_location(
+        "Shared Services",
+        svc_x, 60, svc_panel_w, max(svc_h_total, ibm_h - 100),
+        "cloud-services", COLOR["data"], ibm_account,
     )
 
-    svc_y = _IBM_Y + 70
-    # Data services (COS, databases)
-    for di, ditem in enumerate(data_items[:3]):
-        dshape = _stencil_shape(ditem.get("name") or "")
-        builder.ibm_node(
-            ditem.get("name") or "Data", _SVC_X + 20, svc_y,
-            dshape or "data--base", d=40,
-        )
-        svc_y += 64
+    svc_node_y = 60
+    for item_list, default_shape, group_label in svc_items:
+        for sitem in item_list[:4]:
+            name = sitem.get("name") or sitem if isinstance(sitem, str) else group_label
+            shape = _stencil_shape(name) or default_shape
+            builder.child_ibm_node(
+                str(name), 16, svc_node_y, shape, svc_container, d=40,
+            )
+            svc_node_y += 64
 
-    # Security shared services
-    for si, sitem in enumerate(security_items[:2]):
-        sshape = _stencil_shape(sitem.get("name") or "")
-        builder.ibm_node(
-            sitem.get("name") or "Security", _SVC_X + 20, svc_y,
-            sshape or "ibm-cloud--key-protect", d=40,
-        )
-        svc_y += 64
+    # ── Edge from last VPC to shared services ────────────────────────────
+    if vpc_ids:
+        builder.edge(vpc_ids[-1], svc_container, "private access via VPE", dashed=True)
 
-    # Observability
-    for oi, oitem in enumerate(obs_items[:2]):
-        oshape = _stencil_shape(oitem.get("name") or "")
-        builder.ibm_node(
-            oitem.get("name") or "Monitoring", _SVC_X + 20, svc_y,
-            oshape or "cloud--monitoring", d=40,
-        )
-        svc_y += 64
-
-    # VPE gateways (private endpoints)
-    if private_eps:
-        builder.ibm_node("Virtual Private Endpoints", _SVC_X + 20, svc_y, "ibm-cloud--vpc-endpoints", d=40)
-
-    # Edge from prod VPC to shared services
-    builder.edge(prod_vpc_id, svc_container, "private access via VPE", dashed=True)
-
-    # ── DR region summary (if second region present) ─────────────────────
-    if len(regions_data) > 1:
+    # ── DR region summary (only when second region extracted) ────────────
+    if has_dr:
         dr_region = regions_data[1]
-        dr_x = _IBM_X + 20
-        dr_y = _IBM_Y + _IBM_H + 20
+        dr_y = _BASE_Y + ibm_h + gap
         dr_id = builder.ibm_location(
             _label(dr_region, "DR Region"),
-            dr_x, dr_y, 480, 100,
+            cursor_x, dr_y, 520, 110,
             shape="location", stroke_color=COLOR["grey"],
-            stroke_width=1,
         )
-        builder.ibm_node("COS Cross-Region Replication", dr_x + 20, dr_y + 30, "object-storage", d=40)
+        # COS replication node (only if COS was extracted)
+        cos_items = [d for d in data_items if "object" in (d.get("name") or "").lower()
+                     or "cos" in (d.get("name") or "").lower()]
+        if cos_items:
+            builder.ibm_node("COS Cross-Region Replication",
+                             cursor_x + 20, dr_y + 30, "object-storage", d=40)
         builder.edge(ibm_account, dr_id, "active/passive DR", dashed=True)
 
-    # ── PowerVS workspace ────────────────────────────────────────────────
-    if _has_powervs(ibm_cloud):
-        pw_x = _IBM_X + _IBM_W - 300
-        pw_y = _IBM_Y + _IBM_H + 20
-        pw = builder.powervs_workspace("PowerVS Workspace", pw_x, pw_y, 280, 120)
-        builder.edge(prod_vpc_id, pw, "Cloud Connection", dashed=True)
+    # ── PowerVS workspace (only when PowerVS compute extracted) ──────────
+    if has_powervs:
+        pw_x = cursor_x + ibm_w + gap
+        pw = builder.powervs_workspace(
+            "PowerVS Workspace", pw_x, _BASE_Y, 280, 200,
+        )
+        if vpc_ids:
+            builder.edge(vpc_ids[0], pw, "Cloud Connection", dashed=True)
 
 
 # ---------------------------------------------------------------------------
