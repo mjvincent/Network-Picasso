@@ -3,8 +3,8 @@
 When the MCP server is running with ``--transport http`` (and optionally
 ``--editor``), it exposes:
 
-  GET  http://localhost:3000/health        → {"status": "ok"}
-  POST http://localhost:3000/mcp           → MCP JSON-RPC (Streamable HTTP)
+  GET  http://localhost:4000/health        → {"status": "ok"}
+  POST http://localhost:4000/mcp           → MCP JSON-RPC (Streamable HTTP)
 
 This module provides helpers that let the Network Picasso Python server call
 MCP tools over HTTP — without any third-party dependencies (stdlib only).
@@ -21,7 +21,7 @@ import json
 import urllib.request
 from urllib.error import URLError
 
-MCP_BASE_URL = "http://127.0.0.1:3000"
+MCP_BASE_URL = "http://127.0.0.1:4000"
 _HEALTH_URL   = f"{MCP_BASE_URL}/health"
 _MCP_URL      = f"{MCP_BASE_URL}/mcp"
 _EDITOR_URL   = MCP_BASE_URL
@@ -32,7 +32,7 @@ _EDITOR_URL   = MCP_BASE_URL
 # ---------------------------------------------------------------------------
 
 def is_running(timeout: int = 3) -> bool:
-    """Return True if the drawio-mcp-server is reachable at localhost:3000."""
+    """Return True if the drawio-mcp-server is reachable at localhost:4000."""
     try:
         with urllib.request.urlopen(_HEALTH_URL, timeout=timeout) as r:
             body = json.loads(r.read().decode())

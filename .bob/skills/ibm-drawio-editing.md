@@ -14,7 +14,7 @@ description: >
 
 1. The `drawio` MCP server must be running (check Bob's MCP panel — it starts automatically
    when the workspace is open if `.bob/mcp.json` is present).
-2. The generated diagram must be open in the MCP editor at `http://localhost:3000` — use
+2. The generated diagram must be open in the MCP editor at `http://localhost:4000` — use
    **Option E** in the Network Picasso diagram step to push it there.
 3. Call `list-documents` first to get the `target_document.id` if more than one Draw.io tab
    is connected.

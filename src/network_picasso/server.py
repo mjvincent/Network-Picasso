@@ -566,7 +566,7 @@ class NetworkPicassoHandler(BaseHTTPRequestHandler):
 
         Returns::
 
-            { "ok": true, "editorUrl": "http://127.0.0.1:3000" }
+            { "ok": true, "editorUrl": "http://127.0.0.1:4000" }
         """
         architecture = payload.get("architecture")
         if not architecture:
@@ -576,7 +576,7 @@ class NetworkPicassoHandler(BaseHTTPRequestHandler):
         xml = render_drawio(architecture, diagram_type=diagram_type)
 
         if not _mcp.is_running():
-            self.send_error_json(503, "drawio-mcp-server is not running at localhost:3000. Start it via the MCP panel in Bob.")
+            self.send_error_json(503, "drawio-mcp-server is not running at localhost:4000. Start it via the MCP panel in Bob.")
             return
         try:
             _mcp.open_diagram_in_editor(xml, filename=f"network-picasso-{diagram_type}.drawio")
@@ -594,7 +594,7 @@ class NetworkPicassoHandler(BaseHTTPRequestHandler):
 
         Returns::
 
-            { "ok": true, "editorUrl": "http://127.0.0.1:3000", "pages": [...] }
+            { "ok": true, "editorUrl": "http://127.0.0.1:4000", "pages": [...] }
         """
         architecture = payload.get("architecture")
         if not architecture:
@@ -602,7 +602,7 @@ class NetworkPicassoHandler(BaseHTTPRequestHandler):
             architecture = read_json_file(arch_path)
 
         if not _mcp.is_running():
-            self.send_error_json(503, "drawio-mcp-server is not running at localhost:3000. Start it via the MCP panel in Bob.")
+            self.send_error_json(503, "drawio-mcp-server is not running at localhost:4000. Start it via the MCP panel in Bob.")
             return
         try:
             diagrams = render_all_diagrams(architecture)

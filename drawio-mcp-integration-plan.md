@@ -23,7 +23,7 @@ Draw.io browser tab** via WebSocket bridge. No open tab → all live tools fail 
 `"No connected Draw.io documents"`.
 
 The recommended deployment mode is `--editor`, which hosts Draw.io itself at
-`http://localhost:3000` — no browser extension required. Network Picasso pushes the generated XML
+`http://localhost:4000` — no browser extension required. Network Picasso pushes the generated XML
 into that tab via `import-diagram` (MCP tool), and Bob then edits it conversationally.
 
 ---
@@ -59,14 +59,14 @@ workspace-scoped MCP config entry.
 **Expected Outcomes:**
 - Bob's MCP panel shows `drawio` as a connected server.
 - Bob can call `import-diagram`, `list-paged-model`, and other draw.io tools in conversation.
-- Server starts with `--editor` flag so Draw.io is hosted at `http://localhost:3000`.
+- Server starts with `--editor` flag so Draw.io is hosted at `http://localhost:4000`.
 - Server binds to `127.0.0.1` to avoid IPv6/IPv4 mismatch on macOS.
 
 **Todo List:**
 - [ ] Verify Node.js ≥ v22 is installed (`node --version`)
 - [ ] Create `.bob/mcp.json` in the repo root with the `drawio` server entry
 - [ ] Confirm Bob's MCP panel shows the server as connected
-- [ ] Verify Draw.io editor loads at `http://localhost:3000`
+- [ ] Verify Draw.io editor loads at `http://localhost:4000`
 
 **Config to write (`.bob/mcp.json`):**
 ```json
@@ -92,14 +92,14 @@ workspace-scoped MCP config entry.
 ### T2 — Add "Open in Editor" Button to the Diagram Step
 
 **Intent:** Add a fifth diagram export option in the Network Picasso UI that opens the generated
-diagram in the MCP-hosted Draw.io editor at `localhost:3000`. This replaces the current manual
+diagram in the MCP-hosted Draw.io editor at `localhost:4000`. This replaces the current manual
 workflow of: save file → open Draw.io desktop → open file.
 
 **Expected Outcomes:**
 - A new "Option E — Open in MCP editor" button appears in the diagram step alongside Options A–D.
 - Clicking it fetches the current diagram XML via `/api/drawio-xml` and POSTs it to the MCP
   server's `import-diagram` tool (via a new `/api/drawio-mcp-open` server endpoint).
-- The MCP editor tab at `http://localhost:3000` is opened (or focused) automatically.
+- The MCP editor tab at `http://localhost:4000` is opened (or focused) automatically.
 - If the MCP server is not running, an inline error notification is shown.
 
 **Todo List:**
@@ -107,15 +107,15 @@ workflow of: save file → open Draw.io desktop → open file.
   - Accepts `{ architecturePath, diagramType }`
   - Generates XML via `render_drawio()`
   - POSTs to MCP server HTTP endpoint or calls `import-diagram` tool via MCP protocol
-  - Returns `{ ok: true, editorUrl: "http://localhost:3000" }`
+  - Returns `{ ok: true, editorUrl: "http://localhost:4000" }`
 - [ ] Add Option E button to `ui/src/App.tsx` diagram step
-  - Shows only when MCP server health check passes (probe `localhost:3000`)
-  - On click: calls `/api/drawio-mcp-open`, then opens `http://localhost:3000` in new tab
+  - Shows only when MCP server health check passes (probe `localhost:4000`)
+  - On click: calls `/api/drawio-mcp-open`, then opens `http://localhost:4000` in new tab
   - Shows `InlineNotification` with error if MCP server unreachable
 - [ ] Add `mcp_open_diagram()` helper to a new `src/network_picasso/mcp_bridge.py`
   - Uses `urllib.request` (no new deps) to call the MCP server's HTTP API
   - Handles connection errors gracefully (returns error string)
-- [ ] Add MCP server health check to the Settings page (`GET http://localhost:3000` or equivalent)
+- [ ] Add MCP server health check to the Settings page (`GET http://localhost:4000` or equivalent)
 
 **Relevant Context:**
 - Diagram step UI: `ui/src/App.tsx` lines 1395–1490 (Options A–D section)
@@ -243,7 +243,7 @@ T5 depends on T2 and T3 being complete.
 - The MCP server uses `npx -y drawio-mcp-server` — first run downloads the package (~30s). After
   that, npx uses the cached version.
 - Node.js v22+ is required. Check with `node --version` before writing the MCP config.
-- The built-in editor at `localhost:3000` exposes an HTTP API for importing diagrams. The exact
+- The built-in editor at `localhost:4000` exposes an HTTP API for importing diagrams. The exact
   endpoint is discovered from the server's own docs/source — check
   `/tmp/drawio-mcp-server/packages/drawio-mcp-server/` for the HTTP handler.
 - IBM Cloud stencil shapes in the editor are only auto-discovered if the IBM stencil library is

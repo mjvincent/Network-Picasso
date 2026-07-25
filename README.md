@@ -60,7 +60,7 @@ Open **[http://localhost:5173](http://localhost:5173)**
 ## Conversational Diagram Editing with Bob
 
 After generating a diagram, click **Option E — Open in MCP editor** to push it to
-`http://localhost:3000`. Then ask Bob:
+`http://localhost:4000`. Then ask Bob:
 
 > *"Add a Bastion Host to the Management subnet in zone-1"*
 > *"Connect the Bastion Host to the ROKS cluster with a labeled SSH edge"*

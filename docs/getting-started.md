@@ -174,7 +174,7 @@ Then use one of the export options:
 | **B — Copy XML** | Copies raw XML to clipboard — paste into diagrams.net via Edit › XML |
 | **C — Open in diagrams.net** | Opens diagrams.net popup, diagram loads automatically |
 | **D — Preview here** | Inline interactive preview using the diagrams.net embed API |
-| **E — Open in MCP editor** | Pushes diagram to localhost:3000 for conversational editing with Bob |
+| **E — Open in MCP editor** | Pushes diagram to localhost:4000 for conversational editing with Bob |
 | **Generate all diagram types** | Produces context + logical + deployment in one step |
 
 ---
@@ -217,7 +217,7 @@ Any model in your local Ollama instance works.
 
 ### Draw.io MCP editor
 
-Shows whether the `drawio-mcp-server` is running at `localhost:3000`. Click **Check MCP editor**
+Shows whether the `drawio-mcp-server` is running at `localhost:4000`. Click **Check MCP editor**
 to probe it. See the [MCP Editor section](#using-the-mcp-editor-with-bob) below.
 
 ### Projects folder
@@ -237,7 +237,7 @@ diagrams conversationally after Network Picasso generates them.
 ```
 Network Picasso                    drawio-mcp-server              Bob
 ──────────────                     ─────────────────              ───
-Generate diagram  ──Option E──▶   localhost:3000               │
+Generate diagram  ──Option E──▶   localhost:4000               │
                                   (Draw.io editor open)         │
                                          ▲                      │
                              MCP tools ──┘   ◀── "add a Bastion Host to zone-1"
@@ -274,7 +274,7 @@ Click **Option E — Open in MCP editor**.
 
 If the **MCP editor running** green tag is not shown, click **Check** first. The button
 becomes active once the MCP server is detected. This pushes your diagram XML into the live
-Draw.io editor at `http://localhost:3000` and opens it in a new browser tab.
+Draw.io editor at `http://localhost:4000` and opens it in a new browser tab.
 
 #### 4. Ask Bob to edit the diagram
 
@@ -298,7 +298,7 @@ Bob will:
 
 Click **Generate all diagram types**. If the MCP editor is running, this opens Context,
 Logical Architecture, and Deployment as three separate pages (tabs) in the editor at
-`localhost:3000`. If the MCP editor is not running, it saves a multi-page `.drawio` file to
+`localhost:4000`. If the MCP editor is not running, it saves a multi-page `.drawio` file to
 `outputs/network-picasso-all.drawio` instead.
 
 ### Activating the IBM diagram editing skill
@@ -319,8 +319,8 @@ Bob knows the correct IBM Cloud visual conventions.
 |---|---|
 | `drawio` not shown in MCP panel | Check `.bob/mcp.json` exists in the repo root; open a folder in Bob before the MCP panel activates |
 | First connection takes 30+ seconds | Normal — `npx` is downloading `drawio-mcp-server` for the first time |
-| Option E button is greyed out | Click **Check** in the Option E card to probe `localhost:3000`; the button only activates when the server is detected |
-| "No connected Draw.io documents" | Open `http://localhost:3000` in your browser first; the MCP editor needs an active browser tab |
+| Option E button is greyed out | Click **Check** in the Option E card to probe `localhost:4000`; the button only activates when the server is detected |
+| "No connected Draw.io documents" | Open `http://localhost:4000` in your browser first; the MCP editor needs an active browser tab |
 | Diagram looks wrong after Bob edits | Bob used a raw shape instead of the IBM prescribed node pattern; activate the `ibm-drawio-editing` skill and retry |
 | Node v22 not found | Install from [nodejs.org](https://nodejs.org) — v22 LTS is recommended |
 

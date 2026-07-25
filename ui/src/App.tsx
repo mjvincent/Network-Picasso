@@ -784,7 +784,7 @@ export default function App() {
       setMcpStatus(d.running ? 'MCP editor is running' : 'MCP editor not detected');
     } catch {
       setMcpRunning(false);
-      setMcpStatus('MCP editor not detected at localhost:3000');
+      setMcpStatus('MCP editor not detected at localhost:4000');
     }
   }
 
@@ -1570,7 +1570,7 @@ export default function App() {
                     <div className="diagram-action-card">
                       <div className="diagram-action-header">
                         <strong>Option E — Open in MCP editor</strong>
-                        <InfoTip text="Opens the diagram directly in the local Draw.io MCP editor (localhost:3000). The drawio-mcp-server must be running — Bob starts it automatically when the MCP panel is active. Once open, you can ask Bob to edit the diagram conversationally." />
+                        <InfoTip text="Opens the diagram directly in the local Draw.io MCP editor (localhost:4000). The drawio-mcp-server must be running — Bob starts it automatically when the MCP panel is active. Once open, you can ask Bob to edit the diagram conversationally." />
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
                         {mcpRunning
@@ -1581,7 +1581,7 @@ export default function App() {
                       </div>
                       <p className="panel-copy">
                         {mcpRunning
-                          ? 'Push the current diagram type into the live editor at localhost:3000, then ask Bob to make changes.'
+                          ? 'Push the current diagram type into the live editor at localhost:4000, then ask Bob to make changes.'
                           : 'Start the drawio MCP server from Bob\'s MCP panel, then click Check above.'}
                       </p>
                       <Button kind="secondary" renderIcon={Launch} onClick={openInMcpEditor}
@@ -1674,13 +1674,13 @@ export default function App() {
                     <InfoTip text="The drawio-mcp-server enables conversational diagram editing. Bob starts it automatically when the drawio MCP server is registered. After generation, use Option E to push diagrams into the live editor and ask Bob to make changes." />
                   </div>
                   <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
-                    <TextInput id="mcp-url" labelText="MCP editor URL" value="http://127.0.0.1:3000" readOnly />
+                    <TextInput id="mcp-url" labelText="MCP editor URL" value="http://127.0.0.1:4000" readOnly />
                   </div>
                   <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
                     <Button kind="secondary" size="md" onClick={probeMcpEditor}>
                       Check MCP editor
                     </Button>
-                    {mcpRunning && <Tag type="green">Running at localhost:3000</Tag>}
+                    {mcpRunning && <Tag type="green">Running at localhost:4000</Tag>}
                     {!mcpRunning && mcpStatus && <Tag type="gray">Not running</Tag>}
                   </div>
 
