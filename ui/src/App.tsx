@@ -55,6 +55,7 @@ import {
   Information,
   Launch,
   ListChecked,
+  Layers,
   Renew,
   Settings,
   Upload,
@@ -204,6 +205,10 @@ export default function App() {
   const [settingsStatus, setSettingsStatus] = useState('');
   const [connectionStatus, setConnectionStatus] = useState<'idle' | 'ok' | 'fail'>('idle');
 
+  // Draw.io MCP editor state
+  const [mcpRunning, setMcpRunning] = useState(false);
+  const [mcpStatus, setMcpStatus]   = useState('');
+
   // Project state
   const [projectTree, setProjectTree]     = useState<ProjectNode[]>([]);
   const [activeProject, setActiveProject] = useState<ProjectNode | null>(null);
@@ -267,6 +272,12 @@ export default function App() {
       .then((r) => r.json())
       .then((data: { models: string[] }) => setOllamaModels(data.models || []))
       .catch(() => {});
+
+    // Probe the MCP editor on startup (non-blocking)
+    fetch('/api/drawio-mcp/health')
+      .then((r) => r.json())
+      .then((d: { running: boolean }) => setMcpRunning(d.running))
+      .catch(() => setMcpRunning(false));
 
     refreshProjectTree();
   }, []);
@@ -703,6 +714,77 @@ export default function App() {
       setError(err instanceof Error ? err.message : 'Preview failed');
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function openInMcpEditor() {
+    if (!architecture) return;
+    setBusy(true);
+    setMcpStatus('');
+    setError('');
+    try {
+      const result = await postJson<{ ok: boolean; editorUrl: string }>(
+        '/api/drawio-mcp-open',
+        { architecturePath, diagramType },
+      );
+      setMcpRunning(true);
+      window.open(result.editorUrl, '_blank');
+      setStatus(`Diagram opened in MCP editor at ${result.editorUrl}`);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'MCP open failed';
+      setMcpStatus(msg);
+      setError(msg);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function generateAllPages() {
+    if (!architecture) return;
+    setBusy(true);
+    setMcpStatus('');
+    setError('');
+    if (mcpRunning) {
+      // Push all three diagrams to the MCP editor as pages
+      try {
+        const result = await postJson<{ ok: boolean; editorUrl: string; pages: number }>(
+          '/api/drawio-mcp-all-pages',
+          { architecturePath },
+        );
+        window.open(result.editorUrl, '_blank');
+        setStatus(`All ${result.pages} diagram pages opened in MCP editor`);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : 'Multi-page MCP open failed';
+        setMcpStatus(msg);
+        setError(msg);
+      } finally {
+        setBusy(false);
+      }
+    } else {
+      // Fallback: save multi-page .drawio file to disk
+      try {
+        const payload = await postJson<{ outputPath: string }>(
+          '/api/drawio-multipage',
+          { architecturePath, outputPath: 'outputs/network-picasso-all.drawio' },
+        );
+        setDiagramPath(payload.outputPath);
+        setStatus(`All-pages file saved to ${payload.outputPath} — open in Draw.io desktop`);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Multi-page export failed');
+      } finally {
+        setBusy(false);
+      }
+    }
+  }
+
+  async function probeMcpEditor() {
+    try {
+      const d = await fetch('/api/drawio-mcp/health').then((r) => r.json()) as { running: boolean };
+      setMcpRunning(d.running);
+      setMcpStatus(d.running ? 'MCP editor is running' : 'MCP editor not detected');
+    } catch {
+      setMcpRunning(false);
+      setMcpStatus('MCP editor not detected at localhost:3000');
     }
   }
 
@@ -1483,6 +1565,52 @@ export default function App() {
                         </div>
                       )}
                     </div>
+
+                    {/* Option E — Open in MCP editor */}
+                    <div className="diagram-action-card">
+                      <div className="diagram-action-header">
+                        <strong>Option E — Open in MCP editor</strong>
+                        <InfoTip text="Opens the diagram directly in the local Draw.io MCP editor (localhost:3000). The drawio-mcp-server must be running — Bob starts it automatically when the MCP panel is active. Once open, you can ask Bob to edit the diagram conversationally." />
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                        {mcpRunning
+                          ? <Tag type="green">MCP editor running</Tag>
+                          : <Tag type="gray">MCP editor not detected</Tag>
+                        }
+                        <Button kind="ghost" size="sm" onClick={probeMcpEditor}>Check</Button>
+                      </div>
+                      <p className="panel-copy">
+                        {mcpRunning
+                          ? 'Push the current diagram type into the live editor at localhost:3000, then ask Bob to make changes.'
+                          : 'Start the drawio MCP server from Bob\'s MCP panel, then click Check above.'}
+                      </p>
+                      <Button kind="secondary" renderIcon={Launch} onClick={openInMcpEditor}
+                        disabled={busy || !architecture || !mcpRunning}>
+                        Open in MCP editor
+                      </Button>
+                      {mcpStatus && (
+                        <p style={{ fontSize: '0.8rem', color: mcpRunning ? '#198038' : '#da1e28', marginTop: '0.5rem' }}>
+                          {mcpStatus}
+                        </p>
+                      )}
+                    </div>
+
+                    {/* All pages — multi-diagram export */}
+                    <div className="diagram-action-card">
+                      <div className="diagram-action-header">
+                        <strong>Generate all diagram types</strong>
+                        <InfoTip text="Generates context, logical, and deployment diagrams in one step. If the MCP editor is running, opens all three as separate pages. Otherwise, saves a multi-page .drawio file to outputs/." />
+                      </div>
+                      <p className="panel-copy">
+                        {mcpRunning
+                          ? 'Opens all three diagram types as separate pages in the MCP editor.'
+                          : 'Saves a three-page .drawio file (context + logical + deployment) to outputs/.'}
+                      </p>
+                      <Button renderIcon={Layers} onClick={generateAllPages}
+                        disabled={busy || !architecture}>
+                        {mcpRunning ? 'Open all pages in MCP editor' : 'Save all-pages .drawio file'}
+                      </Button>
+                    </div>
                   </div>
 
                   <div className="step-actions">
@@ -1539,6 +1667,21 @@ export default function App() {
                       <Tag type="green">Connected — {ollamaModels.length} model{ollamaModels.length === 1 ? '' : 's'} available</Tag>
                     )}
                     {connectionStatus === 'fail' && <Tag type="red">Ollama not reachable at localhost:11434</Tag>}
+                  </div>
+
+                  <div className="step-header" style={{ marginTop: '1rem' }}>
+                    <h2>Draw.io MCP editor</h2>
+                    <InfoTip text="The drawio-mcp-server enables conversational diagram editing. Bob starts it automatically when the drawio MCP server is registered. After generation, use Option E to push diagrams into the live editor and ask Bob to make changes." />
+                  </div>
+                  <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+                    <TextInput id="mcp-url" labelText="MCP editor URL" value="http://127.0.0.1:3000" readOnly />
+                  </div>
+                  <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+                    <Button kind="secondary" size="md" onClick={probeMcpEditor}>
+                      Check MCP editor
+                    </Button>
+                    {mcpRunning && <Tag type="green">Running at localhost:3000</Tag>}
+                    {!mcpRunning && mcpStatus && <Tag type="gray">Not running</Tag>}
                   </div>
 
                   <div className="step-header" style={{ marginTop: '1rem' }}>

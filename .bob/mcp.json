@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "drawio": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "drawio-mcp-server",
+        "--editor",
+        "--transport", "stdio,http",
+        "--host", "127.0.0.1"
+      ],
+      "timeout": 30000
+    }
+  }
+}

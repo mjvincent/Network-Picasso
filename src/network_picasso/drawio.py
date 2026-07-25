@@ -1147,3 +1147,243 @@ def render_drawio(architecture: dict, *, diagram_type: str) -> str:
         _render_context(builder, project, ibm_cloud)
 
     return builder.render()
+
+
+def render_ibm_node_snippet(
+    name: str,
+    shape: str,
+    *,
+    x: int = 100,
+    y: int = 100,
+    d: int = 48,
+    parent_id: str = "1",
+) -> str:
+    """Return standalone Draw.io XML for a single IBM Prescribed Node.
+
+    The returned XML wraps the two-cell node (colored square bg + white icon
+    child) in a minimal ``<mxGraphModel>`` so it can be imported into an open
+    Draw.io document via the ``import-diagram`` MCP tool in ``add`` mode.
+
+    Parameters
+    ----------
+    name:
+        Human-readable label shown beneath the icon.
+    shape:
+        IBM Cloud stencil name (e.g. ``"ibm-cloud--virtual-server-vpc"``).
+        Use ``_stencil_shape(name)`` if you have a component name string.
+    x, y:
+        Top-left position of the node in the target diagram.
+    d:
+        Node size in pixels (default 48).
+    parent_id:
+        Draw.io parent cell ID (``"1"`` = root layer; pass a band/AZ cell ID
+        to nest the node inside a container).
+    """
+    builder = DrawioBuilder()
+    # Override the auto-generated IDs to respect parent_id when it is not "1".
+    # The builder always uses parent="1" in ibm_node(); we patch the output.
+    bg_color = _stencil_color(shape)
+    d2 = d // 2
+    bg_id   = "np2"
+    icon_id = "np3"
+    offset  = (d - d2) // 2
+
+    from xml.sax.saxutils import escape as _esc
+    bg_style = (
+        "shape=rect;"
+        f"fillColor={bg_color};strokeColor=none;"
+        "aspect=fixed;resizable=0;"
+        "labelPosition=center;verticalLabelPosition=bottom;"
+        "align=center;verticalAlign=top;"
+        f"fontSize=11;fontColor={COLOR['icon_font']};"
+        "html=1;"
+    )
+    icon_style = (
+        f"shape=mxgraph.ibm_cloud.{shape};"
+        "fillColor=#ffffff;strokeColor=none;"
+        "dashed=0;html=1;"
+        "labelPosition=center;verticalLabelPosition=bottom;"
+        "verticalAlign=top;part=1;"
+        "movable=0;resizable=0;rotatable=0;"
+    )
+    cells = [
+        '<mxCell id="0" />',
+        '<mxCell id="1" parent="0" />',
+        (
+            f'<mxCell id="{bg_id}" value="{_esc(name)}" style="{bg_style}" '
+            f'vertex="1" parent="{parent_id}">'
+            f'<mxGeometry x="{x}" y="{y}" width="{d}" height="{d}" as="geometry" />'
+            "</mxCell>"
+        ),
+        (
+            f'<mxCell id="{icon_id}" value="" style="{icon_style}" '
+            f'vertex="1" parent="{bg_id}">'
+            f'<mxGeometry x="{offset}" y="{offset}" width="{d2}" height="{d2}" as="geometry" />'
+            "</mxCell>"
+        ),
+    ]
+    cells_xml = "\n    ".join(cells)
+    return (
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        '<mxGraphModel>\n'
+        '  <root>\n'
+        f'    {cells_xml}\n'
+        '  </root>\n'
+        '</mxGraphModel>'
+    )
+
+
+def render_ibm_location_snippet(
+    name: str,
+    shape: str,
+    stroke_color: str,
+    *,
+    x: int = 100,
+    y: int = 100,
+    w: int = 300,
+    h: int = 200,
+    parent_id: str = "1",
+) -> str:
+    """Return standalone Draw.io XML for a single IBM Prescribed Location container.
+
+    Produces the four-cell container pattern (outer frame + left border strip +
+    icon + label) wrapped in a minimal ``<mxGraphModel>`` for ``import-diagram``
+    ``add`` mode.
+
+    Parameters
+    ----------
+    name:
+        Label for the container.
+    shape:
+        IBM Cloud stencil name (e.g. ``"ibm-cloud--vpc"``, ``"location"``,
+        ``"data--center"``).
+    stroke_color:
+        IBM brand color for the border and icon (e.g. ``"#1192E8"``).
+    x, y:
+        Top-left position in the target diagram.
+    w, h:
+        Width and height of the container.
+    parent_id:
+        Draw.io parent cell ID (``"1"`` = root layer).
+    """
+    from xml.sax.saxutils import escape as _esc
+    icon_size = 24
+    outer_id  = "nl2"
+    strip_id  = "nl3"
+    icon_id   = "nl4"
+    label_id  = "nl5"
+
+    outer_style = (
+        "container=1;collapsible=0;expand=0;recursiveResize=0;"
+        "html=1;whiteSpace=wrap;"
+        f"fillColor=none;strokeColor={stroke_color};strokeWidth=1;dashed=0;"
+    )
+    strip_style = (
+        "shape=rect;"
+        f"fillColor={stroke_color};strokeColor=none;"
+        "aspect=fixed;part=1;movable=0;resizable=0;rotatable=0;"
+    )
+    icon_style = (
+        f"shape=mxgraph.ibm_cloud.{shape};"
+        f"fillColor={stroke_color};strokeColor=none;"
+        "dashed=0;html=1;part=1;movable=0;resizable=0;rotatable=0;"
+    )
+    label_style = (
+        "shape=rect;fillColor=none;strokeColor=none;"
+        "labelPosition=right;verticalLabelPosition=middle;"
+        "align=left;verticalAlign=middle;"
+        "fontSize=13;fontStyle=1;part=1;movable=0;resizable=0;rotatable=0;"
+        "spacingLeft=5;"
+    )
+    cells = [
+        '<mxCell id="0" />',
+        '<mxCell id="1" parent="0" />',
+        (
+            f'<mxCell id="{outer_id}" value="" style="{outer_style}" '
+            f'vertex="1" parent="{parent_id}">'
+            f'<mxGeometry x="{x}" y="{y}" width="{w}" height="{h}" as="geometry" />'
+            "</mxCell>"
+        ),
+        (
+            f'<mxCell id="{strip_id}" value="" style="{strip_style}" '
+            f'vertex="1" parent="{outer_id}">'
+            f'<mxGeometry x="0" y="0" width="4" height="{h}" as="geometry" />'
+            "</mxCell>"
+        ),
+        (
+            f'<mxCell id="{icon_id}" value="" style="{icon_style}" '
+            f'vertex="1" parent="{outer_id}">'
+            f'<mxGeometry x="8" y="8" width="{icon_size}" height="{icon_size}" as="geometry" />'
+            "</mxCell>"
+        ),
+        (
+            f'<mxCell id="{label_id}" value="{_esc(name)}" style="{label_style}" '
+            f'vertex="1" parent="{outer_id}">'
+            f'<mxGeometry x="8" y="8" width="{icon_size}" height="{icon_size}" as="geometry" />'
+            "</mxCell>"
+        ),
+    ]
+    cells_xml = "\n    ".join(cells)
+    return (
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        '<mxGraphModel>\n'
+        '  <root>\n'
+        f'    {cells_xml}\n'
+        '  </root>\n'
+        '</mxGraphModel>'
+    )
+
+
+def render_all_diagrams(architecture: dict) -> dict[str, str]:
+    """Return all three diagram types as a dict keyed by type name.
+
+    Returns::
+
+        {
+            "context":    "<mxGraphModel>...</mxGraphModel>",
+            "logical":    "<mxGraphModel>...</mxGraphModel>",
+            "deployment": "<mxGraphModel>...</mxGraphModel>",
+        }
+
+    Suitable for multi-page imports via the MCP ``import-diagram`` tool.
+    """
+    return {
+        "context":    render_drawio(architecture, diagram_type="context"),
+        "logical":    render_drawio(architecture, diagram_type="logical"),
+        "deployment": render_drawio(architecture, diagram_type="deployment"),
+    }
+
+
+def render_multipage_drawio(architecture: dict) -> str:
+    """Return a single multi-page Draw.io XML document with all three diagram types.
+
+    Each diagram type becomes a named page (``<diagram>`` element).  The result
+    can be saved as a ``.drawio`` file and opened in Draw.io desktop or
+    diagrams.net without the MCP server.
+    """
+    page_names = {
+        "context":    "Context",
+        "logical":    "Logical Architecture",
+        "deployment": "Deployment",
+    }
+    diagrams_xml: list[str] = []
+    for dtype, page_name in page_names.items():
+        inner_xml = render_drawio(architecture, diagram_type=dtype)
+        # Strip the outer <?xml ...?><mxGraphModel> wrapper — we need just the
+        # <root>...</root> content to embed as a named page.
+        import re as _re
+        root_match = _re.search(r"<root>(.*?)</root>", inner_xml, _re.DOTALL)
+        root_content = root_match.group(1) if root_match else inner_xml
+        # Escape for CDATA embedding
+        diagrams_xml.append(
+            f'  <diagram name="{page_name}">'
+            f"<mxGraphModel><root>{root_content}</root></mxGraphModel>"
+            f"</diagram>"
+        )
+    pages = "\n".join(diagrams_xml)
+    return (
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        "<mxfile>\n"
+        f"{pages}\n"
+        "</mxfile>"
+    )

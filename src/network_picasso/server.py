@@ -8,8 +8,16 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-from .drawio import render_drawio
+from .drawio import (
+    render_all_diagrams,
+    render_drawio,
+    render_ibm_location_snippet,
+    render_ibm_node_snippet,
+    render_multipage_drawio,
+    STENCIL_MAP,
+)
 from .intake import backfill_answer_into_model, build_architecture_from_inputs
+from . import mcp_bridge as _mcp
 from . import ollama as _ollama
 from .projects import (
     create_project,
@@ -102,6 +110,13 @@ class NetworkPicassoHandler(BaseHTTPRequestHandler):
             architecture = read_json_file(architecture_path)
             self.send_xml(render_drawio(architecture, diagram_type=diagram_type))
             return
+        if parsed.path == "/api/drawio-mcp/health":
+            running = _mcp.is_running()
+            self.send_json({"running": running, "editorUrl": _mcp.MCP_BASE_URL if running else None})
+            return
+        if parsed.path == "/api/drawio-mcp/stencils":
+            self.send_json({"stencils": STENCIL_MAP})
+            return
         if parsed.path == "/api/projects":
             settings = load_settings()
             root = resolve_projects_root(settings)
@@ -177,6 +192,14 @@ class NetworkPicassoHandler(BaseHTTPRequestHandler):
                 self.handle_duplicate_project(payload)
             elif parsed.path == "/api/projects/move":
                 self.handle_move_project(payload)
+            elif parsed.path == "/api/drawio-snippet":
+                self.handle_drawio_snippet(payload)
+            elif parsed.path == "/api/drawio-mcp-open":
+                self.handle_drawio_mcp_open(payload)
+            elif parsed.path == "/api/drawio-mcp-all-pages":
+                self.handle_drawio_mcp_all_pages(payload)
+            elif parsed.path == "/api/drawio-multipage":
+                self.handle_drawio_multipage(payload)
             else:
                 self.send_error_json(404, "Route not found")
         except Exception as exc:  # Keep the local UI useful during early iteration.
@@ -491,6 +514,126 @@ class NetworkPicassoHandler(BaseHTTPRequestHandler):
         settings_path = repo_path(SETTINGS_PATH)
         atomic_write_json(settings_path, settings)
         self.send_json({"ok": True, "settings": settings})
+
+    def handle_drawio_snippet(self, payload: dict) -> None:
+        """Return IBM-styled XML for a single node or location container.
+
+        Accepts::
+
+            {
+              "kind":       "node" | "location",
+              "name":       str,
+              "shape":      str,                  # IBM stencil name
+              "strokeColor": str,                 # location only
+              "x": int, "y": int,
+              "width": int, "height": int,        # location only
+              "size": int,                        # node only (default 48)
+              "parentId": str                     # Draw.io parent cell ID
+            }
+        """
+        kind   = str(payload.get("kind") or "node")
+        name   = str(payload.get("name") or "Component")
+        shape  = str(payload.get("shape") or "")
+        parent = str(payload.get("parentId") or "1")
+        x      = int(payload.get("x") or 100)
+        y      = int(payload.get("y") or 100)
+
+        if not shape:
+            # Try to infer from name
+            from .drawio import _stencil_shape
+            shape = _stencil_shape(name) or "ibm-cloud--virtual-server-vpc"
+
+        if kind == "location":
+            stroke = str(payload.get("strokeColor") or "#1192E8")
+            w      = int(payload.get("width")  or 300)
+            h      = int(payload.get("height") or 200)
+            xml    = render_ibm_location_snippet(
+                name, shape, stroke,
+                x=x, y=y, w=w, h=h, parent_id=parent,
+            )
+        else:
+            d   = int(payload.get("size") or 48)
+            xml = render_ibm_node_snippet(name, shape, x=x, y=y, d=d, parent_id=parent)
+
+        self.send_xml(xml)
+
+    def handle_drawio_mcp_open(self, payload: dict) -> None:
+        """Generate diagram XML and push it to the MCP editor (replace mode).
+
+        Accepts::
+
+            { "architecturePath": str, "diagramType": str }
+
+        Returns::
+
+            { "ok": true, "editorUrl": "http://127.0.0.1:3000" }
+        """
+        architecture = payload.get("architecture")
+        if not architecture:
+            arch_path = repo_path(payload.get("architecturePath") or DEFAULT_ARCHITECTURE_PATH)
+            architecture = read_json_file(arch_path)
+        diagram_type = str(payload.get("diagramType") or "deployment")
+        xml = render_drawio(architecture, diagram_type=diagram_type)
+
+        if not _mcp.is_running():
+            self.send_error_json(503, "drawio-mcp-server is not running at localhost:3000. Start it via the MCP panel in Bob.")
+            return
+        try:
+            _mcp.open_diagram_in_editor(xml, filename=f"network-picasso-{diagram_type}.drawio")
+        except (ConnectionError, RuntimeError) as exc:
+            self.send_error_json(503, str(exc))
+            return
+        self.send_json({"ok": True, "editorUrl": _mcp.MCP_BASE_URL})
+
+    def handle_drawio_mcp_all_pages(self, payload: dict) -> None:
+        """Generate all three diagram types and push them as pages to the MCP editor.
+
+        Accepts::
+
+            { "architecturePath": str }
+
+        Returns::
+
+            { "ok": true, "editorUrl": "http://127.0.0.1:3000", "pages": [...] }
+        """
+        architecture = payload.get("architecture")
+        if not architecture:
+            arch_path = repo_path(payload.get("architecturePath") or DEFAULT_ARCHITECTURE_PATH)
+            architecture = read_json_file(arch_path)
+
+        if not _mcp.is_running():
+            self.send_error_json(503, "drawio-mcp-server is not running at localhost:3000. Start it via the MCP panel in Bob.")
+            return
+        try:
+            diagrams = render_all_diagrams(architecture)
+            results  = _mcp.open_all_pages(diagrams)
+        except (ConnectionError, RuntimeError) as exc:
+            self.send_error_json(503, str(exc))
+            return
+        self.send_json({"ok": True, "editorUrl": _mcp.MCP_BASE_URL, "pages": len(results)})
+
+    def handle_drawio_multipage(self, payload: dict) -> None:
+        """Generate a multi-page .drawio file (no MCP required) and save to disk.
+
+        Accepts::
+
+            { "architecturePath": str, "outputPath": str (optional) }
+
+        Returns::
+
+            { "outputPath": str }
+        """
+        architecture = payload.get("architecture")
+        if not architecture:
+            arch_path = repo_path(payload.get("architecturePath") or DEFAULT_ARCHITECTURE_PATH)
+            architecture = read_json_file(arch_path)
+        output_path = repo_path(
+            payload.get("outputPath") or "outputs/network-picasso-all.drawio"
+        )
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        xml = render_multipage_drawio(architecture)
+        output_path.write_text(xml, encoding="utf-8")
+        self.send_json({"outputPath": relative_to_repo(output_path)})
 
     def handle_drawio_xml(self, payload: dict) -> None:
         architecture = payload.get("architecture")

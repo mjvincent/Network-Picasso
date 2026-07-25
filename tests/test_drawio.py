@@ -6,7 +6,11 @@ from network_picasso.drawio import (
     DEPLOYMENT_GUIDE,
     LOGICAL_GUIDE,
     STYLE_GUIDE,
+    render_all_diagrams,
     render_drawio,
+    render_ibm_location_snippet,
+    render_ibm_node_snippet,
+    render_multipage_drawio,
     _stencil_shape,
 )
 
@@ -129,3 +133,125 @@ def test_xml_has_mxfile_wrapper():
     """Output XML starts with mxfile wrapper as required by Draw.io desktop app."""
     xml = render_drawio(SAMPLE_ARCH, diagram_type="deployment")
     assert xml.strip().startswith("<?xml") or "<mxfile" in xml
+
+
+# ---------------------------------------------------------------------------
+# render_ibm_node_snippet tests
+# ---------------------------------------------------------------------------
+
+def test_ibm_node_snippet_is_valid_xml():
+    xml = render_ibm_node_snippet("Bastion Host", "bastion-host")
+    root = ElementTree.fromstring(xml)
+    assert root.tag == "mxGraphModel"
+
+
+def test_ibm_node_snippet_contains_name():
+    xml = render_ibm_node_snippet("Bastion Host", "bastion-host")
+    assert "Bastion Host" in xml
+
+
+def test_ibm_node_snippet_uses_stencil():
+    xml = render_ibm_node_snippet("Bastion Host", "bastion-host")
+    assert "mxgraph.ibm_cloud.bastion-host" in xml
+
+
+def test_ibm_node_snippet_custom_position():
+    xml = render_ibm_node_snippet("Bastion Host", "bastion-host", x=200, y=350)
+    assert 'x="200"' in xml
+    assert 'y="350"' in xml
+
+
+def test_ibm_node_snippet_custom_parent():
+    xml = render_ibm_node_snippet("VSI", "ibm-cloud--virtual-server-vpc", parent_id="az-band-42")
+    assert 'parent="az-band-42"' in xml
+
+
+def test_ibm_node_snippet_colored_background():
+    """IBM prescribed node pattern: outer cell must have a non-white fill."""
+    xml = render_ibm_node_snippet("ROKS", "logo--openshift")
+    # The background cell should have fillColor (not white, not 'none')
+    assert "fillColor=#" in xml
+
+
+# ---------------------------------------------------------------------------
+# render_ibm_location_snippet tests
+# ---------------------------------------------------------------------------
+
+def test_ibm_location_snippet_is_valid_xml():
+    xml = render_ibm_location_snippet("Production VPC", "ibm-cloud--vpc", "#1192E8")
+    root = ElementTree.fromstring(xml)
+    assert root.tag == "mxGraphModel"
+
+
+def test_ibm_location_snippet_contains_name():
+    xml = render_ibm_location_snippet("Production VPC", "ibm-cloud--vpc", "#1192E8")
+    assert "Production VPC" in xml
+
+
+def test_ibm_location_snippet_uses_stencil():
+    xml = render_ibm_location_snippet("Production VPC", "ibm-cloud--vpc", "#1192E8")
+    assert "mxgraph.ibm_cloud.ibm-cloud--vpc" in xml
+
+
+def test_ibm_location_snippet_stroke_color():
+    xml = render_ibm_location_snippet("Production VPC", "ibm-cloud--vpc", "#1192E8", w=400, h=300)
+    assert "#1192E8" in xml
+
+
+def test_ibm_location_snippet_dimensions():
+    xml = render_ibm_location_snippet("My Region", "location", "#878D96", x=50, y=80, w=960, h=800)
+    assert 'width="960"' in xml
+    assert 'height="800"' in xml
+
+
+def test_ibm_location_snippet_has_border_strip():
+    """IBM location pattern always includes a 4px-wide left border strip."""
+    xml = render_ibm_location_snippet("My VPC", "ibm-cloud--vpc", "#1192E8")
+    assert 'width="4"' in xml
+
+
+# ---------------------------------------------------------------------------
+# render_all_diagrams tests
+# ---------------------------------------------------------------------------
+
+def test_render_all_diagrams_keys():
+    result = render_all_diagrams(SAMPLE_ARCH)
+    assert set(result.keys()) == {"context", "logical", "deployment"}
+
+
+def test_render_all_diagrams_all_valid_xml():
+    for dtype, xml in render_all_diagrams(SAMPLE_ARCH).items():
+        root = ElementTree.fromstring(xml)
+        assert root is not None, f"Invalid XML for diagram type '{dtype}'"
+
+
+def test_render_all_diagrams_non_empty():
+    result = render_all_diagrams(SAMPLE_ARCH)
+    for dtype, xml in result.items():
+        assert len(xml) > 200, f"Diagram '{dtype}' seems too short: {len(xml)} chars"
+
+
+# ---------------------------------------------------------------------------
+# render_multipage_drawio tests
+# ---------------------------------------------------------------------------
+
+def test_multipage_drawio_has_mxfile_root():
+    xml = render_multipage_drawio(SAMPLE_ARCH)
+    root = ElementTree.fromstring(xml)
+    assert root.tag == "mxfile"
+
+
+def test_multipage_drawio_has_three_pages():
+    xml = render_multipage_drawio(SAMPLE_ARCH)
+    root = ElementTree.fromstring(xml)
+    diagrams = root.findall("diagram")
+    assert len(diagrams) == 3
+
+
+def test_multipage_drawio_page_names():
+    xml = render_multipage_drawio(SAMPLE_ARCH)
+    root = ElementTree.fromstring(xml)
+    names = [d.attrib.get("name") for d in root.findall("diagram")]
+    assert "Context" in names
+    assert "Logical Architecture" in names
+    assert "Deployment" in names
