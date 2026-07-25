@@ -143,7 +143,7 @@ def open_diagram_in_editor(xml: str, *, filename: str = "diagram.drawio") -> dic
     """Push *xml* into the live Draw.io editor via ``import-diagram`` (replace mode).
 
     The editor must be open at http://localhost:4000 and have an active document.
-    If only one document is connected the server auto-targets it.
+    Targets page index 0 (current page).
 
     Returns the MCP tool result dict.
     """
@@ -153,6 +153,7 @@ def open_diagram_in_editor(xml: str, *, filename: str = "diagram.drawio") -> dic
         "format":          "xml",
         "mode":            "replace",
         "filename":        filename,
+        "target_page":     {"index": 0},
         "target_document": {"id": doc_id},
     }, timeout=15)
 
@@ -167,15 +168,14 @@ def add_xml_to_diagram(xml: str, *, target_page: dict | None = None) -> dict:
     Returns the MCP tool result dict.
     """
     doc_id = _get_document_id()
-    args: dict = {
+    tp = target_page or {"index": 0}
+    return call_tool("import-diagram", {
         "data":            xml,
         "format":          "xml",
         "mode":            "add",
+        "target_page":     tp,
         "target_document": {"id": doc_id},
-    }
-    if target_page:
-        args["target_page"] = target_page
-    return call_tool("import-diagram", args, timeout=15)
+    }, timeout=15)
 
 
 def open_all_pages(diagrams: dict[str, str]) -> list[dict]:
@@ -185,8 +185,8 @@ def open_all_pages(diagrams: dict[str, str]) -> list[dict]:
 
         {"context": xml, "logical": xml, "deployment": xml}
 
-    First page replaces the current document; subsequent pages are added as
-    new pages.  Returns a list of MCP result dicts.
+    First page replaces page 0; subsequent pages are added as new pages.
+    Returns a list of MCP result dicts.
     """
     doc_id = _get_document_id()
     page_names = {
@@ -200,14 +200,23 @@ def open_all_pages(diagrams: dict[str, str]) -> list[dict]:
         xml = diagrams.get(dtype, "")
         if not xml:
             continue
-        mode = "replace" if first else "new-page"
-        result = call_tool("import-diagram", {
-            "data":            xml,
-            "format":          "xml",
-            "mode":            mode,
-            "filename":        f"{page_name}.drawio",
-            "target_document": {"id": doc_id},
-        }, timeout=30)
-        first = False
+        if first:
+            result = call_tool("import-diagram", {
+                "data":            xml,
+                "format":          "xml",
+                "mode":            "replace",
+                "filename":        f"{page_name}.drawio",
+                "target_page":     {"index": 0},
+                "target_document": {"id": doc_id},
+            }, timeout=30)
+            first = False
+        else:
+            result = call_tool("import-diagram", {
+                "data":            xml,
+                "format":          "xml",
+                "mode":            "new-page",
+                "filename":        f"{page_name}.drawio",
+                "target_document": {"id": doc_id},
+            }, timeout=30)
         results.append(result)
     return results

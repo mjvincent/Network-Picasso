@@ -70,17 +70,18 @@ def test_empty_model_fallback():
 
 
 def test_zone_labels_in_deployment():
-    """Deployment output contains AZ column labels."""
+    """Deployment output contains AZ zone labels (Zone 1/2/3)."""
     xml = render_drawio(SAMPLE_ARCH, diagram_type="deployment")
-    for zone in ("zone-1", "zone-2", "zone-3"):
+    for zone in ("Zone 1", "Zone 2", "Zone 3"):
         assert zone in xml, f"Expected '{zone}' in deployment XML"
 
 
 def test_subnet_bands_in_deployment():
-    """Deployment output contains all four subnet tier band labels."""
+    """Deployment output contains subnet labels for each tier."""
     xml = render_drawio(SAMPLE_ARCH, diagram_type="deployment")
-    for tier in ("Public", "Private", "Management", "Data"):
-        assert tier in xml, f"Expected subnet tier '{tier}' in deployment XML"
+    # New hub-and-spoke renderer uses named subnets: edge-subnet-1, prod-subnet-1, mgmt-subnet-1
+    for label in ("edge-subnet-1", "prod-subnet-1", "mgmt-subnet-1"):
+        assert label in xml, f"Expected subnet label '{label}' in deployment XML"
 
 
 def test_ibm_stencil_shapes_present():

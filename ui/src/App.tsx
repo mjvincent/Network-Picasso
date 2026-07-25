@@ -728,8 +728,13 @@ export default function App() {
         { architecturePath, diagramType },
       );
       setMcpRunning(true);
-      window.open(result.editorUrl, '_blank');
-      setStatus(`Diagram opened in MCP editor at ${result.editorUrl}`);
+      // Focus the already-open editor tab rather than opening a new one each time.
+      // Only open a new tab if this is the first successful push (tab not yet open).
+      if (!mcpRunning) {
+        window.open(result.editorUrl, 'drawio-mcp-editor');
+      }
+      setMcpStatus(`✓ Diagram pushed to editor (${diagramType})`);
+      setStatus(`Diagram pushed to MCP editor at ${result.editorUrl}`);
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'MCP open failed';
       setMcpStatus(msg);
