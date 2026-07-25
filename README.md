@@ -1,54 +1,118 @@
 # Network Picasso
 
-Agentic network diagram creator for IBM Cloud architecture.
+Agentic IBM Cloud architecture diagram workbench — local-first, no cloud API keys required.
 
-Network Picasso is a local-first workflow for turning architecture notes, bills of material, customer spreadsheets, and architect answers into professional Draw.io network diagrams. The initial focus is IBM Cloud on VPC, including VSI, Red Hat OpenShift on IBM Cloud, Bare Metal on VPC, and PowerVS-adjacent architectures.
+Network Picasso turns customer bills of material, IBM Cloud Solutioning pricing exports,
+architecture notes, and spreadsheets into professional Draw.io diagrams using IBM Cloud stencil
+shapes and layout conventions. A guided design-gap interview fills missing decisions before
+rendering. Optionally uses a local Ollama model for AI-assisted extraction and gap analysis.
 
-## Current MVP
+---
 
-- Markdown prompt guidance lives in `LLM Architecture MD Files/`.
-- The canonical architecture data model lives in `schemas/architecture.schema.json`.
-- IBM Cloud review prompts and best-practice checks live in `rules/`.
-- A small Python CLI can ask initial design-gap questions and generate starter `.drawio` XML.
+## Quick Start
 
-## Try It Locally
+> **Full instructions → [`docs/getting-started.md`](docs/getting-started.md)**
 
-```bash
-PYTHONPATH=src python3 -B -m network_picasso.cli intake examples/sample-inputs --project-name "Sample Healthcare" --output examples/sample/architecture.json
-PYTHONPATH=src python3 -B -m network_picasso.cli ask examples/sample/architecture.json
-PYTHONPATH=src python3 -B -m network_picasso.cli generate examples/sample/architecture.json --type deployment --output outputs/network-picasso-deployment.drawio
-```
-
-Open the generated `.drawio` file in diagrams.net or the Draw.io desktop app.
-
-## Carbon UI
-
-Start the local API:
+### Terminal 1 — API server (port 8787)
 
 ```bash
 PYTHONPATH=src python3 -B -m network_picasso.server
 ```
 
-Start the Carbon React UI:
+### Terminal 2 — UI (port 5173)
 
 ```bash
-cd ui
-npm install
-npm run dev
+cd ui && npm run dev
 ```
 
-Then open `http://127.0.0.1:5173`.
+Open **[http://localhost:5173](http://localhost:5173)**
 
-The first screen guides the user to upload one or more source files:
+---
 
-- BOM exports
-- IBM Cloud Solutioning pricing workbooks
-- Customer spreadsheets
-- Architecture notes
-- Markdown, text, CSV, TSV, JSON, and XLSX files
+## What It Does
 
-After parsing, the app shows pointed design questions with best-practice coaching and can generate a starter Draw.io diagram from the extracted architecture model.
+| Step | What happens |
+|---|---|
+| **1 — Upload** | Drop in BOM exports, pricing workbooks (`.xlsx`), notes (`.md`/`.txt`), or any CSV/JSON. IBM Cloud components are extracted automatically. |
+| **2 — Review** | Confirm the extracted architecture model. If Ollama is on, low-confidence AI extractions go to a staging table for your review. |
+| **3 — Questions** | Guided design-gap questions fill missing decisions — HA, connectivity, security, observability. Answers persist to `architecture.json`. |
+| **4 — Diagram** | Generate a context, logical, or deployment diagram. Export as a file, clipboard XML, diagrams.net popup, inline preview, or push directly to the local Draw.io MCP editor. |
+
+---
+
+## Key Features
+
+- **IBM-prescribed stencil shapes** — colored square background + white icon child, matching the
+  IBM Cloud sidebar pattern in Draw.io
+- **Three diagram types** — Context (executive), Logical (architect), Deployment (full AZ/subnet)
+- **Rule-based design questions** — 20+ gap questions covering MZR, Hub-and-Spoke, Three-Tier VPC,
+  PowerVS, Financial Services, ROKS, Hybrid Connectivity, SCC
+- **Ollama AI mode** — local LLM extracts components from unstructured text and generates
+  additional architecture-specific questions
+- **Answer persistence** — accepted coaching and manual answers write back into `architecture.json`
+  and backfill into the `ibm_cloud` model
+- **Project management** — 2-level customer/project folder hierarchy, rename/duplicate/move/delete
+- **Draw.io MCP integration** — after generation, ask Bob conversationally to add/edit/remove
+  diagram elements live in a running Draw.io editor
+
+---
+
+## Conversational Diagram Editing with Bob
+
+After generating a diagram, click **Option E — Open in MCP editor** to push it to
+`http://localhost:3000`. Then ask Bob:
+
+> *"Add a Bastion Host to the Management subnet in zone-1"*
+> *"Connect the Bastion Host to the ROKS cluster with a labeled SSH edge"*
+> *"Generate all three diagram types as separate pages"*
+
+Bob uses the `drawio-mcp-server` MCP tools and the `ibm-drawio-editing` skill to make
+IBM-styled edits live. See [`docs/getting-started.md`](docs/getting-started.md#using-the-mcp-editor-with-bob)
+for full setup instructions.
+
+---
+
+## Running Tests
+
+```bash
+# Python (113 tests, stdlib only — no test dependencies beyond pytest)
+PYTHONPATH=src .venv/bin/pytest -v
+
+# UI (Vitest)
+cd ui && npm test -- --run
+```
+
+---
+
+## Architecture
+
+```
+src/network_picasso/
+  server.py       Local HTTP API (port 8787)
+  intake.py       File parsing + IBM Cloud component extraction
+  questions.py    Rule-based design-gap questions
+  drawio.py       Deterministic Draw.io XML renderer (IBM stencils)
+  ollama.py       Local Ollama HTTP client (stdlib only)
+  mcp_bridge.py   drawio-mcp-server bridge
+  projects.py     Project and folder management
+
+ui/src/App.tsx    React + Carbon Design System workbench
+
+.bob/
+  mcp.json        drawio-mcp-server MCP registration (auto-starts with Bob)
+  skills/
+    ibm-drawio-editing.md   IBM diagram editing skill for Bob
+
+docs/
+  getting-started.md        Full setup and usage guide
+  agentic-process.md
+```
+
+---
 
 ## Direction
 
-The agentic flow should use AI for intake, extraction, gap analysis, question generation, and review. Diagram rendering should stay deterministic so architects get repeatable, professional diagrams that can be versioned in Git.
+Diagram rendering stays **deterministic** — generated by Python code, never raw LLM output —
+so architects get repeatable, professional diagrams that can be versioned in Git. AI is used
+for intake (extraction from unstructured text), gap analysis (LLM-generated questions beyond
+the rule set), and post-generation editing (conversational MCP tool calls).
