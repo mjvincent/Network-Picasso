@@ -75,6 +75,16 @@ type Component = {
   source?: string;
 };
 
+type PatternResult = {
+  id: string;
+  name: string;
+  description: string;
+  url: string;
+  score: number;
+  matched: string[];
+  missing: string[];
+};
+
 type Architecture = {
   project: { name: string; environment?: string };
   ibm_cloud: Record<string, Component[] | string[]>;
@@ -198,6 +208,9 @@ export default function App() {
   const [pendingComponents, setPendingComponents] = useState<PendingComponent[]>([]);
   const [pendingAssignments, setPendingAssignments] = useState<Record<string, string>>({});
   const [fileRoles, setFileRoles] = useState<FileRole[]>([]);
+  const [patternResults, setPatternResults] = useState<PatternResult[]>([]);
+  const [chosenPattern, setChosenPatternState] = useState<PatternResult | null>(null);
+  const [patternBusy, setPatternBusy] = useState(false);
   const [diagramPath, setDiagramPath]     = useState('');
   const [requirementsText, setRequirementsText] = useState('');
   const [requirementsSaved, setRequirementsSaved] = useState(false);
@@ -644,6 +657,45 @@ export default function App() {
       setError(err instanceof Error ? err.message : 'Failed to confirm components');
     } finally {
       setBusy(false);
+    }
+  }
+
+  // ── Pattern matching ─────────────────────────────────────────────────────────
+
+  async function runPatternMatch() {
+    if (!architecture) return;
+    setPatternBusy(true);
+    setError('');
+    try {
+      const payload = await postJson<{ patterns: PatternResult[]; best: PatternResult | null }>(
+        '/api/pattern-match',
+        { architecture, requirements: requirementsText },
+      );
+      setPatternResults(payload.patterns || []);
+      // Auto-select top match if not already chosen
+      if (!chosenPattern && payload.best) {
+        setChosenPatternState(payload.best);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Pattern match failed');
+    } finally {
+      setPatternBusy(false);
+    }
+  }
+
+  async function confirmPattern(pattern: PatternResult) {
+    setChosenPatternState(pattern);
+    try {
+      await postJson('/api/set-pattern', {
+        architecturePath,
+        patternId: pattern.id,
+        patternName: pattern.name,
+        score: pattern.score,
+      });
+      setStatus(`Pattern set: ${pattern.name}`);
+    } catch (err) {
+      // Non-fatal — pattern is still set in local state
+      console.warn('set-pattern failed:', err);
     }
   }
 
@@ -1348,6 +1400,116 @@ export default function App() {
                           );
                         })}
                       </div>
+                    </Stack>
+                  </Tile>
+                )}
+
+                {/* ── IBM Think Architecture Pattern Match ─────────────────── */}
+                {architecture && (
+                  <Tile className="panel">
+                    <Stack gap={5}>
+                      <div className="step-header">
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                          <IbmCloud size={20} />
+                          <h2>IBM Think Architecture pattern match</h2>
+                        </div>
+                        <InfoTip text="Network Picasso scores your extracted architecture and requirements against all IBM Cloud reference patterns from ibm.com/think/architectures. The top match is recommended as the basis for your diagram. You can override it if you know the intended pattern." />
+                      </div>
+
+                      {chosenPattern && (
+                        <InlineNotification
+                          kind="success"
+                          title={`Pattern confirmed: ${chosenPattern.name}`}
+                          subtitle={`Score ${chosenPattern.score}% match — this pattern will be used as the basis for your diagram.`}
+                          lowContrast
+                          hideCloseButton
+                        />
+                      )}
+
+                      {patternResults.length === 0 ? (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                          <p className="panel-copy">
+                            Click <strong>Match patterns</strong> to score your uploaded documents and requirements
+                            against every IBM Cloud reference architecture pattern.
+                            Network Picasso will recommend the best fit and show you exactly which signals matched.
+                          </p>
+                          <div>
+                            <Button
+                              renderIcon={patternBusy ? undefined : Diagram}
+                              onClick={runPatternMatch}
+                              disabled={patternBusy}
+                              size="md"
+                            >
+                              {patternBusy ? <InlineLoading description="Scoring patterns…" /> : 'Match patterns'}
+                            </Button>
+                          </div>
+                        </div>
+                      ) : (
+                        <Stack gap={4}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <p className="panel-copy" style={{ margin: 0 }}>
+                              {patternResults.length} patterns scored — top match: <strong>{patternResults[0]?.name}</strong> ({patternResults[0]?.score}%)
+                            </p>
+                            <Button kind="ghost" size="sm" renderIcon={Renew} onClick={runPatternMatch} disabled={patternBusy}>
+                              Re-score
+                            </Button>
+                          </div>
+                          <div className="pattern-list">
+                            {patternResults.map((pat, idx) => {
+                              const isChosen = chosenPattern?.id === pat.id;
+                              const isTop = idx === 0;
+                              return (
+                                <div key={pat.id} className={`pattern-card${isChosen ? ' pattern-card--chosen' : ''}${isTop ? ' pattern-card--top' : ''}`}>
+                                  <div className="pattern-card__header">
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                                      <strong>{pat.name}</strong>
+                                      {isTop && <Tag type="blue" size="sm">Best match</Tag>}
+                                      {isChosen && <Tag type="green" size="sm">Confirmed</Tag>}
+                                    </div>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                                      <span className="pattern-score">{pat.score}%</span>
+                                      <Button
+                                        kind={isChosen ? 'tertiary' : 'primary'}
+                                        size="sm"
+                                        renderIcon={isChosen ? Checkmark : undefined}
+                                        onClick={() => confirmPattern(pat)}
+                                      >
+                                        {isChosen ? 'Confirmed' : 'Use this pattern'}
+                                      </Button>
+                                    </div>
+                                  </div>
+                                  <p className="pattern-card__desc">{pat.description}</p>
+                                  {/* Score bar */}
+                                  <div className="pattern-score-bar">
+                                    <div className="pattern-score-bar__fill" style={{ width: `${pat.score}%` }} />
+                                  </div>
+                                  {/* Matched / missing signals */}
+                                  <details className="pattern-signals">
+                                    <summary>
+                                      {pat.matched.filter(s => !s.startsWith('⚠')).length} signals matched,{' '}
+                                      {pat.missing.length} missing
+                                      {pat.matched.filter(s => s.startsWith('⚠')).length > 0 && (
+                                        <span style={{ color: '#f1c21b' }}> · {pat.matched.filter(s => s.startsWith('⚠')).length} conflicts</span>
+                                      )}
+                                    </summary>
+                                    <div className="pattern-signals__grid">
+                                      {pat.matched.map((s, i) => (
+                                        <span key={i} className={s.startsWith('⚠') ? 'signal signal--warn' : 'signal signal--ok'}>{s}</span>
+                                      ))}
+                                      {pat.missing.map((s, i) => (
+                                        <span key={i} className="signal signal--missing">{s}</span>
+                                      ))}
+                                    </div>
+                                  </details>
+                                  <a href={pat.url} target="_blank" rel="noreferrer" className="pattern-card__link">
+                                    View on IBM Think Architectures →
+                                  </a>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </Stack>
+                      )}
                     </Stack>
                   </Tile>
                 )}

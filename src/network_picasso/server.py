@@ -26,6 +26,7 @@ from .intake import (
 )
 from . import mcp_bridge as _mcp
 from . import ollama as _ollama
+from .patterns import best_pattern, match_patterns
 from .projects import (
     create_project,
     delete_folder,
@@ -171,6 +172,10 @@ class NetworkPicassoHandler(BaseHTTPRequestHandler):
             payload = self.read_json()
             if parsed.path == "/api/intake":
                 self.handle_intake(payload)
+            elif parsed.path == "/api/pattern-match":
+                self.handle_pattern_match(payload)
+            elif parsed.path == "/api/set-pattern":
+                self.handle_set_pattern(payload)
             elif parsed.path == "/api/questions":
                 self.handle_questions(payload)
             elif parsed.path == "/api/generate-drawio":
@@ -521,6 +526,70 @@ class NetworkPicassoHandler(BaseHTTPRequestHandler):
                     gaps.append(g)
                     existing_texts.add(g["question"])
         self.send_json({"questions": gaps})
+
+    def handle_pattern_match(self, payload: dict) -> None:
+        """Score IBM Think Architecture patterns against the provided architecture.
+
+        Accepts::
+
+            {
+              "architecture":     dict (optional if architecturePath provided),
+              "architecturePath": str  (optional),
+              "requirements":     str  (optional extra free-text requirements),
+              "topN":             int  (optional, default all patterns)
+            }
+
+        Returns::
+
+            { "patterns": [ {id, name, description, url, score, matched, missing}, ... ] }
+        """
+        architecture = payload.get("architecture")
+        if not architecture:
+            arch_path = repo_path(payload.get("architecturePath") or DEFAULT_ARCHITECTURE_PATH)
+            architecture = read_json_file(arch_path)
+        requirements = str(payload.get("requirements") or "")
+        top_n = payload.get("topN")
+        if top_n is not None:
+            top_n = int(top_n)
+        patterns = match_patterns(architecture, requirements_text=requirements, top_n=top_n)
+        # Also include the best pattern as a convenience field
+        best = patterns[0] if patterns else None
+        self.send_json({"patterns": patterns, "best": best})
+
+    def handle_set_pattern(self, payload: dict) -> None:
+        """Persist the architect's chosen IBM Think Architecture pattern.
+
+        Accepts::
+
+            {
+              "architecturePath": str,
+              "patternId":        str  (e.g. "mzr", "hub-and-spoke"),
+              "patternName":      str,
+              "score":            float (optional)
+            }
+
+        Writes to architecture["render_plan"]["pattern"] and
+        architecture["render_plan"]["pattern_source"] = "architect".
+        """
+        architecture_path = repo_path(payload.get("architecturePath") or DEFAULT_ARCHITECTURE_PATH)
+        pattern_id   = str(payload.get("patternId") or "").strip()
+        pattern_name = str(payload.get("patternName") or "").strip()
+        score        = payload.get("score")
+
+        if not pattern_id:
+            self.send_error_json(400, "patternId is required")
+            return
+
+        architecture = read_json_file(architecture_path)
+        render_plan = architecture.setdefault("render_plan", {})
+        render_plan["pattern"]        = pattern_id
+        render_plan["pattern_name"]   = pattern_name
+        render_plan["pattern_source"] = "architect"
+        if score is not None:
+            render_plan["pattern_score"] = float(score)
+
+        atomic_write_json(architecture_path, architecture)
+        self.send_json({"ok": True, "patternId": pattern_id, "renderPlan": render_plan})
 
     def handle_save_settings(self, payload: dict) -> None:
         settings = load_settings()
