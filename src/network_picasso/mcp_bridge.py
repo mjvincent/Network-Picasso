@@ -9,9 +9,12 @@ When the MCP server is running with ``--transport http`` (and optionally
 This module provides helpers that let the Network Picasso Python server call
 MCP tools over HTTP — without any third-party dependencies (stdlib only).
 
-MCP tool calls use a minimal two-request sequence:
-  1. POST /mcp with ``initialize``   → server returns session-id header
-  2. POST /mcp with ``tools/call``   → returns tool result
+drawio-mcp-server 2.2.0 behaviour:
+  • Stateless — no session-id handshake required.
+  • All responses use SSE format: ``event: message\\ndata: {...}``
+  • Notifications (initialize) return 202 with empty body — ignore them.
+  • ``import-diagram`` requires a ``target_document`` with the document ID
+    obtained from ``list-documents``.
 
 Reference: Model Context Protocol Streamable HTTP transport spec.
 """
@@ -25,6 +28,14 @@ MCP_BASE_URL = "http://127.0.0.1:4000"
 _HEALTH_URL   = f"{MCP_BASE_URL}/health"
 _MCP_URL      = f"{MCP_BASE_URL}/mcp"
 _EDITOR_URL   = MCP_BASE_URL
+
+_REQ_ID = 0
+
+
+def _next_id() -> int:
+    global _REQ_ID
+    _REQ_ID += 1
+    return _REQ_ID
 
 
 # ---------------------------------------------------------------------------
@@ -45,71 +56,83 @@ def is_running(timeout: int = 3) -> bool:
 # MCP Streamable HTTP helpers
 # ---------------------------------------------------------------------------
 
-def _mcp_post(payload: dict, *, session_id: str | None = None, timeout: int = 30) -> tuple[dict, str | None]:
-    """POST *payload* to /mcp.  Returns (parsed_response, session_id)."""
+def _mcp_post(payload: dict, *, timeout: int = 30) -> dict | None:
+    """POST *payload* to /mcp.
+
+    Returns the parsed JSON-RPC result dict, or None for notifications
+    (202 No Content).  Raises ``ConnectionError`` on network failure.
+    """
     data = json.dumps(payload).encode("utf-8")
     headers: dict[str, str] = {
-        "Content-Type":    "application/json",
-        "Accept":          "application/json, text/event-stream",
+        "Content-Type":         "application/json",
+        "Accept":               "application/json, text/event-stream",
         "mcp-protocol-version": "2025-03-26",
     }
-    if session_id:
-        headers["mcp-session-id"] = session_id
-
     req = urllib.request.Request(_MCP_URL, data=data, headers=headers, method="POST")
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
-            new_sid = resp.headers.get("mcp-session-id") or session_id
             raw = resp.read().decode("utf-8").strip()
-            # Streamable HTTP may return SSE lines; extract the JSON data line.
-            if raw.startswith("data:"):
+            if not raw:
+                # 202 No Content — notification acknowledged, no body expected
+                return None
+            # SSE envelope: extract the JSON from the ``data:`` line
+            if raw.startswith("event:") or raw.startswith("data:"):
                 for line in raw.splitlines():
                     if line.startswith("data:"):
                         raw = line[5:].strip()
                         break
-            return json.loads(raw), new_sid
+            return json.loads(raw)
     except (URLError, OSError) as exc:
         raise ConnectionError(f"drawio-mcp-server unreachable: {exc}") from exc
-
-
-def _initialize() -> str:
-    """Send MCP initialize handshake.  Returns the session ID."""
-    payload = {
-        "jsonrpc": "2.0",
-        "id": 1,
-        "method": "initialize",
-        "params": {
-            "protocolVersion": "2025-03-26",
-            "clientInfo": {"name": "network-picasso", "version": "0.1"},
-            "capabilities": {},
-        },
-    }
-    _resp, sid = _mcp_post(payload)
-    if not sid:
-        raise ConnectionError("MCP server did not return a session ID")
-    # Send initialized notification
-    notif = {"jsonrpc": "2.0", "method": "notifications/initialized", "params": {}}
-    _mcp_post(notif, session_id=sid, timeout=5)
-    return sid
 
 
 def call_tool(tool_name: str, arguments: dict, *, timeout: int = 30) -> dict:
     """Call a named MCP tool and return its result dict.
 
+    drawio-mcp-server 2.2.0 is stateless — no initialize handshake needed.
+
     Raises ``ConnectionError`` if the server is not reachable.
     Raises ``RuntimeError`` if the tool returns an error response.
     """
-    sid = _initialize()
     payload = {
         "jsonrpc": "2.0",
-        "id": 2,
-        "method": "tools/call",
-        "params": {"name": tool_name, "arguments": arguments},
+        "id":      _next_id(),
+        "method":  "tools/call",
+        "params":  {"name": tool_name, "arguments": arguments},
     }
-    resp, _ = _mcp_post(payload, session_id=sid, timeout=timeout)
+    resp = _mcp_post(payload, timeout=timeout)
+    if resp is None:
+        raise RuntimeError(f"MCP tool '{tool_name}' returned no response")
     if "error" in resp:
         raise RuntimeError(f"MCP tool error: {resp['error']}")
     return resp.get("result", {})
+
+
+# ---------------------------------------------------------------------------
+# Document discovery
+# ---------------------------------------------------------------------------
+
+def _get_document_id() -> str:
+    """Return the ID of the first connected Draw.io document.
+
+    Raises ``RuntimeError`` if no browser tab has the editor open.
+    """
+    resp = call_tool("list-documents", {}, timeout=10)
+    # result.content[0].text is a JSON string with {"success": true, "result": [...]}
+    content = resp.get("content", [])
+    if content:
+        inner_text = content[0].get("text", "")
+        try:
+            inner = json.loads(inner_text)
+            docs = inner.get("result", [])
+            if docs:
+                return docs[0]["id"]
+        except (json.JSONDecodeError, KeyError, IndexError):
+            pass
+    raise RuntimeError(
+        "No connected Draw.io documents. "
+        "Open http://localhost:4000 in your browser first."
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -119,16 +142,18 @@ def call_tool(tool_name: str, arguments: dict, *, timeout: int = 30) -> dict:
 def open_diagram_in_editor(xml: str, *, filename: str = "diagram.drawio") -> dict:
     """Push *xml* into the live Draw.io editor via ``import-diagram`` (replace mode).
 
-    The editor must be open at http://localhost:3000 and have an active document.
+    The editor must be open at http://localhost:4000 and have an active document.
     If only one document is connected the server auto-targets it.
 
     Returns the MCP tool result dict.
     """
+    doc_id = _get_document_id()
     return call_tool("import-diagram", {
-        "data":   xml,
-        "format": "xml",
-        "mode":   "replace",
-        "filename": filename,
+        "data":            xml,
+        "format":          "xml",
+        "mode":            "replace",
+        "filename":        filename,
+        "target_document": {"id": doc_id},
     }, timeout=15)
 
 
@@ -141,10 +166,12 @@ def add_xml_to_diagram(xml: str, *, target_page: dict | None = None) -> dict:
 
     Returns the MCP tool result dict.
     """
+    doc_id = _get_document_id()
     args: dict = {
-        "data":   xml,
-        "format": "xml",
-        "mode":   "add",
+        "data":            xml,
+        "format":          "xml",
+        "mode":            "add",
+        "target_document": {"id": doc_id},
     }
     if target_page:
         args["target_page"] = target_page
@@ -161,6 +188,7 @@ def open_all_pages(diagrams: dict[str, str]) -> list[dict]:
     First page replaces the current document; subsequent pages are added as
     new pages.  Returns a list of MCP result dicts.
     """
+    doc_id = _get_document_id()
     page_names = {
         "context":    "Context",
         "logical":    "Logical Architecture",
@@ -172,18 +200,14 @@ def open_all_pages(diagrams: dict[str, str]) -> list[dict]:
         xml = diagrams.get(dtype, "")
         if not xml:
             continue
-        if first:
-            # Replace any existing content with the first page
-            result = call_tool("import-diagram", {
-                "data": xml, "format": "xml", "mode": "replace",
-                "filename": f"{page_name}.drawio",
-            }, timeout=30)
-            first = False
-        else:
-            # Add subsequent diagrams as new pages
-            result = call_tool("import-diagram", {
-                "data": xml, "format": "xml", "mode": "new-page",
-                "filename": f"{page_name}.drawio",
-            }, timeout=30)
+        mode = "replace" if first else "new-page"
+        result = call_tool("import-diagram", {
+            "data":            xml,
+            "format":          "xml",
+            "mode":            mode,
+            "filename":        f"{page_name}.drawio",
+            "target_document": {"id": doc_id},
+        }, timeout=30)
+        first = False
         results.append(result)
     return results
