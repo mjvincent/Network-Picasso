@@ -26,6 +26,12 @@ from __future__ import annotations
 #   • Financial Services Cloud      — FSC-compliant controls, no public egress
 #   • Red Hat OpenShift (ROKS)      — OCP on VPC, Router/ALB ingress
 #   • Security & Compliance (SCC)   — Evidence-based compliance posture
+#   • Resiliency & DR               — RPO/RTO targets, immutable backup (WORM/Object Lock)
+#   • Cloud-Native Containers       — ICR + Vulnerability Advisor, image pipeline
+#   • Event-Driven Architecture     — Event Streams (Kafka), IBM MQ, dead-letter strategy
+#   • AI and Data Platform          — watsonx.ai/data/governance, GPU infrastructure
+#   • IBM Satellite and Edge        — Satellite Connector, Link endpoints, host HA
+#   • DevOps and IaC                — Schematics (Terraform), Continuous Delivery toolchain
 # ---------------------------------------------------------------------------
 
 
@@ -870,6 +876,216 @@ def find_design_gaps(architecture: dict) -> list[dict[str, str]]:
                     "  — ICD daily automated backups (30-day retention).\n"
                     "  — Restore to a new region from snapshots/backups.\n"
                     "  — Suitable for dev/test or low-criticality workloads."
+                ),
+            )
+
+        if not _any_has(backup_dr, "immutable", "worm", "object lock"):
+            _ask(
+                "Backup and DR",
+                "Are backup copies stored in immutable IBM Cloud Object Storage (WORM/Object Lock) to prevent deletion or ransomware tampering?",
+                (
+                    "IBM Cloud Object Storage supports Object Lock (WORM — Write Once "
+                    "Read Many) to make backup copies immutable for a defined retention "
+                    "period.\n\n"
+                    "How it works:\n"
+                    "• Enable Object Lock on the COS bucket at creation time.\n"
+                    "• Set a default retention period (e.g. 90 days).\n"
+                    "• Objects cannot be deleted or overwritten until the retention "
+                    "period expires — even by the bucket owner.\n\n"
+                    "When it is required:\n"
+                    "• PCI DSS Requirement 10.5 — audit logs must be protected from "
+                    "modification or deletion.\n"
+                    "• HIPAA — PHI backups must have tamper-evident storage.\n"
+                    "• IBM FS Cloud — immutable backup is a mandatory control.\n"
+                    "• Ransomware protection — attackers cannot delete cloud backups "
+                    "after compromising a workload account.\n\n"
+                    "Create a dedicated COS bucket in a separate IBM Cloud account "
+                    "(backup/audit account) with Object Lock enabled and cross-account "
+                    "write-only access from the workload account. The workload account "
+                    "cannot delete its own backups."
+                ),
+            )
+
+    # ── Cloud-native / Container platform ───────────────────────────────
+
+    if not _missing(compute):
+        is_roks_or_iks = _any_has(compute, "openshift", "roks", "ocp", "kubernetes", "iks")
+
+        if is_roks_or_iks and not _any_has(security or [], "container registry", "registry", "icr"):
+            _ask(
+                "Compute platform",
+                "A container platform is in scope — is IBM Cloud Container Registry (ICR) used to store, scan, and pull images?",
+                (
+                    "IBM Cloud Container Registry (ICR) is the IBM-native private "
+                    "container image registry. It integrates natively with ROKS and IKS.\n\n"
+                    "Why use ICR over Docker Hub or a third-party registry:\n"
+                    "• Images stay within the IBM Cloud private network — no internet "
+                    "egress required for pulls (uses a private endpoint).\n"
+                    "• IBM Cloud Vulnerability Advisor (VA) automatically scans every "
+                    "pushed image and reports CVEs before deployment.\n"
+                    "• IAM-controlled access — grant push access to CI/CD pipeline "
+                    "Service IDs and pull access to ROKS worker nodes via Trusted Profile.\n"
+                    "• Namespace isolation by team or application.\n\n"
+                    "IBM best practice for regulated workloads:\n"
+                    "1. Build → scan in CI pipeline → push to ICR.\n"
+                    "2. VA must report zero critical/high CVEs before image promotion.\n"
+                    "3. Sign images with Docker Content Trust (DCT) before promoting "
+                    "to production namespace.\n"
+                    "4. ROKS admission controller (OPA/Gatekeeper) enforces signed-only "
+                    "images in production namespaces."
+                ),
+            )
+
+    # ── Event-driven / streaming ──────────────────────────────────────────
+
+    has_event_streaming = _any_has(data or [], "event streams", "kafka", "streaming")
+    has_messaging       = _any_has(data or [], "mq", "ibm mq", "message queue")
+
+    if has_event_streaming:
+        if not _any_has(data or [], "partition", "topic", "consumer group", "retention"):
+            _ask(
+                "Event-driven architecture",
+                "IBM Cloud Event Streams (Kafka) is in scope — what is the topic partitioning, retention, and consumer group scaling strategy?",
+                (
+                    "IBM Cloud Event Streams is a fully managed Apache Kafka service.\n\n"
+                    "Topic design decisions:\n"
+                    "• Partitions: more partitions = higher parallelism but higher "
+                    "broker load. Start with 3 partitions per topic (one per AZ).\n"
+                    "• Retention: default 24 hours. Increase to 7+ days for replay "
+                    "use cases (CQRS, event sourcing). Retention is priced per GB.\n"
+                    "• Replication factor: always 3 for production (one replica per AZ). "
+                    "Data is replicated synchronously before the producer gets an ACK.\n\n"
+                    "Consumer group scaling:\n"
+                    "• One consumer per partition maximum. Increase partition count "
+                    "before you need to scale consumers.\n"
+                    "• Monitor consumer lag in IBM Cloud Monitoring — lag > threshold "
+                    "triggers an alert and auto-scale of Code Engine or ROKS pods.\n\n"
+                    "Dead-letter queue (DLQ):\n"
+                    "• Create a DLQ topic for each high-value topic.\n"
+                    "• Failed messages are routed to the DLQ after N retries.\n"
+                    "• DLQ consumer alerts the on-call team for manual review."
+                ),
+            )
+
+    if not has_event_streaming and not has_messaging and not _missing(data):
+        if _any_has(data, "database", "postgres", "mysql", "mongodb") and \
+           not _any_has(data, "event streams", "kafka", "mq"):
+            _ask(
+                "Event-driven architecture",
+                "Databases are present but no messaging or event streaming layer is shown — will services communicate via synchronous APIs only, or is asynchronous event-driven communication required?",
+                (
+                    "IBM Cloud offers two managed messaging services for asynchronous "
+                    "communication between services:\n\n"
+                    "• IBM Cloud Event Streams (Apache Kafka) — for high-throughput "
+                    "event streaming, CQRS, event sourcing, real-time pipelines. "
+                    "Use when producers and consumers need to be decoupled and "
+                    "events must be replayable. Minimum Enterprise plan for production "
+                    "(3-AZ, 6-broker, 10 Gbps throughput).\n\n"
+                    "• IBM MQ on Cloud — for guaranteed exactly-once delivery, "
+                    "transactional messaging, and integration with on-premises MQ "
+                    "networks. Required for financial, telecom, and manufacturing "
+                    "workloads that depend on IBM MQ semantics (persistent messages, "
+                    "transactions, poison message handling).\n\n"
+                    "If the architecture uses microservices or ROKS, strongly consider "
+                    "Event Streams as the backbone for service-to-service "
+                    "communication — it decouples service deployments and enables "
+                    "independent scaling."
+                ),
+            )
+
+    # ── AI / ML / watsonx ────────────────────────────────────────────────
+
+    has_ai = _any_has(data or [], "watsonx", "watson", "ml", "machine learning",
+                      "llm", "foundation model", "ai")
+
+    if has_ai:
+        if not _any_has(data or [], "gpu", "training", "inference", "model serving"):
+            _ask(
+                "AI and data platform",
+                "AI/ML services are in scope — what infrastructure is required for model training, fine-tuning, and inference serving?",
+                (
+                    "IBM watsonx platform on IBM Cloud:\n\n"
+                    "• watsonx.ai — prompt engineering, foundation model fine-tuning, "
+                    "AutoAI. Training jobs run on managed GPU clusters. Inference is "
+                    "serverless (pay per token).\n\n"
+                    "• watsonx.data — Apache Iceberg-based open lakehouse. Query data "
+                    "from COS (Parquet, ORC, Avro), IBM Cloud Databases, or external "
+                    "sources without moving it. Use Presto and Spark SQL engines.\n\n"
+                    "• watsonx.governance — tracks model lifecycle (who trained it, "
+                    "on what data, when), detects bias/drift in production, and "
+                    "generates evidence for AI regulations (EU AI Act, OECD AI).\n\n"
+                    "Infrastructure patterns:\n"
+                    "• Managed watsonx SaaS — IBM hosts everything. No GPU nodes to "
+                    "manage. Data sent to watsonx.ai stays within IBM Cloud.\n"
+                    "• Self-managed on ROKS — deploy Cloud Pak for Data on your own "
+                    "ROKS cluster. Add GPU worker pools (gx2 profile: 4× V100). "
+                    "Required for air-gapped or highly regulated environments.\n\n"
+                    "Data flow: COS → watsonx.data → watsonx.ai → inference endpoint "
+                    "→ application VPE → ROKS application."
+                ),
+            )
+
+    # ── IBM Cloud Satellite ───────────────────────────────────────────────
+
+    has_satellite = _any_has(compute or [], "satellite", "edge", "on-premises cluster",
+                              "hybrid cloud cluster")
+
+    if has_satellite:
+        if not _any_has(connectivity or [], "satellite connector", "satellite link",
+                         "link endpoint"):
+            _ask(
+                "IBM Satellite and edge",
+                "IBM Cloud Satellite is in scope — how are IBM Cloud managed services accessed from the Satellite location, and what is the outbound connectivity strategy?",
+                (
+                    "IBM Cloud Satellite runs IBM Cloud managed services (ROKS, "
+                    "databases, Event Streams) in customer-managed locations "
+                    "(on-premises, co-lo, or another cloud).\n\n"
+                    "Connectivity architecture:\n"
+                    "• Satellite Connector — a lightweight container deployed on each "
+                    "host. Establishes an outbound HTTPS (port 443) tunnel to IBM Cloud. "
+                    "No inbound firewall rules required.\n"
+                    "• Satellite Link — secure tunnel between the Satellite location "
+                    "and IBM Cloud. Two endpoint types:\n"
+                    "  — Cloud endpoints: allow workloads in the location to reach "
+                    "IBM Cloud services (COS, Key Protect, Monitoring) privately.\n"
+                    "  — Location endpoints: allow IBM Cloud services to reach "
+                    "on-premises resources (databases, APIs).\n\n"
+                    "HA requirements:\n"
+                    "• Minimum 3 host nodes in the location (one per failure domain).\n"
+                    "• Hosts must meet the IBM Cloud Satellite host requirements: "
+                    "4 vCPU, 16 GB RAM, 100 GB disk, RHEL 8.\n\n"
+                    "Storage: use ODF (OpenShift Data Foundation) or IBM Spectrum "
+                    "Scale as the storage operator for persistent volume claims in "
+                    "the Satellite cluster."
+                ),
+            )
+
+    # ── DevOps / Infrastructure as Code ──────────────────────────────────
+
+    if not _any_has(security or [], "schematics", "terraform", "iac",
+                     "infrastructure as code", "devops", "ci/cd", "continuous delivery"):
+        if not _missing(compute) or not _missing(vpcs):
+            _ask(
+                "DevOps and Infrastructure as Code",
+                "Is IBM Cloud Schematics (Terraform) or IBM Cloud Continuous Delivery used to provision and manage the infrastructure as code?",
+                (
+                    "IBM Cloud Schematics is IBM Cloud's managed Terraform service.\n\n"
+                    "Why Schematics over local Terraform:\n"
+                    "• State file stored in IBM Cloud (no S3 backend to manage).\n"
+                    "• IAM-controlled access to workspaces.\n"
+                    "• Drift detection — Schematics reports when IBM Cloud resources "
+                    "diverge from the Terraform state.\n"
+                    "• Ansible support (Schematics Actions) for OS-level configuration.\n\n"
+                    "IBM Cloud Continuous Delivery (CD) toolchain:\n"
+                    "• Pre-built toolchain templates for DevSecOps on IBM Cloud.\n"
+                    "• Integrates with Git (GitHub, GitLab, IBM DevOps), Tekton "
+                    "pipelines, and Vulnerability Advisor.\n"
+                    "• Evidence-based CD: every pipeline run generates evidence "
+                    "(test results, scan results) that feeds into SCC.\n\n"
+                    "IBM recommendation: provision all VPC, ROKS, and data resources "
+                    "via Schematics (Terraform). Use CD toolchains for application "
+                    "container image builds and ROKS deployments. This ensures "
+                    "all infrastructure changes are code-reviewed and auditable."
                 ),
             )
 

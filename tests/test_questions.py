@@ -290,3 +290,111 @@ def test_ibm_reference_coverage():
     assert "financial services" in all_text or "fsc" in all_text or "fs cloud" in all_text
     assert "openshift" in all_text or "roks" in all_text
     assert "virtual private endpoint" in all_text or "vpe" in all_text
+
+
+# ── New Tier 2 — IBM Think Architectures expansion ───────────────────────────
+
+def test_tier2_immutable_backup_question_fires():
+    """backup_dr present but no immutable/worm mention fires immutable backup question."""
+    arch = _full_architecture()
+    arch["ibm_cloud"]["backup_dr"] = [
+        {"name": "Daily snapshots", "notes": "rpo 1h rto 4h snapshot backup"}
+    ]
+    gaps = find_design_gaps(arch)
+    assert any(
+        "immutable" in g["question"].lower() or "worm" in g["question"].lower() or "object lock" in g["question"].lower()
+        for g in gaps
+    ), "Expected immutable backup question when worm/object lock not mentioned"
+
+
+def test_tier2_container_registry_question_fires():
+    """ROKS compute without container registry in security fires ICR question."""
+    arch = _full_architecture()
+    arch["ibm_cloud"]["compute"] = [
+        {"name": "ROKS Cluster", "notes": "openshift roks ocp vpc worker nodes"}
+    ]
+    arch["ibm_cloud"]["security"] = [
+        {"name": "IAM Access Groups",   "notes": "iam identity access"},
+        {"name": "Key Protect",         "notes": "key protect encryption"},
+        {"name": "Security Groups",     "notes": "security group nacl acl"},
+        {"name": "SCC",                 "notes": "scc security and compliance"},
+    ]
+    gaps = find_design_gaps(arch)
+    assert any(
+        "container registry" in g["question"].lower() or "icr" in g["question"].lower()
+        for g in gaps
+    ), "Expected container registry question for ROKS without ICR"
+
+
+def test_tier2_event_streaming_question_fires():
+    """Event Streams in data without topic design fires partitioning question."""
+    arch = _full_architecture()
+    arch["ibm_cloud"]["data"] = [
+        {"name": "IBM Cloud Event Streams", "notes": "event streams kafka streaming managed"},
+    ]
+    gaps = find_design_gaps(arch)
+    assert any(
+        "event streams" in g["question"].lower() or "kafka" in g["question"].lower()
+        for g in gaps
+    ), "Expected Event Streams topic design question"
+
+
+def test_tier2_async_messaging_question_fires():
+    """Database present without messaging fires async communication question."""
+    arch = _full_architecture()
+    arch["ibm_cloud"]["data"] = [
+        {"name": "PostgreSQL", "notes": "database postgres icd"},
+        {"name": "MongoDB",    "notes": "database mongodb nosql"},
+    ]
+    gaps = find_design_gaps(arch)
+    assert any(
+        "asynchronous" in g["question"].lower() or "messaging" in g["question"].lower()
+        for g in gaps
+    ), "Expected async messaging question when database present but no messaging"
+
+
+def test_tier2_ai_ml_question_fires():
+    """watsonx in data fires AI/ML infrastructure question."""
+    arch = _full_architecture()
+    arch["ibm_cloud"]["data"] = [
+        {"name": "watsonx.ai", "notes": "watsonx ai llm foundation model watson"},
+    ]
+    gaps = find_design_gaps(arch)
+    assert any(
+        "watsonx" in g["question"].lower() or "ai/ml" in g["question"].lower()
+        or "model training" in g["question"].lower()
+        for g in gaps
+    ), "Expected AI/ML infrastructure question when watsonx detected"
+
+
+def test_tier2_satellite_question_fires():
+    """IBM Satellite in compute without Connector/Link fires Satellite connectivity question."""
+    arch = _full_architecture()
+    arch["ibm_cloud"]["compute"] = [
+        {"name": "IBM Cloud Satellite Location", "notes": "satellite edge hybrid cloud cluster on-premises"},
+    ]
+    arch["ibm_cloud"]["connectivity"] = [
+        {"name": "Direct Link 2.0", "notes": "direct link"},
+    ]
+    gaps = find_design_gaps(arch)
+    assert any(
+        "satellite" in g["question"].lower() or "satellite connector" in g["question"].lower()
+        for g in gaps
+    ), "Expected Satellite Connector question when Satellite compute without link endpoints"
+
+
+def test_tier2_devops_iac_question_fires():
+    """VPCs present without Schematics/IaC in security fires DevOps/IaC question."""
+    arch = _full_architecture()
+    arch["ibm_cloud"]["security"] = [
+        {"name": "IAM Access Groups",   "notes": "iam identity access"},
+        {"name": "Key Protect",         "notes": "key protect encryption"},
+        {"name": "Security Groups",     "notes": "security group nacl acl"},
+        {"name": "SCC",                 "notes": "scc security and compliance"},
+    ]
+    gaps = find_design_gaps(arch)
+    assert any(
+        "schematics" in g["question"].lower() or "terraform" in g["question"].lower()
+        or "infrastructure as code" in g["question"].lower()
+        for g in gaps
+    ), "Expected DevOps/IaC question when VPCs present but no Schematics/Terraform"

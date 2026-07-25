@@ -1,0 +1,21 @@
+name: Event-Driven Architecture
+version: 0.1.0
+checks:
+  - id: event-streaming
+    severity: high
+    question: Is Apache Kafka (IBM Cloud Event Streams) required for high-throughput event ingestion or streaming pipelines?
+  - id: messaging
+    severity: medium
+    question: Is IBM MQ required for guaranteed message delivery, ordering, or legacy integration with on-premises systems?
+  - id: event-notifications
+    severity: medium
+    question: Which IBM Cloud Event Notifications channels are required (webhook, email, SMS, push) and what triggers them?
+  - id: serverless-compute
+    severity: medium
+    question: Is IBM Cloud Code Engine or IBM Cloud Functions required for event-triggered, serverless, or scale-to-zero workloads?
+  - id: topic-design
+    severity: medium
+    question: How are Kafka topics partitioned, and what are the retention period and consumer group scaling requirements?
+  - id: dead-letter-strategy
+    severity: low
+    question: Is a dead-letter queue or poison-message strategy defined for failed event processing?

@@ -1,0 +1,24 @@
+name: AI and Data Platform
+version: 0.1.0
+checks:
+  - id: ai-platform
+    severity: high
+    question: Is IBM watsonx (watsonx.ai, watsonx.data, watsonx.governance) or IBM Watson Studio required, and which foundation models or pipelines does the workload depend on?
+  - id: gpu-infrastructure
+    severity: high
+    question: Are GPU worker nodes required for model training or inference, and what IBM Cloud GPU machine types (gx2 profiles, bare metal NVIDIA A100/H100) are appropriate?
+  - id: training-data-location
+    severity: high
+    question: Where does training and inference data reside — IBM Cloud Object Storage, IBM Cloud Databases, or IBM Cloud Pak for Data — and is data governance (watsonx.governance) required?
+  - id: model-serving
+    severity: medium
+    question: How are trained models served — IBM Watson Machine Learning endpoints, IBM Code Engine, or ROKS deployments — and what are the latency and throughput SLAs?
+  - id: data-lakehouse
+    severity: medium
+    question: Is IBM watsonx.data (Apache Iceberg lakehouse on IBM Cloud Object Storage) required for unified SQL analytics across structured and unstructured data?
+  - id: ml-governance
+    severity: medium
+    question: Is watsonx.governance required to track model lineage, detect bias, enforce fairness constraints, and generate compliance evidence?
+  - id: vector-store
+    severity: low
+    question: Is a vector database or embeddings store (IBM watsonx.data, Milvus, or MongoDB Atlas Vector Search) required for retrieval-augmented generation (RAG) patterns?

@@ -85,7 +85,7 @@ workspace-scoped MCP config entry.
 - MCP skill instructions: `.bob/skills/configure-mcp.md`
 - Bob workspace MCP config location: `.bob/mcp.json`
 
-**Status:** `[ ] pending`
+**Status:** `[x] done`
 
 ---
 
@@ -122,7 +122,7 @@ workflow of: save file → open Draw.io desktop → open file.
 - Server endpoints: `src/network_picasso/server.py` (follow existing `handle_*` pattern)
 - Ollama client pattern (stdlib urllib.request): `src/network_picasso/ollama.py`
 
-**Status:** `[ ] pending`
+**Status:** `[x] done`
 
 ---
 
@@ -154,7 +154,7 @@ it via `import-diagram` in `add` mode — preserving visual consistency with the
 - STENCIL_SHAPES dict: `src/network_picasso/drawio.py` (line ~200) — maps service names to stencil IDs
 - STENCIL_COLOR dict: `src/network_picasso/drawio.py` — maps categories to IBM brand colors
 
-**Status:** `[ ] pending`
+**Status:** `[x] done`
 
 ---
 
@@ -190,7 +190,7 @@ or breaking the IBM visual language.
 - STENCIL_COLOR: `src/network_picasso/drawio.py` lines ~100–125
 - IBM prescribed node pattern: `src/network_picasso/drawio.py` `ibm_node()` method (line 328)
 
-**Status:** `[ ] pending`
+**Status:** `[x] done`
 
 ---
 
@@ -221,7 +221,7 @@ This replaces the current single-type export with a professional three-tab deliv
 - MCP tools: `create-page`, `import-diagram` (mode: `new-page`)
 - Current diagram type dropdown: `ui/src/App.tsx` line ~1412
 
-**Status:** `[ ] pending`
+**Status:** `[x] done`
 
 ---
 

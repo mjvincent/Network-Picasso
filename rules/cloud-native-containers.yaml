@@ -1,0 +1,27 @@
+name: Cloud-Native and Container Orchestration
+version: 0.1.0
+checks:
+  - id: cluster-topology
+    severity: high
+    question: Is the Red Hat OpenShift (ROKS) or IBM Cloud Kubernetes Service (IKS) cluster single-zone or multi-zone, and how many worker nodes per zone?
+  - id: worker-profile
+    severity: high
+    question: Which worker node machine type (virtual or bare metal) and profile (compute, memory, GPU) is required for the workload?
+  - id: container-registry
+    severity: high
+    question: Where are container images stored, scanned for vulnerabilities, and pulled from — IBM Cloud Container Registry (private) or a third-party registry?
+  - id: service-mesh
+    severity: medium
+    question: Is a service mesh (Red Hat OpenShift Service Mesh / Istio) required for mutual TLS between services, traffic management, or observability?
+  - id: storage-classes
+    severity: medium
+    question: Which persistent storage classes are required for stateful workloads — IBM Block Storage, File Storage, or IBM Portworx?
+  - id: image-pipeline
+    severity: medium
+    question: Is an automated CI/CD pipeline (IBM Cloud Continuous Delivery / Tekton) required to build, scan, and deploy container images?
+  - id: namespace-isolation
+    severity: medium
+    question: How are Kubernetes namespaces and RBAC policies structured to enforce workload and team isolation?
+  - id: cluster-autoscaling
+    severity: low
+    question: Is cluster autoscaling (worker pool scale-up/down) required, and what are the minimum and maximum node counts?

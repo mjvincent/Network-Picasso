@@ -1,0 +1,21 @@
+name: IBM Satellite and Edge
+version: 0.1.0
+checks:
+  - id: satellite-location
+    severity: high
+    question: Is an IBM Cloud Satellite location required to run IBM Cloud managed services on-premises, in another cloud, or at the network edge?
+  - id: satellite-ha
+    severity: high
+    question: How many host nodes are provisioned in the Satellite location, and are they spread across at least three failure domains for control-plane HA?
+  - id: satellite-connector
+    severity: high
+    question: Is IBM Cloud Satellite Connector deployed on each host node, and is outbound HTTPS (port 443) to IBM Cloud allowed through the customer firewall?
+  - id: link-endpoints
+    severity: medium
+    question: Which IBM Cloud services are accessed from the Satellite location via Satellite Link cloud endpoints, and which on-premises services are exposed to IBM Cloud via location endpoints?
+  - id: satellite-storage
+    severity: medium
+    question: What storage operator (IBM Spectrum Scale, ODF, Portworx, or local) is used for persistent volumes in the Satellite cluster?
+  - id: satellite-image-registry
+    severity: low
+    question: Are container images pulled from IBM Cloud Container Registry or a local/private registry accessible from the Satellite location without traversing the public internet?

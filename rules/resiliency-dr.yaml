@@ -1,0 +1,27 @@
+name: Resiliency and Disaster Recovery
+version: 0.1.0
+checks:
+  - id: rto-rpo-targets
+    severity: high
+    question: What are the Recovery Time Objective (RTO) and Recovery Point Objective (RPO) targets, and which IBM Cloud services or data must meet them?
+  - id: dr-strategy
+    severity: high
+    question: Is the DR strategy active/active (both regions serve live traffic), warm standby (secondary is running and idle), or backup/restore (secondary rebuilt from backup)?
+  - id: cross-region-replication
+    severity: high
+    question: Which IBM Cloud Databases, IBM Cloud Object Storage buckets, and block volumes require cross-region or cross-zone replication?
+  - id: failover-automation
+    severity: medium
+    question: Is DR failover automated (IBM Cloud CIS Global Load Balancer health-check triggered) or manual (runbook-driven)?
+  - id: backup-immutability
+    severity: high
+    question: Are backup copies stored in immutable IBM Cloud Object Storage (Object Lock / WORM) to prevent deletion or tampering?
+  - id: snapshot-strategy
+    severity: medium
+    question: What IBM Cloud Block Storage snapshot frequency, retention, and cross-region copy policy is required?
+  - id: recovery-testing
+    severity: medium
+    question: How frequently is DR recovery tested, and what evidence is captured in IBM Cloud Activity Tracker for compliance?
+  - id: key-replication
+    severity: medium
+    question: If HPCS or Key Protect is used, are encryption keys replicated to the DR region so that encrypted volumes can be decrypted after failover?

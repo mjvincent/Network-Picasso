@@ -205,9 +205,27 @@ STENCIL_COLOR: dict[str, str] = {
     "cloud--monitoring":                    "#1192E8",
     "ibm-cloud--logging":                   "#1192E8",
     "flow-logs-vpc":                        "#1192E8",
-    # AI / Apps — purple
+    "ibm-cloud--instana":                   "#1192E8",
+    "tracing--node":                        "#1192E8",
+    # Integration / Event-Driven — blue
+    "ibm-cloud--event-streams":             "#0F62FE",
+    "event--alt":                           "#0F62FE",
+    "ibm-cloud--event-notifications":       "#0F62FE",
+    "ibm-cloud--functions":                 "#0F62FE",
+    "ibm-cloud--code-engine":               "#198038",
+    # AI / watsonx — purple
+    "ibm-cloud--watsonx-ai":               "#A56EFF",
+    "ibm-cloud--watsonx-data":             "#A56EFF",
+    "ibm-cloud--watsonx-governance":       "#A56EFF",
+    "watson--machine-learning":             "#A56EFF",
+    "watson--studio":                       "#A56EFF",
     "application":                          "#A56EFF",
     "application--web":                     "#A56EFF",
+    # Security additions
+    "ibm-cloud--app-id":                    "#FA4D56",
+    "ibm-cloud--container-registry":        "#FA4D56",
+    "ibm-cloud--certificate-manager":       "#FA4D56",
+    "ibm-cloud--schematics":                "#FA4D56",
     # Actors — black
     "user":                                 "#000000",
     "enterprise":                           "#000000",
@@ -282,6 +300,31 @@ STENCIL_MAP: dict[str, str] = {
     "logging":                  "ibm-cloud--logging",
     "activity tracker":         "ibm-cloud--logging",
     "flow log":                 "flow-logs-vpc",
+    "instana":                  "ibm-cloud--instana",
+    "dynatrace":                "tracing--node",
+    # Event-Driven / Integration
+    "event streams":            "ibm-cloud--event-streams",
+    "kafka":                    "ibm-cloud--event-streams",
+    "event notifications":      "ibm-cloud--event-notifications",
+    "cloud functions":          "ibm-cloud--functions",
+    "functions":                "ibm-cloud--functions",
+    "code engine":              "ibm-cloud--code-engine",
+    # AI / watsonx
+    "watsonx.ai":               "ibm-cloud--watsonx-ai",
+    "watsonx.data":             "ibm-cloud--watsonx-data",
+    "watsonx.governance":       "ibm-cloud--watsonx-governance",
+    "watsonx":                  "ibm-cloud--watsonx-ai",
+    "watson machine learning":  "watson--machine-learning",
+    "watson studio":            "watson--studio",
+    "watson":                   "watson--studio",
+    # Security additions
+    "app id":                   "ibm-cloud--app-id",
+    "certificate manager":      "ibm-cloud--certificate-manager",
+    "container registry":       "ibm-cloud--container-registry",
+    "schematics":               "ibm-cloud--schematics",
+    # Satellite
+    "satellite":                "cloud-satellite",
+    "satellite connector":      "cloud-satellite",
     # Endpoints
     "vpe":                      "ibm-cloud--vpc-endpoints",
     "endpoint gateway":         "ibm-cloud--vpc-endpoints",

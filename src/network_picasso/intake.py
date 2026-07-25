@@ -26,15 +26,40 @@ KEYWORDS = {
     "vpcs": ["vpc", "virtual private cloud"],
     "zones": ["zone", "availability zone"],
     "subnets": ["subnet", "cidr", "public subnet", "private subnet"],
-    "connectivity": ["direct link", "vpn", "transit gateway", "bgp", "hybrid", "mpls"],
-    "ingress": ["ingress", "load balancer", "cloud internet services", "cis", "router", "gateway"],
-    "compute": ["vsi", "virtual server", "roks", "openshift", "kubernetes", "bare metal", "powervs", "power"],
-    "data": ["database", "postgres", "db2", "object storage", "cos", "storage", "bucket"],
+    "connectivity": [
+        "direct link", "vpn", "transit gateway", "bgp", "hybrid", "mpls",
+        "satellite connector", "satellite link",
+    ],
+    "ingress": [
+        "ingress", "load balancer", "cloud internet services", "cis", "router", "gateway",
+        "global load balancer", "anycast",
+    ],
+    "compute": [
+        "vsi", "virtual server", "roks", "openshift", "kubernetes", "bare metal",
+        "powervs", "power", "code engine", "serverless", "cloud functions",
+        "satellite", "worker node", "gpu",
+    ],
+    "data": [
+        "database", "postgres", "db2", "object storage", "cos", "storage", "bucket",
+        "redis", "mongodb", "elasticsearch", "cloudant", "event streams", "kafka",
+        "mq", "ibm mq", "watsonx", "watson studio", "watson", "lakehouse",
+        "analytics engine", "datastage", "cognos",
+    ],
     "private_endpoints": ["private endpoint", "vpe", "virtual private endpoint"],
     "dns": ["dns", "resolver", "domain", "hostname"],
-    "security": ["iam", "secrets", "key protect", "hpcs", "certificate", "security group", "nacl", "firewall"],
-    "observability": ["monitoring", "logging", "logs", "activity tracker", "audit", "flow log", "metrics"],
-    "backup_dr": ["backup", "restore", "dr", "disaster recovery", "rpo", "rto", "replication"],
+    "security": [
+        "iam", "secrets", "key protect", "hpcs", "certificate", "security group",
+        "nacl", "firewall", "app id", "oauth", "scc", "compliance",
+        "container registry", "image registry",
+    ],
+    "observability": [
+        "monitoring", "logging", "logs", "activity tracker", "audit", "flow log",
+        "metrics", "instana", "dynatrace", "tracing", "apm", "prometheus",
+    ],
+    "backup_dr": [
+        "backup", "restore", "dr", "disaster recovery", "rpo", "rto", "replication",
+        "snapshot", "veeam", "zerto", "immutable", "worm",
+    ],
 }
 
 CATEGORY_ALIASES = {
