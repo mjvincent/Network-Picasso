@@ -261,6 +261,32 @@ function bobPromptTemplates(diagramType: string) {
   ];
 }
 
+function qualityRemediationPrompt(diagramType: string, review: DiagramQualityReview): string {
+  const findings = review.findings.slice(0, 8);
+  const findingText = findings.length
+    ? findings.map((finding, index) =>
+        `${index + 1}. ${finding.area}: ${finding.message} Recommendation: ${finding.recommendation}`
+      ).join('\n')
+    : 'No analyzer findings were reported. Inspect the page for final presentation polish.';
+  const missingPatternChecks = review.ibmPatternChecks.checks
+    .filter((check) => !check.present)
+    .map((check) => `- ${check.name}`)
+    .join('\n') || '- No missing IBM pattern checks reported.';
+
+  return `Use the ibm-drawio-editing skill. Inspect the currently open ${diagramType} Draw.io page in the MCP editor and remediate the Network Picasso quality analyzer findings below.
+
+Quality score: ${review.score}/100 (${review.status})
+IBM pattern foundation: ${review.ibmPatternChecks.name}
+
+Findings to address:
+${findingText}
+
+IBM pattern checks to review:
+${missingPatternChecks}
+
+Make targeted, professional-grade edits only. Preserve the customer-specific architecture, IBM Cloud stencil language, page structure, and intended network topology. Improve label placement, shape sizing, connector routing, and pattern clarity. After editing, summarize what changed so Network Picasso can re-analyze the diagram.`;
+}
+
 async function postForm<T>(url: string, body: FormData): Promise<T> {
   const response = await fetch(url, { method: 'POST', body });
   if (!response.ok) {
@@ -2101,6 +2127,46 @@ export default function App() {
                             <strong>{diagramQuality.status}</strong>
                             <p>{diagramQuality.summary}</p>
                           </div>
+                        </div>
+                        <div className="quality-remediation">
+                          <div>
+                            <strong>Recommended remediation loop</strong>
+                            <p>Open the diagram in the MCP editor, copy the quality fix prompt to Bob, let Bob make targeted layout/pattern edits, then re-run this analyzer.</p>
+                          </div>
+                          <div className="quality-remediation-actions">
+                            <Button
+                              kind="secondary"
+                              size="sm"
+                              renderIcon={Launch}
+                              onClick={openInMcpEditor}
+                              disabled={busy || !architecture || !mcpRunning}
+                            >
+                              Open in MCP editor
+                            </Button>
+                            <Button
+                              kind="tertiary"
+                              size="sm"
+                              renderIcon={Copy}
+                              onClick={() => copyBobPrompt('Quality Fix', qualityRemediationPrompt(diagramType, diagramQuality))}
+                              disabled={busy}
+                            >
+                              {copiedPrompt === 'Quality Fix' ? 'Quality fix copied' : 'Copy quality fix prompt'}
+                            </Button>
+                            <Button
+                              kind="ghost"
+                              size="sm"
+                              renderIcon={Renew}
+                              onClick={runDiagramQuality}
+                              disabled={busy || diagramQualityBusy || !architecture}
+                            >
+                              Re-analyze
+                            </Button>
+                          </div>
+                          {!mcpRunning && (
+                            <p className="quality-remediation-note">
+                              MCP editor is not detected. Use Option E below to check/start Bob MCP before applying fixes.
+                            </p>
+                          )}
                         </div>
                         <div className="quality-pattern">
                           <span className="advisor-label">IBM pattern foundation</span>

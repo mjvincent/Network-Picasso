@@ -12,7 +12,7 @@ The app is designed for sellers who may not be deep network designers. It provid
 question prompts, IBM-pattern traceability, and Bob/Draw.io MCP hand-holding so the user can move
 from rough discovery notes to a customer-ready architecture conversation.
 
-Current version: **0.4.0**
+Current version: **0.4.1**
 
 ---
 
@@ -78,7 +78,7 @@ It produces four architecture pages:
   - Checks the design against IBM Think Architecture pattern foundations from
     [IBM Architecture Patterns](https://www.ibm.com/think/architectures/patterns), including VPC landing zone,
     VSI on VPC landing zone, and PowerVS with VPC landing zone patterns.
-  - Returns seller-friendly remediation guidance before Bob or manual Draw.io editing.
+  - Provides a remediation loop: open in MCP editor, copy a Bob-ready quality fix prompt, edit, and re-analyze.
 
 - **Bob and Draw.io MCP workflow**
   - Pushes diagrams into a live Draw.io MCP editor at `http://127.0.0.1:4000`.

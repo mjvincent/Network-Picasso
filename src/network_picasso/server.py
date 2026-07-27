@@ -126,7 +126,7 @@ def sync_project_if_managed(
 
 
 class NetworkPicassoHandler(BaseHTTPRequestHandler):
-    server_version = "NetworkPicasso/0.4"
+    server_version = "NetworkPicasso/0.4.1"
 
     def do_OPTIONS(self) -> None:
         self.send_response(204)

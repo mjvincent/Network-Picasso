@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.1 - 2026-07-27
+
+### Changed
+
+- Diagram Quality Analyzer now provides a remediation loop with MCP open, Bob quality-fix prompt generation, and re-analysis actions.
+
 ## 0.4.0 - 2026-07-27
 
 ### Added
