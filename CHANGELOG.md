@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.5 - 2026-07-27
+
+### Added
+
+- Bob prompt sections now include informational help bubbles explaining when each prompt group is relevant.
+- Bob prompt panel now recommends a next prompt based on the current diagram quality analysis.
+
 ## 0.4.4 - 2026-07-27
 
 ### Added

@@ -162,7 +162,7 @@ def project_activity_payload(project_path: Path, settings: dict) -> dict:
 
 
 class NetworkPicassoHandler(BaseHTTPRequestHandler):
-    server_version = "NetworkPicasso/0.4.4"
+    server_version = "NetworkPicasso/0.4.5"
 
     def do_OPTIONS(self) -> None:
         self.send_response(204)

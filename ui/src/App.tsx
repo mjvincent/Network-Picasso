@@ -253,6 +253,16 @@ const IBM_CLOUD_KEYS = [
   'regions', 'vpcs', 'zones', 'subnets', 'connectivity', 'ingress',
   'compute', 'data', 'private_endpoints', 'dns', 'security', 'observability', 'backup_dr',
 ];
+const BOB_PROMPT_CATEGORY_HELP: Record<string, string> = {
+  Start: 'Use this first when Bob has just connected to the Draw.io MCP editor. It tells Bob to inspect before editing and to preserve the generated architecture.',
+  Layout: 'Use these when the diagram is technically correct but looks crowded, has overlapping labels, awkward connector paths, or uneven container alignment.',
+  'IBM Pattern': 'Use these when you want the diagram to better resemble IBM architecture pattern guidance, landing zone conventions, or expected IBM Cloud structure.',
+  'Seller Review': 'Use these when preparing for a customer conversation. They improve clarity, audience fit, naming, and executive readability.',
+  Security: 'Use these when the diagram needs stronger compliance, audit, encryption, private access, or zero-trust evidence.',
+  Resiliency: 'Use this when primary and recovery regions, replication, failover, RPO/RTO, or DR responsibilities need to be clearer.',
+  Data: 'Use this when data movement, storage, archive, retrieval, replication, or backup paths are unclear.',
+  'Final QA': 'Use these at the end. Customer Ready is a broad final polish; No Topology Change is safest when you only want presentation changes.',
+};
 
 async function postJson<T>(url: string, body: unknown): Promise<T> {
   const response = await fetch(url, { method: 'POST', headers: API_HEADERS, body: JSON.stringify(body) });
@@ -379,6 +389,35 @@ IBM pattern checks to review:
 ${missingPatternChecks}
 
 Make targeted, professional-grade edits only. Preserve the customer-specific architecture, IBM Cloud stencil language, page structure, and intended network topology. Improve label placement, shape sizing, connector routing, and pattern clarity. After editing, summarize what changed so Network Picasso can re-analyze the diagram.`;
+}
+
+function recommendedBobPrompt(review: DiagramQualityReview | null): { label: string; reason: string } {
+  if (!review) {
+    return {
+      label: 'Setup Bob',
+      reason: 'Start here after opening the diagram in MCP so Bob inspects the document before editing.',
+    };
+  }
+  const findingText = review.findings.map((finding) =>
+    `${finding.area} ${finding.message} ${finding.recommendation}`.toLowerCase()
+  ).join(' ');
+  const missingPattern = review.ibmPatternChecks.checks.some((check) => !check.present);
+  if (findingText.includes('connector') || findingText.includes('edge') || findingText.includes('line')) {
+    return { label: 'Fix Connectors', reason: 'Quality findings mention connector or edge readability.' };
+  }
+  if (findingText.includes('label') || findingText.includes('overlap') || findingText.includes('text')) {
+    return { label: 'Clean Labels', reason: 'Quality findings indicate label fit or overlap risk.' };
+  }
+  if (missingPattern) {
+    return { label: 'IBM Pattern Check', reason: 'IBM pattern checks show missing or unclear pattern elements.' };
+  }
+  if (findingText.includes('density') || findingText.includes('crowd') || findingText.includes('container')) {
+    return { label: 'Align Containers', reason: 'The page would benefit from spacing and container alignment polish.' };
+  }
+  if (review.score >= 90) {
+    return { label: 'Customer Ready', reason: 'The score is strong; use a final presentation review before sharing.' };
+  }
+  return { label: 'Architecture Polish', reason: 'Use a broad architecture clarity pass for the current quality findings.' };
 }
 
 async function postForm<T>(url: string, body: FormData): Promise<T> {
@@ -1540,6 +1579,7 @@ export default function App() {
     },
     new Map<string, ReturnType<typeof bobPromptTemplates>>(),
   );
+  const bobPromptRecommendation = recommendedBobPrompt(diagramQuality);
 
   return (
     <>
@@ -2817,10 +2857,20 @@ export default function App() {
                       <strong>Bob editing prompts</strong>
                       <InfoTip text="Copy one of these prompts after the diagram is loaded in the MCP editor. They tell Bob to inspect the current Draw.io document, use the IBM editing skill, and make targeted changes." />
                     </div>
+                    <InlineNotification
+                      kind="info"
+                      title={`Recommended next prompt: ${bobPromptRecommendation.label}`}
+                      subtitle={bobPromptRecommendation.reason}
+                      lowContrast
+                      hideCloseButton
+                    />
                     <div className="bob-prompt-sections">
                       {Array.from(bobPromptsByCategory.entries()).map(([category, prompts]) => (
                         <div className="bob-prompt-section" key={category}>
-                          <span>{category}</span>
+                          <div className="bob-prompt-section-header">
+                            <span>{category}</span>
+                            <InfoTip text={BOB_PROMPT_CATEGORY_HELP[category] || 'Use these prompts for targeted Bob editing in the Draw.io MCP editor.'} />
+                          </div>
                           <div className="bob-prompt-grid">
                             {prompts.map((prompt) => (
                               <Button

@@ -207,7 +207,13 @@ body {
   gap: 0.5rem;
 }
 
-.bob-prompt-section > span {
+.bob-prompt-section-header {
+  align-items: center;
+  display: flex;
+  gap: 0.25rem;
+}
+
+.bob-prompt-section-header > span {
   color: #525252;
   font-size: 0.75rem;
   font-weight: 600;

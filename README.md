@@ -12,7 +12,7 @@ The app is designed for sellers who may not be deep network designers. It provid
 question prompts, IBM-pattern traceability, and Bob/Draw.io MCP hand-holding so the user can move
 from rough discovery notes to a customer-ready architecture conversation.
 
-Current version: **0.4.4**
+Current version: **0.4.5**
 
 ---
 
@@ -84,6 +84,7 @@ It produces four architecture pages:
   - Pushes diagrams into a live Draw.io MCP editor at `http://127.0.0.1:4000`.
   - Provides an in-app MCP checklist.
   - Provides grouped, copy-ready Bob prompts for setup, label cleanup, connector fixes, IBM pattern review, landing-zone polish, executive simplification, security, DR, data flow, and final customer-readiness QA.
+  - Adds help bubbles and a recommended-next-prompt cue so sellers know which Bob prompt fits the current diagram need.
 
 - **Local-first operation**
   - No cloud API keys required.
