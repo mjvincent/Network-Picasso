@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.4 - 2026-07-27
+
+### Added
+
+- Expanded Bob editing prompt library with grouped prompts for setup, layout, IBM pattern review, seller review, security, resiliency, data flow, and final QA.
+
 ## 0.4.3 - 2026-07-27
 
 ### Added

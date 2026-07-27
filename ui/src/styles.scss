@@ -197,6 +197,24 @@ body {
   gap: 0.5rem;
 }
 
+.bob-prompt-sections {
+  display: grid;
+  gap: 0.875rem;
+}
+
+.bob-prompt-section {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.bob-prompt-section > span {
+  color: #525252;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
 /* ── Diagram quality analyzer ────────────────────────────────────────────── */
 
 .quality-panel {

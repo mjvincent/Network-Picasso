@@ -283,20 +283,74 @@ function bobPromptTemplates(diagramType: string) {
         : 'Deployment';
   return [
     {
+      category: 'Start',
       label: 'Setup Bob',
       text: 'Use the ibm-drawio-editing skill. Inspect the open Draw.io MCP document before making changes. Use IBM Cloud stencil patterns, keep labels non-overlapping, and preserve the existing architecture pages.',
     },
     {
+      category: 'Layout',
       label: 'Clean Labels',
       text: `Use the ibm-drawio-editing skill. Inspect the ${pageName} page in the open Draw.io MCP document. Improve label placement, spacing, and connector routing while preserving the architecture, IBM Cloud container boundaries, and page structure.`,
     },
     {
+      category: 'Layout',
+      label: 'Fix Connectors',
+      text: `Use the ibm-drawio-editing skill. Inspect the ${pageName} page and clean connector routing. Use orthogonal routing, move edge labels off lines and shapes, reduce line crossings, and preserve all existing source-to-target relationships.`,
+    },
+    {
+      category: 'Layout',
+      label: 'Align Containers',
+      text: `Use the ibm-drawio-editing skill. Inspect the ${pageName} page and align IBM Cloud account, region, VPC, zone, subnet, shared service, and PowerVS containers to a clean grid. Keep container hierarchy intact and leave enough whitespace for labels.`,
+    },
+    {
+      category: 'IBM Pattern',
+      label: 'IBM Pattern Check',
+      text: `Use the ibm-drawio-editing skill. Inspect the ${pageName} page for IBM architecture pattern clarity. Verify the diagram visibly reflects the chosen IBM pattern foundation, including cloud account boundary, regions, VPC or landing zone structure, connectivity, security services, observability, and resiliency elements. Add only missing pattern-evidence labels or service nodes that are already supported by the architecture model.`,
+    },
+    {
+      category: 'IBM Pattern',
+      label: 'Landing Zone Polish',
+      text: `Use the ibm-drawio-editing skill. Inspect the ${pageName} page and make the IBM Cloud landing zone structure clearer. Emphasize account, region, VPC, subnet tiering, private endpoints, security controls, logging/monitoring, and connectivity. Preserve customer-specific naming and topology.`,
+    },
+    {
+      category: 'Seller Review',
       label: 'Architecture Polish',
       text: `Use the ibm-drawio-editing skill. Review the ${pageName} page for IBM Cloud architecture clarity. Make only targeted polish changes: align containers, reduce overlapping labels, improve edge labels, and keep seller-friendly naming.`,
     },
     {
+      category: 'Seller Review',
+      label: 'Exec Simplify',
+      text: 'Use the ibm-drawio-editing skill. Inspect the Executive Overview page and simplify it for a customer executive audience. Keep the business flow, primary/DR posture, compliance evidence, and IBM Cloud value clear. Remove unnecessary implementation-level labels from this page only, without changing the detailed deployment page.',
+    },
+    {
+      category: 'Security',
       label: 'Add Evidence',
       text: 'Use the ibm-drawio-editing skill. On the Deployment page, add or refine security and compliance evidence elements for HIPAA: Security and Compliance Center, Activity Tracker, VPC Flow Logs, Key Protect or HPCS, Secrets Manager, and Virtual Private Endpoints. Preserve the existing DAL/WDC PowerVS DR topology.',
+    },
+    {
+      category: 'Security',
+      label: 'Zero Trust Review',
+      text: `Use the ibm-drawio-editing skill. Inspect the ${pageName} page for zero-trust clarity. Show private connectivity, least-privilege service access, encryption/key management, audit logging, private endpoints, and controlled ingress/egress where already implied by the architecture. Do not invent public exposure.`,
+    },
+    {
+      category: 'Resiliency',
+      label: 'DR Storyline',
+      text: `Use the ibm-drawio-editing skill. Inspect the ${pageName} page and clarify the disaster recovery storyline. Make primary and recovery regions visually distinct, label replication paths with RPO/RTO placeholders only if unknown, and show which workloads, data stores, and connectivity components participate in failover. Preserve the current architecture facts.`,
+    },
+    {
+      category: 'Data',
+      label: 'Data Flow Review',
+      text: `Use the ibm-drawio-editing skill. Inspect the ${pageName} page and improve data-flow readability. Label intake, application, storage, replication, backup/archive, and retrieval paths. Keep labels outside shapes and avoid crossing connectors through subnet or service labels.`,
+    },
+    {
+      category: 'Final QA',
+      label: 'Customer Ready',
+      text: `Use the ibm-drawio-editing skill. Perform a final customer-readiness review of the ${pageName} page. Fix visible overlaps, ambiguous labels, inconsistent casing, cramped text, missing legends, poor spacing, and unclear flow direction. Make targeted edits only and summarize every change.`,
+    },
+    {
+      category: 'Final QA',
+      label: 'No Topology Change',
+      text: `Use the ibm-drawio-editing skill. Inspect the ${pageName} page and make presentation-only improvements. Do not add, delete, reconnect, or rename architecture components. Only adjust size, spacing, alignment, connector routing, label placement, and visual hierarchy.`,
     },
   ];
 }
@@ -1477,6 +1531,15 @@ export default function App() {
   }
 
   // ── Render ───────────────────────────────────────────────────────────────────
+  const bobPromptsByCategory = bobPromptTemplates(diagramType).reduce(
+    (groups, prompt) => {
+      const list = groups.get(prompt.category) || [];
+      list.push(prompt);
+      groups.set(prompt.category, list);
+      return groups;
+    },
+    new Map<string, ReturnType<typeof bobPromptTemplates>>(),
+  );
 
   return (
     <>
@@ -2754,22 +2817,29 @@ export default function App() {
                       <strong>Bob editing prompts</strong>
                       <InfoTip text="Copy one of these prompts after the diagram is loaded in the MCP editor. They tell Bob to inspect the current Draw.io document, use the IBM editing skill, and make targeted changes." />
                     </div>
-                    <div className="bob-prompt-grid">
-                      {bobPromptTemplates(diagramType).map((prompt) => (
-                        <Button
-                          key={prompt.label}
-                          kind={copiedPrompt === prompt.label ? 'primary' : 'tertiary'}
-                          size="sm"
-                          renderIcon={copiedPrompt === prompt.label ? Checkmark : Copy}
-                          onClick={() => copyBobPrompt(prompt.label, prompt.text)}
-                          disabled={busy}
-                        >
-                          {copiedPrompt === prompt.label ? `${prompt.label} copied` : prompt.label}
-                        </Button>
+                    <div className="bob-prompt-sections">
+                      {Array.from(bobPromptsByCategory.entries()).map(([category, prompts]) => (
+                        <div className="bob-prompt-section" key={category}>
+                          <span>{category}</span>
+                          <div className="bob-prompt-grid">
+                            {prompts.map((prompt) => (
+                              <Button
+                                key={prompt.label}
+                                kind={copiedPrompt === prompt.label ? 'primary' : 'tertiary'}
+                                size="sm"
+                                renderIcon={copiedPrompt === prompt.label ? Checkmark : Copy}
+                                onClick={() => copyBobPrompt(prompt.label, prompt.text)}
+                                disabled={busy}
+                              >
+                                {copiedPrompt === prompt.label ? `${prompt.label} copied` : prompt.label}
+                              </Button>
+                            ))}
+                          </div>
+                        </div>
                       ))}
                     </div>
                     <p className="panel-copy">
-                      Start with <strong>Setup Bob</strong>, then use a focused prompt such as <strong>Clean Labels</strong> or <strong>Architecture Polish</strong>.
+                      Start with <strong>Setup Bob</strong>, then use the smallest focused prompt that matches the improvement you want.
                     </p>
                   </div>
 
