@@ -158,11 +158,12 @@ def project_activity_payload(project_path: Path, settings: dict) -> dict:
         "persistence": persistence.status().as_dict(),
         "persisted": persisted,
         "events": (persisted or {}).get("events", []),
+        "snapshots": (persisted or {}).get("snapshots", []),
     }
 
 
 class NetworkPicassoHandler(BaseHTTPRequestHandler):
-    server_version = "NetworkPicasso/0.4.5"
+    server_version = "NetworkPicasso/0.4.6"
 
     def do_OPTIONS(self) -> None:
         self.send_response(204)
@@ -315,6 +316,8 @@ class NetworkPicassoHandler(BaseHTTPRequestHandler):
                 self.handle_move_project(payload)
             elif parsed.path == "/api/projects/autosave":
                 self.handle_project_autosave(payload)
+            elif parsed.path == "/api/projects/restore":
+                self.handle_project_restore(payload)
             elif parsed.path == "/api/persistence/sync":
                 self.handle_persistence_sync(payload)
             elif parsed.path == "/api/drawio-snippet":
@@ -596,6 +599,50 @@ class NetworkPicassoHandler(BaseHTTPRequestHandler):
         atomic_write_json(arch_path, architecture)
         sync_project_if_managed(project_path, settings, architecture=architecture, event_type="autosave")
         self.send_json({"ok": True, "outputPath": relative_to_repo(arch_path)})
+
+    def handle_project_restore(self, payload: dict) -> None:
+        path_str = str(payload.get("path") or "").strip()
+        snapshot_id = payload.get("snapshotId")
+        if not path_str or snapshot_id is None:
+            self.send_error_json(400, "path and snapshotId are required")
+            return
+        settings = load_settings()
+        project_path = managed_project_path(path_str, settings)
+        customer, project = persistence.project_identity(project_path, resolve_projects_root(settings))
+        project_id = f"{customer}/{project}"
+        if not persistence.status().connected:
+            self.send_error_json(503, "Restore points require connected Postgres persistence")
+            return
+        try:
+            snapshot_id_int = int(snapshot_id)
+        except (TypeError, ValueError):
+            self.send_error_json(400, "snapshotId must be numeric")
+            return
+        try:
+            snapshot = persistence.project_snapshot(project_id, snapshot_id_int)
+        except Exception as exc:
+            self.send_error_json(503, f"Restore points are unavailable: {exc}")
+            return
+        if not snapshot:
+            self.send_error_json(404, "Restore point not found for this project")
+            return
+        architecture = snapshot.get("architecture")
+        if not isinstance(architecture, dict):
+            self.send_error_json(409, "Restore point does not contain a valid architecture")
+            return
+        arch_path = project_architecture_path(project_path)
+        atomic_write_json(arch_path, architecture)
+        sync_project_if_managed(project_path, settings, architecture=architecture, event_type="restore-point")
+        self.send_json({
+            "ok": True,
+            "architecture": architecture,
+            "outputPath": relative_to_repo(arch_path),
+            "restoredFrom": {
+                "id": snapshot["id"],
+                "label": snapshot["label"],
+                "createdAt": snapshot["createdAt"],
+            },
+        })
 
     def handle_project_import(self) -> None:
         fields, files = self.read_multipart()

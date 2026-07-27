@@ -12,7 +12,7 @@ The app is designed for sellers who may not be deep network designers. It provid
 question prompts, IBM-pattern traceability, and Bob/Draw.io MCP hand-holding so the user can move
 from rough discovery notes to a customer-ready architecture conversation.
 
-Current version: **0.4.5**
+Current version: **0.4.6**
 
 ---
 
@@ -95,8 +95,8 @@ It produces four architecture pages:
   - Keeps customer folders and project subfolders on disk for easy inspection.
   - Projects are now the first workspace view: create a customer folder, add project subfolders, open saved work, move projects between customer folders, or delete with confirmation.
   - Active projects autosave their architecture model as the seller uploads files, answers questions, confirms patterns, and refines requirements.
-  - Project Activity shows last save metadata, Postgres connection state, latest diagram quality score, and recent project events so autosave is visible and auditable.
-  - Adds optional Postgres persistence for customer/project metadata, architecture JSON snapshots, and project events.
+  - Project Activity shows last save metadata, Postgres connection state, latest diagram quality score, recent project events, and restore points so autosave is visible and recoverable.
+  - Adds optional Postgres persistence for customer/project metadata, architecture JSON restore points, and project events.
   - Docker Compose starts Postgres automatically with a named volume so project data survives restarts.
 
 ---
@@ -276,18 +276,20 @@ still completes successfully.
 
 ## Current Data Persistence
 
-Network Picasso currently uses file-backed project persistence:
+Network Picasso uses a local-first persistence model:
 
 - project metadata and architecture data are saved under `inputs/projects/`
 - uploaded/current intake data is saved under `inputs/uploads/`
 - generated diagrams are saved under `outputs/`
 - settings are saved in `inputs/settings.json`
+- optional Postgres persistence stores customer/project metadata, recent events, and architecture restore points
 
-This keeps the tool transparent and easy to version in Git.
+This keeps the tool transparent and easy to version in Git while still allowing recoverable
+restore points when the Docker Compose Postgres service is running.
 
-A persistent database is not required for the current single-user local workflow, but it becomes
-useful once multiple users, audit history, role-based access, or server-side collaboration are
-needed.
+A persistent database is not required for basic single-user file-backed operation. It becomes
+valuable for restore points, audit history, search, multi-user access, role-based controls, or
+server-side collaboration.
 
 ---
 
@@ -296,15 +298,14 @@ needed.
 1. **Screenshot-based user guide**
    - Capture the Bob MCP setup, `localhost:4000` editor, Option E workflow, and Bob prompt flow.
 
-2. **Diagram quality analyzer**
-   - Detect overlapping labels, labels outside containers, crowded subnet bands, and crossed/ambiguous connectors before opening Draw.io.
+2. **Restore point comparison**
+   - Show a side-by-side summary of changed regions, VPCs, services, requirements, and quality score before restoring.
 
 3. **Assumptions and decisions page**
    - Add a fifth generated page summarizing assumptions, unanswered questions, inferred choices, and customer decisions.
 
-4. **Persistent project store**
-   - Keep file-backed mode as default.
-   - Add SQLite or Postgres only when multi-user history, search, audit trail, or role-based project access is needed.
+4. **Project search and filters**
+   - Search customers/projects by name, industry, selected IBM pattern, quality score, region, and service family.
 
 5. **Export package**
    - Generate a customer-ready package with `.drawio`, architecture summary, assumptions, open questions, and implementation notes.

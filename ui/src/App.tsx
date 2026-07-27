@@ -177,6 +177,14 @@ type ProjectNode = {
   isLegacy: boolean;
 };
 
+type ProjectSnapshot = {
+  id: number;
+  label: string;
+  eventType: string;
+  qualityScore?: number | null;
+  createdAt: string;
+};
+
 type ProjectActivity = {
   id: string;
   customer: string;
@@ -204,6 +212,7 @@ type ProjectActivity = {
     detail: Record<string, unknown>;
     createdAt: string;
   }>;
+  snapshots: ProjectSnapshot[];
 };
 
 type AnsweredQuestion = AnsweredQuestionType;
@@ -526,6 +535,8 @@ export default function App() {
   const autosaveTimerRef = useRef<number | null>(null);
   const [projectActivity, setProjectActivity] = useState<ProjectActivity | null>(null);
   const [projectActivityBusy, setProjectActivityBusy] = useState(false);
+  const [restoreTarget, setRestoreTarget] = useState<ProjectSnapshot | null>(null);
+  const [restoreBusy, setRestoreBusy] = useState(false);
   const importInputRef = useRef<HTMLInputElement>(null);
 
   // Projects page state (folder browser)
@@ -957,6 +968,44 @@ export default function App() {
     a.href = `/api/project-export?path=${encodeURIComponent(activeProject.path)}`;
     a.download = 'architecture.json';
     a.click();
+  }
+
+  async function restoreProjectSnapshot() {
+    if (!activeProject || !restoreTarget) return;
+    setRestoreBusy(true);
+    setProjectsError('');
+    try {
+      const result = await postJson<{
+        architecture: Architecture;
+        outputPath: string;
+        restoredFrom: { label: string; createdAt: string };
+      }>('/api/projects/restore', {
+        path: activeProject.path,
+        snapshotId: restoreTarget.id,
+      });
+      const restoredArchitecture = result.architecture;
+      const answered = restoredArchitecture.questions?.answered || [];
+      const open = normalizeSavedQuestions(restoredArchitecture.questions?.open);
+      setArchitecture(restoredArchitecture);
+      setArchitecturePath(result.outputPath);
+      setAnsweredQuestions(answered);
+      setQuestions(mergeQuestions([], open, answered));
+      setProjectName(restoredArchitecture.project?.name || activeProject.project || activeProject.customer);
+      setDiagramQuality(null);
+      setPreviewXml(null);
+      setMcpDiagramPushed(false);
+      setAutosaveStatus(`Restored ${formatActivityDate(result.restoredFrom.createdAt)}`);
+      setRestoreTarget(null);
+      await runArchitectureReview(restoredArchitecture, requirementsText);
+      await loadProjectActivity(activeProject);
+      setStep('review');
+      setActiveNav('wizard');
+      setStatus(`Restored restore point: ${result.restoredFrom.label}`);
+    } catch (err) {
+      setProjectsError(err instanceof Error ? err.message : 'Restore failed');
+    } finally {
+      setRestoreBusy(false);
+    }
   }
 
   async function importArchitecture(file: File) {
@@ -1951,6 +2000,36 @@ export default function App() {
                           <p>{architecture.quality.lastReview.summary}</p>
                         </div>
                       )}
+
+                      <div className="project-restore-points">
+                        <span className="advisor-label">Restore points</span>
+                        {!projectActivity?.persistence.connected && (
+                          <p className="panel-copy">Connect Postgres to keep recoverable architecture restore points.</p>
+                        )}
+                        {projectActivity?.persistence.connected && !projectActivityBusy && (projectActivity.snapshots || []).length === 0 && (
+                          <p className="panel-copy">No restore points yet. Intake, quality checks, pattern changes, and periodic autosaves create them.</p>
+                        )}
+                        {!projectActivityBusy && (projectActivity?.snapshots || []).slice(0, 5).map((snapshot) => (
+                          <div className="project-restore-point" key={snapshot.id}>
+                            <div>
+                              <strong>{snapshot.label}</strong>
+                              <span>
+                                {formatActivityDate(snapshot.createdAt)}
+                                {snapshot.qualityScore != null ? ` · ${snapshot.qualityScore}/100` : ''}
+                              </span>
+                            </div>
+                            <Button
+                              kind="ghost"
+                              size="sm"
+                              renderIcon={Renew}
+                              onClick={() => setRestoreTarget(snapshot)}
+                              disabled={restoreBusy}
+                            >
+                              Restore
+                            </Button>
+                          </div>
+                        ))}
+                      </div>
 
                       <div className="project-events">
                         <span className="advisor-label">Recent events</span>
@@ -3077,6 +3156,28 @@ export default function App() {
               <SelectItem key={f.path} value={f.path} text={f.name} />
             ))}
         </Select>
+      </Modal>
+
+      {/* Restore point */}
+      <Modal
+        open={!!restoreTarget}
+        modalHeading={`Restore "${restoreTarget?.label}"?`}
+        primaryButtonText={restoreBusy ? 'Restoring…' : 'Restore'}
+        secondaryButtonText="Cancel"
+        primaryButtonDisabled={restoreBusy}
+        onRequestSubmit={restoreProjectSnapshot}
+        onRequestClose={() => setRestoreTarget(null)}
+      >
+        <p style={{ color: '#525252', lineHeight: 1.6 }}>
+          This replaces the current architecture JSON with the selected restore point. Current work will remain in
+          the event history if it was already autosaved.
+        </p>
+        {restoreTarget && (
+          <p style={{ color: '#6f6f6f', marginTop: '0.75rem', fontSize: '0.875rem' }}>
+            Created {formatActivityDate(restoreTarget.createdAt)}
+            {restoreTarget.qualityScore != null ? ` · Quality ${restoreTarget.qualityScore}/100` : ''}
+          </p>
+        )}
       </Modal>
 
       {/* Delete confirmation (folder or project) */}

@@ -11,6 +11,20 @@ from .projects import safe_slug
 
 
 SCHEMA_VERSION = 1
+SNAPSHOT_EVENT_TYPES = {
+    "autosave",
+    "upload-intake",
+    "intake",
+    "answer-saved",
+    "requirements-saved",
+    "components-confirmed",
+    "pattern-set",
+    "diagram-quality",
+    "project-imported",
+    "project-duplicated",
+    "manual-sync",
+    "restore-point",
+}
 
 
 @dataclass(frozen=True)
@@ -90,8 +104,21 @@ def init_schema() -> None:
             )
             """
         )
+        conn.execute(
+            """
+            create table if not exists np_project_snapshots (
+              id bigserial primary key,
+              project_id text references np_projects(id) on delete cascade,
+              label text not null,
+              event_type text not null,
+              architecture jsonb not null,
+              created_at timestamptz not null default now()
+            )
+            """
+        )
         conn.execute("create index if not exists ix_np_projects_customer on np_projects(customer_slug)")
         conn.execute("create index if not exists ix_np_project_events_project on np_project_events(project_id)")
+        conn.execute("create index if not exists ix_np_project_snapshots_project on np_project_snapshots(project_id)")
 
 
 def upsert_project(
@@ -155,6 +182,20 @@ def upsert_project(
                 """,
                 (project_id, event_type, json.dumps(detail or {})),
             )
+        if architecture is not None and (event_type or "") in SNAPSHOT_EVENT_TYPES:
+            if _should_snapshot(conn, project_id, event_type or "project-snapshot"):
+                conn.execute(
+                    """
+                    insert into np_project_snapshots(project_id, label, event_type, architecture)
+                    values (%s, %s, %s, %s::jsonb)
+                    """,
+                    (
+                        project_id,
+                        _snapshot_label(event_type or "project-snapshot", architecture),
+                        event_type or "project-snapshot",
+                        json.dumps(architecture),
+                    ),
+                )
 
 
 def rename_customer(*, old_slug: str, new_slug: str, new_display_name: str, new_path: str) -> None:
@@ -239,6 +280,7 @@ def project_activity(project_id: str, *, limit: int = 12) -> dict[str, Any] | No
             """,
             (project_id, limit),
         ).fetchall()
+        snapshots = _project_snapshots(conn, project_id, limit=limit)
     return {
         "id": project[0],
         "customer": project[1],
@@ -256,6 +298,34 @@ def project_activity(project_id: str, *, limit: int = 12) -> dict[str, Any] | No
             }
             for row in events
         ],
+        "snapshots": snapshots,
+    }
+
+
+def project_snapshot(project_id: str, snapshot_id: int) -> dict[str, Any] | None:
+    """Return one persisted restore point for *project_id*."""
+    if not is_enabled():
+        return None
+    with _connect() as conn:
+        row = conn.execute(
+            """
+            select id, label, event_type, architecture, created_at::text
+            from np_project_snapshots
+            where project_id = %s and id = %s
+            """,
+            (project_id, snapshot_id),
+        ).fetchone()
+    if not row:
+        return None
+    architecture = row[3]
+    if isinstance(architecture, str):
+        architecture = json.loads(architecture)
+    return {
+        "id": row[0],
+        "label": row[1],
+        "eventType": row[2],
+        "architecture": architecture,
+        "createdAt": row[4],
     }
 
 
@@ -291,3 +361,68 @@ def _connect():
     except ImportError as exc:
         raise RuntimeError("Install psycopg[binary] to enable Postgres persistence") from exc
     return psycopg.connect(database_url(), connect_timeout=3)
+
+
+def _should_snapshot(conn, project_id: str, event_type: str) -> bool:
+    if event_type != "autosave":
+        return True
+    row = conn.execute(
+        """
+        select created_at
+        from np_project_snapshots
+        where project_id = %s and event_type = 'autosave'
+        order by created_at desc, id desc
+        limit 1
+        """,
+        (project_id,),
+    ).fetchone()
+    if not row:
+        return True
+    latest = row[0]
+    if isinstance(latest, str):
+        latest = datetime.fromisoformat(latest.replace("Z", "+00:00"))
+    if latest.tzinfo is None:
+        latest = latest.replace(tzinfo=timezone.utc)
+    return (datetime.now(timezone.utc) - latest).total_seconds() >= 120
+
+
+def _snapshot_label(event_type: str, architecture: dict) -> str:
+    project_name = architecture.get("project", {}).get("name") or "Architecture"
+    if event_type == "diagram-quality":
+        review = architecture.get("quality", {}).get("lastReview", {})
+        score = review.get("score")
+        if score is not None:
+            return f"Quality {score}/100 - {project_name}"
+    return f"{event_type.replace('-', ' ').title()} - {project_name}"
+
+
+def _project_snapshots(conn, project_id: str, *, limit: int = 12) -> list[dict[str, Any]]:
+    rows = conn.execute(
+        """
+        select id, label, event_type,
+               architecture #>> '{quality,lastReview,score}' as quality_score,
+               created_at::text
+        from np_project_snapshots
+        where project_id = %s
+        order by created_at desc, id desc
+        limit %s
+        """,
+        (project_id, limit),
+    ).fetchall()
+    return [
+        {
+            "id": row[0],
+            "label": row[1],
+            "eventType": row[2],
+            "qualityScore": _coerce_float(row[3]),
+            "createdAt": row[4],
+        }
+        for row in rows
+    ]
+
+
+def _coerce_float(value: Any) -> float | None:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None

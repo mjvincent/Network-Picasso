@@ -628,6 +628,7 @@ body {
 .project-activity-summary,
 .project-activity-quality,
 .project-activity-facts,
+.project-restore-points,
 .project-events {
   display: grid;
   gap: 0.5rem;
@@ -635,6 +636,7 @@ body {
 
 .project-activity-summary span,
 .project-activity-facts span,
+.project-restore-point span,
 .project-event span,
 .project-activity-quality span {
   color: #6f6f6f;
@@ -671,6 +673,25 @@ body {
   font-size: 0.8125rem;
   line-height: 1.4;
   margin: 0;
+}
+
+.project-restore-point {
+  align-items: flex-start;
+  border-top: 1px solid #e0e0e0;
+  display: grid;
+  gap: 0.5rem;
+  grid-template-columns: minmax(0, 1fr) auto;
+  padding-top: 0.5rem;
+}
+
+.project-restore-point > div {
+  display: grid;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
+.project-restore-point strong {
+  overflow-wrap: anywhere;
 }
 
 .project-event {

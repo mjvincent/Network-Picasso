@@ -560,3 +560,26 @@ def test_diagram_quality_persists_last_review(server, tmp_path):
     saved = json.loads(arch_path.read_text())
     assert saved["quality"]["lastReview"]["score"] == body["score"]
     assert saved["quality"]["lastReview"]["diagramType"] == "deployment"
+
+
+def test_restore_project_requires_postgres(server, tmp_path, monkeypatch):
+    monkeypatch.delenv("NETWORK_PICASSO_DATABASE_URL", raising=False)
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    settings_path = REPO_ROOT / "inputs" / "settings.json"
+    settings_path.parent.mkdir(parents=True, exist_ok=True)
+    original = settings_path.read_text() if settings_path.exists() else None
+    try:
+        root = tmp_path / "projects"
+        settings_path.write_text(json.dumps({"projectsRoot": str(root)}))
+        _, created = _post(server, "/api/projects", {"customer": "Acme Bank", "project": "Q1"})
+        status, body = _post(server, "/api/projects/restore", {
+            "path": created["path"],
+            "snapshotId": 1,
+        })
+        assert status == 503
+        assert "Postgres" in body["error"]
+    finally:
+        if original is not None:
+            settings_path.write_text(original)
+        elif settings_path.exists():
+            settings_path.unlink()

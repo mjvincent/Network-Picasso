@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.4.6 - 2026-07-27
+
+### Added
+
+- Recoverable project restore points backed by optional Postgres persistence.
+- Project Activity restore-point list with timestamp, optional quality score, and a confirmation-based restore action.
+- Restore endpoint that writes the selected architecture snapshot back to the active project's `architecture.json`.
+
+### Changed
+
+- Autosave snapshots are throttled so frequent editing does not flood the project history.
+- README persistence guidance now distinguishes file-backed local storage from optional Postgres restore history.
+
 ## 0.4.5 - 2026-07-27
 
 ### Added
