@@ -694,6 +694,70 @@ body {
   overflow-wrap: anywhere;
 }
 
+.restore-preview {
+  display: grid;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.restore-preview-grid {
+  border: 1px solid #e0e0e0;
+  display: grid;
+  max-height: 20rem;
+  overflow: auto;
+}
+
+.restore-preview-row {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: 9rem minmax(0, 1fr) minmax(0, 1fr);
+  padding: 0.75rem;
+
+  + .restore-preview-row {
+    border-top: 1px solid #e0e0e0;
+  }
+
+  span {
+    color: #6f6f6f;
+    font-size: 0.75rem;
+  }
+
+  p {
+    color: #262626;
+    font-size: 0.8125rem;
+    line-height: 1.4;
+    margin: 0.25rem 0 0;
+    overflow-wrap: anywhere;
+  }
+}
+
+.restore-preview-services {
+  background: #f4f4f4;
+  border-left: 3px solid #0f62fe;
+  display: grid;
+  gap: 0.625rem;
+  padding: 0.75rem;
+
+  span {
+    color: #6f6f6f;
+    font-size: 0.75rem;
+  }
+
+  p {
+    color: #262626;
+    font-size: 0.8125rem;
+    line-height: 1.4;
+    margin: 0.25rem 0 0;
+    overflow-wrap: anywhere;
+  }
+}
+
+@media (max-width: 42rem) {
+  .restore-preview-row {
+    grid-template-columns: 1fr;
+  }
+}
+
 .project-event {
   border-top: 1px solid #e0e0e0;
   display: flex;

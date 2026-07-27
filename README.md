@@ -12,7 +12,7 @@ The app is designed for sellers who may not be deep network designers. It provid
 question prompts, IBM-pattern traceability, and Bob/Draw.io MCP hand-holding so the user can move
 from rough discovery notes to a customer-ready architecture conversation.
 
-Current version: **0.4.6**
+Current version: **0.4.7**
 
 ---
 
@@ -96,6 +96,7 @@ It produces four architecture pages:
   - Projects are now the first workspace view: create a customer folder, add project subfolders, open saved work, move projects between customer folders, or delete with confirmation.
   - Active projects autosave their architecture model as the seller uploads files, answers questions, confirms patterns, and refines requirements.
   - Project Activity shows last save metadata, Postgres connection state, latest diagram quality score, recent project events, and restore points so autosave is visible and recoverable.
+  - Restore previews compare the current architecture with the selected restore point before replacing the working model.
   - Adds optional Postgres persistence for customer/project metadata, architecture JSON restore points, and project events.
   - Docker Compose starts Postgres automatically with a named volume so project data survives restarts.
 
@@ -298,8 +299,8 @@ server-side collaboration.
 1. **Screenshot-based user guide**
    - Capture the Bob MCP setup, `localhost:4000` editor, Option E workflow, and Bob prompt flow.
 
-2. **Restore point comparison**
-   - Show a side-by-side summary of changed regions, VPCs, services, requirements, and quality score before restoring.
+2. **Restore point timeline filters**
+   - Filter restore points by autosave, intake, quality check, pattern selection, requirement update, or manual restore.
 
 3. **Assumptions and decisions page**
    - Add a fifth generated page summarizing assumptions, unanswered questions, inferred choices, and customer decisions.

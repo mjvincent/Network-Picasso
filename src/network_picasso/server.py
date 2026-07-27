@@ -162,8 +162,101 @@ def project_activity_payload(project_path: Path, settings: dict) -> dict:
     }
 
 
+def restore_preview_payload(current: dict, snapshot: dict) -> dict:
+    current_summary = architecture_summary(current)
+    restore_summary = architecture_summary(snapshot)
+    changes = []
+    for key, label in (
+        ("projectName", "Project name"),
+        ("environment", "Environment"),
+        ("pattern", "IBM pattern"),
+        ("regions", "Regions"),
+        ("vpcs", "VPCs"),
+        ("connectivity", "Connectivity"),
+        ("compute", "Compute"),
+        ("storage", "Storage and data"),
+        ("security", "Security"),
+        ("observability", "Observability"),
+        ("quality", "Latest quality score"),
+        ("requirements", "Requirement count"),
+        ("answeredQuestions", "Answered questions"),
+        ("openQuestions", "Open questions"),
+    ):
+        before = current_summary.get(key)
+        after = restore_summary.get(key)
+        if before != after:
+            changes.append({"label": label, "current": before, "restore": after})
+    current_services = set(current_summary["serviceNames"])
+    restore_services = set(restore_summary["serviceNames"])
+    return {
+        "current": current_summary,
+        "restore": restore_summary,
+        "changes": changes,
+        "addedServices": sorted(restore_services - current_services),
+        "removedServices": sorted(current_services - restore_services),
+    }
+
+
+def architecture_summary(architecture: dict) -> dict:
+    ibm_cloud = architecture.get("ibm_cloud", {}) if isinstance(architecture, dict) else {}
+    render_plan = architecture.get("render_plan", {}) if isinstance(architecture, dict) else {}
+    questions = architecture.get("questions", {}) if isinstance(architecture, dict) else {}
+    quality = architecture.get("quality", {}).get("lastReview", {}) if isinstance(architecture, dict) else {}
+    service_counts = {
+        key: len(value)
+        for key, value in ibm_cloud.items()
+        if isinstance(value, list) and len(value) > 0
+    }
+    service_names = sorted({
+        name
+        for value in ibm_cloud.values()
+        if isinstance(value, list)
+        for name in _names_from_items(value)
+    })
+    return {
+        "projectName": architecture.get("project", {}).get("name", "") if isinstance(architecture, dict) else "",
+        "environment": architecture.get("project", {}).get("environment", "") if isinstance(architecture, dict) else "",
+        "pattern": render_plan.get("pattern_name") or render_plan.get("pattern") or "",
+        "regions": _names_from_items(ibm_cloud.get("regions", [])),
+        "vpcs": _names_from_items(ibm_cloud.get("vpcs", [])),
+        "connectivity": _names_from_items(ibm_cloud.get("connectivity", [])),
+        "compute": _names_from_items(ibm_cloud.get("compute", [])),
+        "storage": _names_from_items(ibm_cloud.get("storage", [])),
+        "security": _names_from_items(ibm_cloud.get("security", [])),
+        "observability": _names_from_items(ibm_cloud.get("observability", [])),
+        "requirements": len(architecture.get("requirements", [])) if isinstance(architecture.get("requirements"), list) else 0,
+        "answeredQuestions": len(questions.get("answered", [])) if isinstance(questions.get("answered"), list) else 0,
+        "openQuestions": len(questions.get("open", [])) if isinstance(questions.get("open"), list) else 0,
+        "quality": _quality_label(quality),
+        "serviceCounts": service_counts,
+        "serviceNames": service_names,
+    }
+
+
+def _names_from_items(items: Any) -> list[str]:
+    if not isinstance(items, list):
+        return []
+    names = []
+    for item in items:
+        if isinstance(item, dict):
+            name = str(item.get("name") or item.get("type") or "").strip()
+        else:
+            name = str(item).strip()
+        if name:
+            names.append(name)
+    return sorted(dict.fromkeys(names))
+
+
+def _quality_label(quality: dict) -> str:
+    score = quality.get("score")
+    status = quality.get("status")
+    if score is None and not status:
+        return ""
+    return f"{score}/100 {status}".strip()
+
+
 class NetworkPicassoHandler(BaseHTTPRequestHandler):
-    server_version = "NetworkPicasso/0.4.6"
+    server_version = "NetworkPicasso/0.4.7"
 
     def do_OPTIONS(self) -> None:
         self.send_response(204)
@@ -316,6 +409,8 @@ class NetworkPicassoHandler(BaseHTTPRequestHandler):
                 self.handle_move_project(payload)
             elif parsed.path == "/api/projects/autosave":
                 self.handle_project_autosave(payload)
+            elif parsed.path == "/api/projects/restore-preview":
+                self.handle_project_restore_preview(payload)
             elif parsed.path == "/api/projects/restore":
                 self.handle_project_restore(payload)
             elif parsed.path == "/api/persistence/sync":
@@ -642,6 +737,44 @@ class NetworkPicassoHandler(BaseHTTPRequestHandler):
                 "label": snapshot["label"],
                 "createdAt": snapshot["createdAt"],
             },
+        })
+
+    def handle_project_restore_preview(self, payload: dict) -> None:
+        path_str = str(payload.get("path") or "").strip()
+        snapshot_id = payload.get("snapshotId")
+        if not path_str or snapshot_id is None:
+            self.send_error_json(400, "path and snapshotId are required")
+            return
+        settings = load_settings()
+        project_path = managed_project_path(path_str, settings)
+        arch_path = project_architecture_path(project_path)
+        current = read_json_file(arch_path) if arch_path.exists() else {}
+        customer, project = persistence.project_identity(project_path, resolve_projects_root(settings))
+        project_id = f"{customer}/{project}"
+        if not persistence.status().connected:
+            self.send_error_json(503, "Restore previews require connected Postgres persistence")
+            return
+        try:
+            snapshot_id_int = int(snapshot_id)
+        except (TypeError, ValueError):
+            self.send_error_json(400, "snapshotId must be numeric")
+            return
+        try:
+            snapshot = persistence.project_snapshot(project_id, snapshot_id_int)
+        except Exception as exc:
+            self.send_error_json(503, f"Restore points are unavailable: {exc}")
+            return
+        if not snapshot or not isinstance(snapshot.get("architecture"), dict):
+            self.send_error_json(404, "Restore point not found for this project")
+            return
+        self.send_json({
+            "snapshot": {
+                "id": snapshot["id"],
+                "label": snapshot["label"],
+                "eventType": snapshot["eventType"],
+                "createdAt": snapshot["createdAt"],
+            },
+            "comparison": restore_preview_payload(current, snapshot["architecture"]),
         })
 
     def handle_project_import(self) -> None:

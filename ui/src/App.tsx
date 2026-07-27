@@ -185,6 +185,20 @@ type ProjectSnapshot = {
   createdAt: string;
 };
 
+type RestorePreview = {
+  snapshot: {
+    id: number;
+    label: string;
+    eventType: string;
+    createdAt: string;
+  };
+  comparison: {
+    changes: Array<{ label: string; current: unknown; restore: unknown }>;
+    addedServices: string[];
+    removedServices: string[];
+  };
+};
+
 type ProjectActivity = {
   id: string;
   customer: string;
@@ -457,6 +471,22 @@ function roleTagProps(role?: string): { type: CarbonTagType; label: string } | n
   }
 }
 
+function formatRestoreValue(value: unknown): string {
+  if (Array.isArray(value)) {
+    return value.length ? value.join(', ') : 'None';
+  }
+  if (typeof value === 'number') {
+    return String(value);
+  }
+  if (typeof value === 'string') {
+    return value.trim() || 'Not set';
+  }
+  if (value == null) {
+    return 'Not set';
+  }
+  return JSON.stringify(value);
+}
+
 // Re-export utilities for tests
 export { questionKey, mergeQuestions };
 
@@ -536,6 +566,8 @@ export default function App() {
   const [projectActivity, setProjectActivity] = useState<ProjectActivity | null>(null);
   const [projectActivityBusy, setProjectActivityBusy] = useState(false);
   const [restoreTarget, setRestoreTarget] = useState<ProjectSnapshot | null>(null);
+  const [restorePreview, setRestorePreview] = useState<RestorePreview | null>(null);
+  const [restorePreviewBusy, setRestorePreviewBusy] = useState(false);
   const [restoreBusy, setRestoreBusy] = useState(false);
   const importInputRef = useRef<HTMLInputElement>(null);
 
@@ -970,6 +1002,31 @@ export default function App() {
     a.click();
   }
 
+  async function openRestorePreview(snapshot: ProjectSnapshot) {
+    if (!activeProject) return;
+    setRestoreTarget(snapshot);
+    setRestorePreview(null);
+    setRestorePreviewBusy(true);
+    setProjectsError('');
+    try {
+      const preview = await postJson<RestorePreview>('/api/projects/restore-preview', {
+        path: activeProject.path,
+        snapshotId: snapshot.id,
+      });
+      setRestorePreview(preview);
+    } catch (err) {
+      setProjectsError(err instanceof Error ? err.message : 'Restore preview failed');
+    } finally {
+      setRestorePreviewBusy(false);
+    }
+  }
+
+  function closeRestoreModal() {
+    setRestoreTarget(null);
+    setRestorePreview(null);
+    setRestorePreviewBusy(false);
+  }
+
   async function restoreProjectSnapshot() {
     if (!activeProject || !restoreTarget) return;
     setRestoreBusy(true);
@@ -995,7 +1052,7 @@ export default function App() {
       setPreviewXml(null);
       setMcpDiagramPushed(false);
       setAutosaveStatus(`Restored ${formatActivityDate(result.restoredFrom.createdAt)}`);
-      setRestoreTarget(null);
+      closeRestoreModal();
       await runArchitectureReview(restoredArchitecture, requirementsText);
       await loadProjectActivity(activeProject);
       setStep('review');
@@ -2022,8 +2079,8 @@ export default function App() {
                               kind="ghost"
                               size="sm"
                               renderIcon={Renew}
-                              onClick={() => setRestoreTarget(snapshot)}
-                              disabled={restoreBusy}
+                              onClick={() => openRestorePreview(snapshot)}
+                              disabled={restoreBusy || restorePreviewBusy}
                             >
                               Restore
                             </Button>
@@ -3164,9 +3221,9 @@ export default function App() {
         modalHeading={`Restore "${restoreTarget?.label}"?`}
         primaryButtonText={restoreBusy ? 'Restoring…' : 'Restore'}
         secondaryButtonText="Cancel"
-        primaryButtonDisabled={restoreBusy}
+        primaryButtonDisabled={restoreBusy || restorePreviewBusy}
         onRequestSubmit={restoreProjectSnapshot}
-        onRequestClose={() => setRestoreTarget(null)}
+        onRequestClose={closeRestoreModal}
       >
         <p style={{ color: '#525252', lineHeight: 1.6 }}>
           This replaces the current architecture JSON with the selected restore point. Current work will remain in
@@ -3177,6 +3234,51 @@ export default function App() {
             Created {formatActivityDate(restoreTarget.createdAt)}
             {restoreTarget.qualityScore != null ? ` · Quality ${restoreTarget.qualityScore}/100` : ''}
           </p>
+        )}
+        {restorePreviewBusy && (
+          <div style={{ marginTop: '1rem' }}>
+            <InlineLoading description="Comparing current architecture with restore point..." />
+          </div>
+        )}
+        {!restorePreviewBusy && restorePreview && (
+          <div className="restore-preview">
+            <span className="advisor-label">What will change</span>
+            {restorePreview.comparison.changes.length === 0 ? (
+              <p className="panel-copy">No material architecture model differences were found.</p>
+            ) : (
+              <div className="restore-preview-grid">
+                {restorePreview.comparison.changes.map((change) => (
+                  <div className="restore-preview-row" key={change.label}>
+                    <strong>{change.label}</strong>
+                    <div>
+                      <span>Current</span>
+                      <p>{formatRestoreValue(change.current)}</p>
+                    </div>
+                    <div>
+                      <span>Restore point</span>
+                      <p>{formatRestoreValue(change.restore)}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+            {(restorePreview.comparison.addedServices.length > 0 || restorePreview.comparison.removedServices.length > 0) && (
+              <div className="restore-preview-services">
+                {restorePreview.comparison.addedServices.length > 0 && (
+                  <div>
+                    <span>Services restored into model</span>
+                    <p>{restorePreview.comparison.addedServices.slice(0, 12).join(', ')}</p>
+                  </div>
+                )}
+                {restorePreview.comparison.removedServices.length > 0 && (
+                  <div>
+                    <span>Services removed from current model</span>
+                    <p>{restorePreview.comparison.removedServices.slice(0, 12).join(', ')}</p>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         )}
       </Modal>
 

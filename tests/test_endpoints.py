@@ -15,7 +15,7 @@ import pytest
 
 # The server's REPO_ROOT is computed from the package location, so we need to
 # make sure PYTHONPATH is set correctly when running pytest (PYTHONPATH=src).
-from network_picasso.server import NetworkPicassoHandler, ThreadingHTTPServer
+from network_picasso.server import NetworkPicassoHandler, ThreadingHTTPServer, restore_preview_payload
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[1]
 
@@ -583,3 +583,40 @@ def test_restore_project_requires_postgres(server, tmp_path, monkeypatch):
             settings_path.write_text(original)
         elif settings_path.exists():
             settings_path.unlink()
+
+
+def test_restore_preview_payload_summarizes_architecture_changes():
+    current = {
+        "project": {"name": "Current", "environment": "dev"},
+        "render_plan": {"pattern": "vsi-vpc"},
+        "ibm_cloud": {
+            "regions": [{"name": "us-south"}],
+            "vpcs": [{"name": "Current VPC"}],
+            "compute": [{"name": "Current VSI"}],
+            "security": [{"name": "Secrets Manager"}],
+        },
+        "questions": {"answered": [{"question": "RPO?", "answer": "4h"}], "open": []},
+    }
+    restore = {
+        "project": {"name": "Target", "environment": "prod"},
+        "render_plan": {"pattern_name": "PowerVS with VPC landing zone"},
+        "ibm_cloud": {
+            "regions": [{"name": "us-south"}, {"name": "us-east"}],
+            "vpcs": [{"name": "Workload VPC"}],
+            "compute": [{"name": "PowerVS servers"}],
+            "security": [{"name": "Key Protect or HPCS"}],
+        },
+        "questions": {
+            "answered": [{"question": "RPO?", "answer": "1h"}, {"question": "DR?", "answer": "WDC"}],
+            "open": ["Confirm Direct Link diversity"],
+        },
+        "quality": {"lastReview": {"score": 88, "status": "Ready with minor refinements"}},
+    }
+    preview = restore_preview_payload(current, restore)
+    labels = {change["label"] for change in preview["changes"]}
+    assert "Project name" in labels
+    assert "IBM pattern" in labels
+    assert "Regions" in labels
+    assert "Latest quality score" in labels
+    assert "PowerVS servers" in preview["addedServices"]
+    assert "Current VSI" in preview["removedServices"]

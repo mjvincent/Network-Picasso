@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.7 - 2026-07-27
+
+### Added
+
+- Restore-point preview endpoint that compares the current project architecture against a selected restore point.
+- Restore confirmation modal now shows changed project metadata, IBM pattern, regions, VPCs, core service groups, question counts, requirements, quality score, and added/removed services before restore.
+
 ## 0.4.6 - 2026-07-27
 
 ### Added
