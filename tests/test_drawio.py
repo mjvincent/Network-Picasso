@@ -36,8 +36,8 @@ def test_render_returns_string():
 
 
 def test_valid_xml():
-    """All three diagram types produce parseable XML."""
-    for dtype in ("context", "logical", "deployment"):
+    """All diagram types produce parseable XML."""
+    for dtype in ("executive", "context", "logical", "deployment"):
         xml = render_drawio(SAMPLE_ARCH, diagram_type=dtype)
         # Should not raise
         ElementTree.fromstring(xml)
@@ -132,6 +132,165 @@ def test_transit_gateway_stencil():
     assert "ibm-cloud--transit-gateway" in xml
 
 
+def test_render_plan_hub_and_spoke_changes_deployment_topology():
+    arch = {
+        "project": {"name": "Pattern Driven"},
+        "render_plan": {"pattern": "hub-and-spoke"},
+        "ibm_cloud": {
+            "regions": [{"name": "us-south"}],
+            "compute": [{"name": "ROKS", "type": "compute"}],
+        },
+    }
+    xml = render_drawio(arch, diagram_type="deployment")
+    assert "Edge VPC" in xml
+    assert "Workload VPC" in xml
+
+
+def test_render_plan_mzr_forces_three_zones():
+    arch = {
+        "project": {"name": "MZR Pattern"},
+        "render_plan": {"pattern": "mzr", "az_count": 3},
+        "ibm_cloud": {
+            "regions": [{"name": "us-south"}],
+            "vpcs": [{"name": "Production VPC"}],
+        },
+    }
+    xml = render_drawio(arch, diagram_type="deployment")
+    assert "Zone 1" in xml
+    assert "Zone 2" in xml
+    assert "Zone 3" in xml
+
+
+def test_multi_region_requirements_render_primary_dr_regions():
+    arch = {
+        "project": {"name": "OmniCare RFP"},
+        "render_plan": {
+            "pattern": "hybrid-powervs-dr",
+            "has_dr": True,
+            "has_on_prem": True,
+            "has_powervs": True,
+            "connectivity_label": "HA Direct Link 1 Gbps",
+            "az_count": 1,
+            "shared_services": ["Security and Compliance Center", "Virtual Private Endpoints"],
+        },
+        "ibm_cloud": {
+            "regions": [{"name": "us-south"}, {"name": "us-east"}],
+            "vpcs": [
+                {"name": "DAL VPC", "region": "us-south", "purpose": "Primary medical imaging processing"},
+                {"name": "WDC VPC", "region": "us-east", "purpose": "DR medical imaging retrieval"},
+            ],
+            "connectivity": [{"name": "HA Direct Link 1 Gbps"}],
+            "compute": [{"name": "Medical imaging processing VSIs"}, {"name": "PowerVS servers"}],
+            "data": [{"name": "Cloud Object Storage for medical imaging archive"}, {"name": "NFS File Storage for VSI workloads"}],
+            "security": [{"name": "Security and Compliance Center"}, {"name": "Key Protect or HPCS"}],
+            "observability": [{"name": "Activity Tracker"}, {"name": "VPC Flow Logs"}],
+            "private_endpoints": [{"name": "Virtual Private Endpoints for IBM Cloud services"}],
+            "backup_dr": [{"name": "WDC disaster recovery site", "region": "us-east"}],
+        },
+    }
+    xml = render_drawio(arch, diagram_type="deployment")
+    assert "Primary Region" in xml
+    assert "DR Region" in xml
+    assert "DAL VPC" in xml
+    assert "WDC VPC" in xml
+    assert "HA Direct Link 1 Gbps" in xml
+    assert "PowerVS Workspace" in xml
+    assert "SCC evidence collection" in xml
+    assert "Shared Services / Compliance Foundation" in xml
+    assert "PowerVS with VPC landing zone" in xml
+    assert "DR VSI recovery tier" in xml
+    assert "Replicated imaging data" in xml
+    assert "VPC from unified pricing workbook" not in xml
+
+
+def test_hybrid_dr_ignores_stale_hub_spoke_template_vpcs():
+    arch = {
+        "project": {"name": "Stale Plan"},
+        "render_plan": {
+            "pattern": "hybrid-powervs-dr",
+            "has_dr": True,
+            "has_on_prem": True,
+            "has_powervs": True,
+            "vpcs": [
+                {"name": "Edge VPC", "purpose": "stale hub template"},
+                {"name": "Workload VPC", "purpose": "stale hub template"},
+            ],
+        },
+        "ibm_cloud": {
+            "regions": [{"name": "us-south"}, {"name": "us-east"}],
+            "vpcs": [
+                {"name": "DAL VPC", "region": "us-south"},
+                {"name": "WDC VPC", "region": "us-east"},
+            ],
+            "compute": [{"name": "PowerVS servers"}],
+            "data": [{"name": "Cloud Object Storage"}],
+        },
+    }
+    xml = render_drawio(arch, diagram_type="deployment")
+    assert "DAL VPC" in xml
+    assert "WDC VPC" in xml
+    assert "Edge VPC" not in xml
+    assert "Workload VPC" not in xml
+
+
+def test_executive_overview_renders_seller_friendly_story():
+    arch = {
+        "project": {"name": "OmniCare RFP", "environment": "Production"},
+        "render_plan": {
+            "pattern": "hybrid-powervs-dr",
+            "has_on_prem": True,
+            "has_powervs": True,
+            "has_dr": True,
+            "connectivity_label": "HA Direct Link 1 Gbps",
+        },
+        "ibm_cloud": {
+            "regions": [{"name": "us-south"}, {"name": "us-east"}],
+            "vpcs": [{"name": "DAL VPC"}, {"name": "WDC VPC"}],
+        },
+    }
+    xml = render_drawio(arch, diagram_type="executive")
+    assert "Executive Overview" in xml
+    assert "Enterprise Sites" in xml
+    assert "Dallas / us-south" in xml
+    assert "Washington DC / us-east" in xml
+    assert "Shared Security, Compliance, and Operations Foundation" in xml
+
+
+def test_deployment_summarizes_multiple_vsi_profiles_as_workload_tier():
+    arch = {
+        "project": {"name": "OmniCare RFP", "environment": "Production"},
+        "render_plan": {
+            "pattern": "hybrid-powervs-dr",
+            "has_on_prem": True,
+            "has_powervs": True,
+            "has_dr": True,
+        },
+        "ibm_cloud": {
+            "regions": [{"name": "us-south"}, {"name": "us-east"}],
+            "vpcs": [
+                {"name": "DAL VPC", "region": "us-south"},
+                {"name": "WDC VPC", "region": "us-east"},
+            ],
+            "compute": [
+                {
+                    "name": "VPC VSI (mx2-16x128)",
+                    "purpose": "VSI profile mx2-16x128",
+                    "notes": "Many VSIs on VPC in each region of various profiles for medical imaging.",
+                },
+                {"name": "PowerVS servers"},
+            ],
+        },
+    }
+    xml = render_drawio(arch, diagram_type="deployment")
+    assert "Medical imaging VSI tier" in xml
+    assert "Multiple VPC VSI profiles" in xml
+    assert "VPC VSI (mx2-16x128)" not in xml
+
+    multi_xml = render_multipage_drawio(arch)
+    assert "Multiple profiles" in multi_xml
+    assert "VPC VSI (mx2-16x128)" not in multi_xml
+
+
 def test_xml_has_mxfile_wrapper():
     """Output XML starts with mxfile wrapper as required by Draw.io desktop app."""
     xml = render_drawio(SAMPLE_ARCH, diagram_type="deployment")
@@ -219,7 +378,7 @@ def test_ibm_location_snippet_has_border_strip():
 
 def test_render_all_diagrams_keys():
     result = render_all_diagrams(SAMPLE_ARCH)
-    assert set(result.keys()) == {"context", "logical", "deployment"}
+    assert set(result.keys()) == {"executive", "context", "logical", "deployment"}
 
 
 def test_render_all_diagrams_all_valid_xml():
@@ -244,17 +403,18 @@ def test_multipage_drawio_has_mxfile_root():
     assert root.tag == "mxfile"
 
 
-def test_multipage_drawio_has_three_pages():
+def test_multipage_drawio_has_four_pages():
     xml = render_multipage_drawio(SAMPLE_ARCH)
     root = ElementTree.fromstring(xml)
     diagrams = root.findall("diagram")
-    assert len(diagrams) == 3
+    assert len(diagrams) == 4
 
 
 def test_multipage_drawio_page_names():
     xml = render_multipage_drawio(SAMPLE_ARCH)
     root = ElementTree.fromstring(xml)
     names = [d.attrib.get("name") for d in root.findall("diagram")]
+    assert "Executive Overview" in names
     assert "Context" in names
     assert "Logical Architecture" in names
     assert "Deployment" in names

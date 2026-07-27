@@ -218,7 +218,9 @@ Any model in your local Ollama instance works.
 ### Draw.io MCP editor
 
 Shows whether the `drawio-mcp-server` is running at `localhost:4000`. Click **Check MCP editor**
-to probe it. See the [MCP Editor section](#using-the-mcp-editor-with-bob) below.
+to probe it. For a click-by-click walkthrough, start with
+[`docs/drawio-mcp-handbook.md`](drawio-mcp-handbook.md). See the
+[MCP Editor section](#using-the-mcp-editor-with-bob) below for implementation details.
 
 ### Projects folder
 
@@ -231,6 +233,11 @@ Override the default `inputs/projects/` path if you want to store projects elsew
 
 The Draw.io MCP server (`drawio-mcp-server`) lets Bob (your AI assistant in this IDE) edit
 diagrams conversationally after Network Picasso generates them.
+
+The repository is configured for IBM Bob through `.bob/mcp.json`. VS Code can also work only
+when your VS Code agent/client supports MCP server definitions; use the same server command from
+`.bob/mcp.json`. See [`docs/drawio-mcp-handbook.md`](drawio-mcp-handbook.md) for the practical
+Bob vs VS Code explanation.
 
 ### How it works
 
@@ -294,12 +301,12 @@ Bob will:
 3. Call `import-diagram` in `add` mode to inject the new cells while preserving the existing diagram
 4. Confirm the change by reading the model again
 
-#### 5. Generate all three diagram types at once
+#### 5. Generate all four diagram types at once
 
-Click **Generate all diagram types**. If the MCP editor is running, this opens Context,
-Logical Architecture, and Deployment as three separate pages (tabs) in the editor at
-`localhost:4000`. If the MCP editor is not running, it saves a multi-page `.drawio` file to
-`outputs/network-picasso-all.drawio` instead.
+Click **Generate all diagram types**. This saves `outputs/network-picasso-all.drawio` and opens
+one diagrams.net file with four pages: **Executive Overview**, **Context**,
+**Logical Architecture**, and **Deployment**. If the MCP editor is running, **Open all pages in
+MCP editor** pushes those same four pages to the live editor at `localhost:4000`.
 
 ### Activating the IBM diagram editing skill
 
@@ -387,7 +394,7 @@ Network Picasso/
 | `/api/drawio-xml` | GET / POST | Generate diagram XML |
 | `/api/drawio-snippet` | POST | Get IBM-styled XML for a single node or container |
 | `/api/drawio-mcp-open` | POST | Push diagram to MCP editor |
-| `/api/drawio-mcp-all-pages` | POST | Push all three diagram types to MCP editor |
+| `/api/drawio-mcp-all-pages` | POST | Push all four diagram pages to MCP editor |
 | `/api/drawio-multipage` | POST | Save multi-page `.drawio` file to disk |
 | `/api/drawio-mcp/health` | GET | Check whether MCP editor is running |
 | `/api/ollama/models` | GET | List available Ollama models |

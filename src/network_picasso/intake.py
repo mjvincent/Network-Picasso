@@ -129,7 +129,9 @@ IBM_REGION_PATTERN = re.compile(r"\b(?:us|eu|ca|jp|au|br)-[a-z]+\b")
 # Maps the question `area` label (from questions.py) to the ibm_cloud key(s)
 # that a backfill should target.
 AREA_TO_KEYS: dict[str, list[str]] = {
+    "Architecture pattern": [],
     "Regions and availability": ["regions"],
+    "Account and resource structure": ["security"],
     "VPC topology": ["vpcs"],
     "Subnet design": ["subnets", "zones"],
     "Connectivity": ["connectivity"],
@@ -141,6 +143,17 @@ AREA_TO_KEYS: dict[str, list[str]] = {
     "Observability": ["observability"],
     "Backup and DR": ["backup_dr"],
 }
+
+PATTERN_ALIASES: list[tuple[re.Pattern, tuple[str, str]]] = [
+    (re.compile(r'\bhub\s*(?:and|&|-)?\s*spoke|edge\s+vpc', re.IGNORECASE), ("hub-and-spoke", "Hub-and-Spoke (Edge VPC)")),
+    (re.compile(r'\bmzr\b|multi[-\s]?zone', re.IGNORECASE), ("mzr", "Multi-Zone VPC (MZR)")),
+    (re.compile(r'three[-\s]?tier|3[-\s]?tier', re.IGNORECASE), ("three-tier-vpc", "Three-Tier VPC")),
+    (re.compile(r'\bpowervs\b|power\s+virtual', re.IGNORECASE), ("powervs", "PowerVS")),
+    (re.compile(r'financial\s+services|fsc\b', re.IGNORECASE), ("fsc", "Financial Services Cloud")),
+    (re.compile(r'\broks\b|openshift|red\s+hat', re.IGNORECASE), ("roks", "Red Hat OpenShift on VPC")),
+    (re.compile(r'\bhybrid\b|direct\s+link|vpn', re.IGNORECASE), ("hybrid", "Hybrid Connectivity")),
+    (re.compile(r'\bbasic\s+vpc\b|single\s+vpc', re.IGNORECASE), ("basic-vpc", "Basic VPC")),
+]
 
 
 def discover_inputs(path: Path) -> list[Path]:
@@ -957,6 +970,173 @@ def add_detected_facts(facts: dict[str, list[dict[str, str]]], text: str, *, sou
             )
 
 
+def _append_fact(
+    facts: dict[str, list[dict[str, str]]],
+    key: str,
+    name: str,
+    *,
+    purpose: str,
+    source: str,
+    notes: str,
+    region: str = "",
+) -> None:
+    facts.setdefault(key, []).append({
+        "name": name,
+        "type": key,
+        "purpose": purpose,
+        "region": region,
+        "source": source,
+        "notes": notes[:500],
+    })
+
+
+def enrich_architecture_from_requirements(
+    architecture: dict,
+    requirements: str,
+    *,
+    source: str = "requirements",
+) -> None:
+    """Convert customer requirements prose into structured design facts.
+
+    The generic keyword extractor is intentionally conservative and often turns
+    long requirement paragraphs into weak component names. This layer captures
+    high-value IBM network architecture signals that must affect diagrams.
+    """
+    if not requirements.strip():
+        return
+    text = requirements.lower()
+    ibm_cloud = architecture.setdefault("ibm_cloud", {})
+    facts: dict[str, list[dict[str, str]]] = {
+        key: list(ibm_cloud.get(key, []))
+        for key in KEYWORDS
+    }
+    source_label = f"{source}:requirements"
+    mentions_powervs = "power virtual" in text or "powervs" in text or "power vs" in text
+    mentions_direct_link = "direct link" in text
+    mentions_dr = (
+        "dr site" in text
+        or "disaster recovery" in text
+        or " rto" in text
+        or " rpo" in text
+    )
+    mentions_healthcare = (
+        "hipaa" in text
+        or "hippa" in text
+        or "healthcare" in text
+        or "patient" in text
+        or "medical imaging" in text
+    )
+
+    add_detected_facts(facts, requirements, source=source_label)
+
+    if mentions_powervs:
+        _append_fact(
+            facts, "compute", "PowerVS servers",
+            purpose="Adjacent Power workloads connected to the VPC architecture",
+            source=source_label, notes=requirements,
+        )
+        architecture.setdefault("render_plan", {})["has_powervs"] = True
+
+    if mentions_direct_link:
+        _append_fact(
+            facts, "connectivity", "HA Direct Link 1 Gbps",
+            purpose="Highly available private connectivity for primary and DR locations",
+            source=source_label, notes=requirements,
+        )
+        architecture.setdefault("render_plan", {})["has_on_prem"] = True
+        architecture.setdefault("render_plan", {})["connectivity_label"] = "HA Direct Link 1 Gbps"
+
+    if mentions_dr:
+        _append_fact(
+            facts, "backup_dr", "WDC disaster recovery site",
+            purpose="Regional disaster recovery target for the Dallas primary VPC",
+            source=source_label, notes=requirements,
+            region="us-east" if "wdc" in text or "us-east" in text else "",
+        )
+        plan = architecture.setdefault("render_plan", {})
+        plan["has_dr"] = True
+        plan["pattern"] = "resiliency-dr"
+        plan["pattern_name"] = "Hybrid Resiliency and Disaster Recovery"
+        plan["pattern_source"] = source
+
+    if mentions_healthcare:
+        for name, purpose in [
+            ("Security and Compliance Center", "Continuous evidence collection for HIPAA compliance"),
+            ("Key Protect or HPCS", "Customer-managed encryption keys for regulated healthcare data"),
+            ("Secrets Manager", "Centralized secrets management for applications and automation"),
+        ]:
+            _append_fact(facts, "security", name, purpose=purpose, source=source_label, notes=requirements)
+        for name, purpose in [
+            ("Activity Tracker", "Audit trail for regulated healthcare operations"),
+            ("VPC Flow Logs", "Network traffic evidence for security and compliance review"),
+            ("IBM Cloud Monitoring and Logging", "Operational monitoring and logging for medical imaging workloads"),
+        ]:
+            _append_fact(facts, "observability", name, purpose=purpose, source=source_label, notes=requirements)
+        _append_fact(
+            facts, "private_endpoints", "Virtual Private Endpoints for IBM Cloud services",
+            purpose="Private access to storage, key management, logging, and managed services",
+            source=source_label, notes=requirements,
+        )
+
+    if "cos" in text or "object storage" in text:
+        _append_fact(
+            facts, "data", "Cloud Object Storage for medical imaging archive",
+            purpose="Large-scale object archive for medical imaging intake, processing, and retrieval",
+            source=source_label, notes=requirements,
+        )
+    if "nfs" in text or "file storage" in text:
+        _append_fact(
+            facts, "data", "NFS File Storage for VSI workloads",
+            purpose="Shared file storage attached to medical imaging VSI workloads",
+            source=source_label, notes=requirements,
+        )
+
+    if "medical imaging" in text:
+        _append_fact(
+            facts, "compute", "Medical imaging processing VSIs",
+            purpose="Image intake, processing, archiving, and retrieval workload tier",
+            source=source_label, notes=requirements,
+        )
+
+    if "one zone" in text or "zone 1" in text:
+        facts.setdefault("zones", []).append({
+            "name": "zone-1",
+            "type": "zones",
+            "purpose": "Single-zone placement stated in requirements",
+            "source": source_label,
+            "notes": requirements[:500],
+        })
+        architecture.setdefault("render_plan", {})["az_count"] = 1
+
+    if mentions_dr and (mentions_powervs or mentions_healthcare):
+        plan = architecture.setdefault("render_plan", {})
+        plan["pattern"] = "hybrid-powervs-dr" if mentions_powervs else "healthcare-regional-dr"
+        plan["pattern_name"] = (
+            "Hybrid PowerVS and Regional DR"
+            if mentions_powervs
+            else "Healthcare Regional Disaster Recovery"
+        )
+        plan["pattern_source"] = source
+        plan["has_dr"] = True
+        plan["has_powervs"] = mentions_powervs or bool(plan.get("has_powervs"))
+        plan["has_on_prem"] = mentions_direct_link or bool(plan.get("has_on_prem"))
+        plan.setdefault("connectivity_label", "HA Direct Link 1 Gbps")
+        plan.pop("vpcs", None)
+        plan.pop("has_tgw", None)
+        plan["shared_services"] = [
+            "Security and Compliance Center",
+            "Key Protect or HPCS",
+            "Secrets Manager",
+            "Activity Tracker",
+            "VPC Flow Logs",
+            "Virtual Private Endpoints",
+        ]
+
+    for key, values in facts.items():
+        if values:
+            ibm_cloud[key] = dedupe_components(values)
+
+
 def add_structured_fact(facts: dict[str, list[dict[str, str]]], row: dict[str, str], *, source: str) -> bool:
     lowered = {key.lower().strip(): value.strip() for key, value in row.items() if value.strip()}
     category_value = first_value(lowered, ["category", "type", "service category", "component category"])
@@ -1215,9 +1395,30 @@ def backfill_answer_into_model(architecture: dict, area: str, answer: str) -> No
     :func:`dedupe_components` — no logic is duplicated.
     """
     ibm_cloud = architecture.setdefault("ibm_cloud", {})
+    render_plan = architecture.setdefault("render_plan", {})
+    for pattern, (pattern_id, pattern_name) in PATTERN_ALIASES:
+        if pattern.search(answer):
+            render_plan.setdefault("pattern", pattern_id)
+            render_plan.setdefault("pattern_name", pattern_name)
+            render_plan.setdefault("pattern_source", "architect-answer")
+            if pattern_id in {"hub-and-spoke", "fsc"}:
+                render_plan.setdefault("has_tgw", True)
+                render_plan.setdefault("vpcs", [
+                    {"name": "Edge VPC", "purpose": "Internet ingress, egress, and hybrid connectivity", "tiers": ["Public", "Management"]},
+                    {"name": "Workload VPC", "purpose": "Private application and data tiers", "tiers": ["Private", "Data"]},
+                ])
+            if pattern_id == "mzr":
+                render_plan.setdefault("az_count", 3)
+            if pattern_id == "powervs":
+                render_plan.setdefault("has_powervs", True)
+            break
+
     target_keys = AREA_TO_KEYS.get(area, [])
     if not target_keys:
-        # Unknown area — fall back to scanning all categories.
+        if area in AREA_TO_KEYS:
+            return
+        # Unknown AI-generated area — scan all categories so useful component
+        # names in targeted AI questions can still enrich the model.
         target_keys = list(KEYWORDS.keys())
 
     # add_detected_facts iterates all KEYWORDS keys, so we must pass a full-width

@@ -516,11 +516,13 @@ class DrawioBuilder:
         )
         label_style = (
             "shape=rect;fillColor=none;strokeColor=none;"
-            "labelPosition=right;verticalLabelPosition=middle;"
+            "labelPosition=center;verticalLabelPosition=middle;"
             "align=left;verticalAlign=middle;"
             "fontSize=13;fontStyle=1;part=1;movable=0;resizable=0;rotatable=0;"
-            "spacingLeft=5;"
+            "spacingLeft=3;"
         )
+        label_x = 8 + icon_size + 8
+        label_w = max(width - label_x - 8, 80)
 
         self.cells.append(
             f'<mxCell id="{outer_id}" value="" style="{outer_style}" '
@@ -546,7 +548,7 @@ class DrawioBuilder:
         self.cells.append(
             f'<mxCell id="{label_id}" value="{escape(label)}" style="{label_style}" '
             f'vertex="1" parent="{outer_id}">'
-            f'<mxGeometry x="8" y="8" width="{icon_size}" height="{icon_size}" as="geometry" />'
+            f'<mxGeometry x="{label_x}" y="8" width="{label_w}" height="{icon_size}" as="geometry" />'
             "</mxCell>"
         )
         return outer_id
@@ -637,6 +639,61 @@ class DrawioBuilder:
         )
         return bg_id
 
+    def child_service_tile(
+        self,
+        label: str,
+        x: int,
+        y: int,
+        width: int,
+        parent: str,
+        shape: str,
+        *,
+        d: int = 20,
+    ) -> str:
+        """Compact IBM node row for dense subnet bands."""
+        label = _clean_diagram_label(label)
+        bg_color = _stencil_color(shape)
+        bg_id = self._next_id()
+        icon_id = self._next_id()
+        label_id = self._next_id()
+        icon_d = max(d // 2, 10)
+        icon_offset = (d - icon_d) // 2
+        label_x = x + d + 6
+        label_w = max(width - d - 8, 60)
+
+        bg_style = (
+            "shape=rect;"
+            f"fillColor={bg_color};strokeColor=none;"
+            "aspect=fixed;resizable=0;html=1;"
+        )
+        icon_style = (
+            f"shape=mxgraph.ibm_cloud.{shape};"
+            "fillColor=#ffffff;strokeColor=none;"
+            "dashed=0;html=1;part=1;"
+            "movable=0;resizable=0;rotatable=0;"
+        )
+        text_style = (
+            "shape=rect;fillColor=none;strokeColor=none;"
+            "whiteSpace=wrap;html=1;align=left;verticalAlign=middle;"
+            "fontSize=11;fontStyle=0;spacingLeft=2;overflow=hidden;"
+        )
+        self.cells.append(
+            f'<mxCell id="{bg_id}" value="" style="{bg_style}" vertex="1" parent="{parent}">'
+            f'<mxGeometry x="{x}" y="{y}" width="{d}" height="{d}" as="geometry" />'
+            "</mxCell>"
+        )
+        self.cells.append(
+            f'<mxCell id="{icon_id}" value="" style="{icon_style}" vertex="1" parent="{bg_id}">'
+            f'<mxGeometry x="{icon_offset}" y="{icon_offset}" width="{icon_d}" height="{icon_d}" as="geometry" />'
+            "</mxCell>"
+        )
+        self.cells.append(
+            f'<mxCell id="{label_id}" value="{escape(label)}" style="{text_style}" vertex="1" parent="{parent}">'
+            f'<mxGeometry x="{label_x}" y="{y - 2}" width="{label_w}" height="{d + 8}" as="geometry" />'
+            "</mxCell>"
+        )
+        return bg_id
+
     def child_ibm_location(
         self,
         label: str,
@@ -678,11 +735,13 @@ class DrawioBuilder:
         )
         label_style = (
             "shape=rect;fillColor=none;strokeColor=none;"
-            "labelPosition=right;verticalLabelPosition=middle;"
+            "labelPosition=center;verticalLabelPosition=middle;"
             "align=left;verticalAlign=middle;"
             "fontSize=13;fontStyle=1;part=1;movable=0;resizable=0;rotatable=0;"
-            "spacingLeft=5;"
+            "spacingLeft=3;"
         )
+        label_x = 8 + icon_size + 8
+        label_w = max(width - label_x - 8, 80)
 
         self.cells.append(
             f'<mxCell id="{outer_id}" value="" style="{outer_style}" '
@@ -705,7 +764,7 @@ class DrawioBuilder:
         self.cells.append(
             f'<mxCell id="{label_id}" value="{escape(label)}" style="{label_style}" '
             f'vertex="1" parent="{outer_id}">'
-            f'<mxGeometry x="8" y="8" width="{icon_size}" height="{icon_size}" as="geometry" />'
+            f'<mxGeometry x="{label_x}" y="8" width="{label_w}" height="{icon_size}" as="geometry" />'
             "</mxCell>"
         )
         return outer_id
@@ -839,11 +898,73 @@ class DrawioBuilder:
 # ---------------------------------------------------------------------------
 
 def _label(item: dict, fallback: str) -> str:
-    name = item.get("name") or fallback
+    name = _clean_diagram_label(item.get("name") or fallback)
     purpose = item.get("purpose")
-    if purpose and purpose != name:
-        return f"{name}\n{purpose}"
+    if purpose and purpose != name and _is_diagram_purpose(purpose):
+        return f"{name}\n{_clean_diagram_label(str(purpose))}"
     return name
+
+
+def _is_vpc_vsi_item(item: dict) -> bool:
+    text = " ".join(str(item.get(key) or "") for key in ("name", "purpose", "notes")).lower()
+    if "dr vsi recovery" in text:
+        return False
+    return (
+        ("vsi" in text or "virtual server" in text)
+        and "powervs" not in text
+        and "power virtual" not in text
+    )
+
+
+def _is_powervs_item(item: dict) -> bool:
+    text = " ".join(str(item.get(key) or "") for key in ("name", "purpose", "notes")).lower()
+    return "powervs" in text or "power virtual" in text
+
+
+def _compact_private_compute_items(items: list[dict]) -> list[dict]:
+    """Summarize VSI profile extracts as a workload tier instead of one machine."""
+    vsi_items = [item for item in items if _is_vpc_vsi_item(item)]
+    if not vsi_items:
+        return [item for item in items if not _is_powervs_item(item)]
+
+    text = " ".join(
+        str(item.get(key) or "")
+        for item in vsi_items
+        for key in ("name", "purpose", "notes")
+    ).lower()
+    if "medical imaging" in text:
+        name = "Medical imaging VSI tier"
+    else:
+        name = "VPC VSI workload tier"
+
+    summary = {
+        "name": f"{name}\nMultiple VPC VSI profiles",
+        "purpose": "Multiple VPC VSI profiles",
+        "type": "compute",
+    }
+    return [summary] + [item for item in items if not _is_vpc_vsi_item(item) and not _is_powervs_item(item)]
+
+
+def _clean_diagram_label(label: str) -> str:
+    text = str(label).replace("Hippa", "HIPAA").replace("hippa", "HIPAA")
+    text = text.replace("Hipaa", "HIPAA")
+    lowered = text.strip().lower()
+    if lowered.startswith("vpc vsi (") or lowered.startswith("vpc virtual server instance ("):
+        return "VPC VSI workload tier\nMultiple profiles"
+    if text.strip().lower() == "hipaa compliance":
+        return "HIPAA compliance controls"
+    return text
+
+
+def _is_diagram_purpose(purpose: str) -> bool:
+    lowered = str(purpose).lower()
+    provenance_markers = (
+        "from unified pricing workbook",
+        "from '",
+        "from workbook",
+        "sheet ",
+    )
+    return not any(marker in lowered for marker in provenance_markers)
 
 
 def _preferred(items: list[dict] | None, fallback: dict) -> dict:
@@ -891,7 +1012,7 @@ def _service_node(
     Uses ibm_node (colored square + white icon) when a stencil shape is found,
     falls back to a generic box otherwise.
     """
-    name = item.get("name") or fallback_name
+    name = _clean_diagram_label(item.get("name") or fallback_name)
     shape = _stencil_shape(name)
 
     if shape:
@@ -1149,10 +1270,70 @@ def _az_count_from_data(ibm_cloud: dict) -> int:
             z = str(item.get("zone") or "").strip()
             if z:
                 seen.add(z.lower())
+    for item in ibm_cloud.get("zones", []):
+        z = str(item.get("name") or item.get("zone") or "").strip()
+        if z:
+            seen.add(z.lower())
     # Accept tags like "zone-1", "zone-2", "Zone 1", "dal10"
     known = [z for z in seen if any(c.isdigit() for c in z)]
     count = len(known)
     return max(count, 1) if count else 3  # default 3 for MZR
+
+
+def _plan_bool(render_plan: dict, key: str, fallback: bool) -> bool:
+    value = render_plan.get(key)
+    return fallback if value is None else bool(value)
+
+
+def _vpcs_from_render_plan(render_plan: dict, ibm_cloud: dict) -> list[dict]:
+    """Return VPCs to draw, using IBM pattern templates when explicitly chosen."""
+    existing = ibm_cloud.get("vpcs") or []
+    pattern = str(render_plan.get("pattern") or "").lower()
+    if pattern in {"hybrid-powervs-dr", "healthcare-regional-dr", "resiliency-dr"} and existing:
+        return existing
+
+    plan_vpcs = render_plan.get("vpcs")
+    if isinstance(plan_vpcs, list) and plan_vpcs:
+        result: list[dict] = []
+        for item in plan_vpcs:
+            if isinstance(item, dict):
+                result.append({
+                    "name": str(item.get("name") or "VPC"),
+                    "purpose": str(item.get("purpose") or ""),
+                    "region": str(item.get("region") or ""),
+                    "tiers": item.get("tiers") if isinstance(item.get("tiers"), list) else [],
+                })
+            else:
+                result.append({"name": str(item), "purpose": "", "tiers": []})
+        return result
+
+    if pattern in {"hub-and-spoke", "fsc", "financial-services", "financial-services-cloud"} and len(existing) < 2:
+        return [
+            {"name": "Edge VPC", "purpose": "Internet ingress, egress, and hybrid connectivity", "tiers": ["Public", "Management"]},
+            {"name": "Workload VPC", "purpose": "Private application and data tiers", "tiers": ["Private", "Data"]},
+        ]
+    if pattern in {"mzr", "three-tier-vpc", "basic-vpc"} and existing:
+        return existing
+    return existing or [{"name": "VPC", "purpose": ""}]
+
+
+def _tiers_for_vpc(vpc: dict, tier_items: dict[str, list[dict]]) -> dict[str, list[dict]]:
+    """Ensure template tiers appear even when no extracted item exists yet."""
+    tiers = vpc.get("tiers")
+    if not isinstance(tiers, list):
+        return tier_items
+    planned = {str(t).title() for t in tiers}
+    result = {key: list(value) for key, value in tier_items.items()}
+    for tier in ("Public", "Private", "Management", "Data"):
+        if tier in planned and not result.get(tier):
+            result[tier] = [{
+                "name": f"{tier.lower()} subnet",
+                "type": "subnets",
+                "subnet_tier": tier,
+                "purpose": f"{tier} tier placeholder from selected IBM pattern",
+                "notes": "template",
+            }]
+    return result
 
 
 def _vpc_tier_items(ibm_cloud: dict, vpc_name: str) -> dict[str, list[dict]]:
@@ -1179,7 +1360,447 @@ def _vpc_tier_items(ibm_cloud: dict, vpc_name: str) -> dict[str, list[dict]]:
     return tier_map
 
 
-def _render_deployment(builder: DrawioBuilder, project: dict, ibm_cloud: dict) -> None:  # noqa: PLR0912, PLR0915
+def _region_name(region: dict) -> str:
+    return str(region.get("name") or "").strip()
+
+
+def _region_label(region: dict, idx: int) -> str:
+    name = _region_name(region) or f"Region {idx + 1}"
+    lower = f"{name} {region.get('purpose', '')} {region.get('notes', '')}".lower()
+    if idx == 0 or "primary" in lower or "dal" in lower or "dallas" in lower:
+        role = "Primary Region"
+    elif idx == 1 or "dr" in lower or "disaster" in lower or "wdc" in lower or "washington" in lower:
+        role = "DR Region"
+    else:
+        role = "Regional Site"
+    return f"{name}\n{role}"
+
+
+def _vpc_matches_region(vpc: dict, region: dict) -> bool:
+    region_name = _region_name(region).lower()
+    if region_name and str(vpc.get("region") or "").lower() == region_name:
+        return True
+    haystack = " ".join(
+        str(vpc.get(key) or "").lower()
+        for key in ("name", "purpose", "notes", "source")
+    )
+    aliases = {
+        "us-south": ("dal", "dallas"),
+        "us-east": ("wdc", "washington"),
+    }.get(region_name, ())
+    return any(alias in haystack for alias in aliases)
+
+
+def _items_for_region(items: list[dict], region: dict) -> list[dict]:
+    region_name = _region_name(region).lower()
+    if not region_name:
+        return items
+    aliases = {
+        "us-south": ("dal", "dallas", "primary"),
+        "us-east": ("wdc", "washington", "dr", "disaster"),
+    }.get(region_name, ())
+    matched: list[dict] = []
+    shared: list[dict] = []
+    for item in items:
+        item_region = str(item.get("region") or "").lower()
+        text = " ".join(
+            str(item.get(key) or "").lower()
+            for key in ("name", "purpose", "notes", "source")
+        )
+        if item_region == region_name or any(alias in text for alias in aliases):
+            matched.append(item)
+        elif not item_region:
+            shared.append(item)
+    return matched or shared
+
+
+def _regional_tier_items(ibm_cloud: dict, region: dict, *, include_unscoped: bool = True) -> dict[str, list[dict]]:
+    tier_map: dict[str, list[dict]] = {
+        "Public": [], "Private": [], "Management": [], "Data": [],
+    }
+    category_to_tier = {
+        "ingress": "Public",
+        "compute": "Private",
+        "data": "Data",
+    }
+    for cat, default_tier in category_to_tier.items():
+        source_items = _items_for_region(ibm_cloud.get(cat, []), region) if include_unscoped else [
+            item for item in ibm_cloud.get(cat, [])
+            if str(item.get("region") or "").lower() == _region_name(region).lower()
+        ]
+        for item in source_items:
+            tier = item.get("subnet_tier") or default_tier
+            if tier in tier_map:
+                tier_map[tier].append(item)
+    return tier_map
+
+
+def _fallback_dr_tier_items(ibm_cloud: dict, region: dict) -> dict[str, list[dict]]:
+    tier_items = _regional_tier_items(ibm_cloud, region, include_unscoped=False)
+    if not tier_items["Private"]:
+        tier_items["Private"] = [{
+            "name": "DR VSI recovery tier",
+            "type": "compute",
+            "purpose": "Standby compute capacity for medical imaging workloads",
+        }]
+    if not tier_items["Data"]:
+        tier_items["Data"] = [{
+            "name": "Replicated imaging data",
+            "type": "data",
+            "purpose": "Recovery copy for archive and file-storage data",
+        }]
+    return tier_items
+
+
+def _prioritized_foundation_items(items: list[dict], preferred_names: list[str], *, limit: int = 4) -> list[dict]:
+    by_name: dict[str, dict] = {}
+    for item in items:
+        name = _clean_diagram_label(str(item.get("name") or "").strip())
+        if not name:
+            continue
+        lowered = name.lower()
+        if any(noise in lowered for noise in ("security is multi", "cloud security is multi")):
+            continue
+        by_name.setdefault(lowered, {"name": name})
+
+    selected: list[dict] = []
+    selected_keys: set[str] = set()
+    for preferred in preferred_names:
+        key = preferred.lower()
+        for name_key, item in by_name.items():
+            if key in name_key and name_key not in selected_keys:
+                selected.append(item)
+                selected_keys.add(name_key)
+                break
+        if len(selected) >= limit:
+            return selected
+
+    for name_key, item in by_name.items():
+        if name_key not in selected_keys:
+            selected.append(item)
+        if len(selected) >= limit:
+            break
+    return selected
+
+
+def _render_vpc_zones(
+    builder: DrawioBuilder,
+    vpc_id: str,
+    vpc_label: str,
+    vpc_w: int,
+    vpc_h: int,
+    tier_items: dict[str, list[dict]],
+    az_count: int,
+) -> None:
+    tier_order = ("Public", "Private", "Data", "Management")
+    tier_items = {tier: tier_items.get(tier, []) for tier in tier_order}
+    zone_h_each = (vpc_h - 60 - az_count * _SG_M) // max(az_count, 1)
+    zone_h_each = max(zone_h_each, 170)
+    z_y = 60
+    for z in range(1, az_count + 1):
+        z_w = vpc_w - 2 * _SG_M
+        zone_id = builder.child_ibm_location(
+            f"Zone {z}", _SG_M, z_y, z_w, zone_h_each,
+            "data--center", COLOR["grey"], vpc_id, dashed=True, icon_size=20,
+        )
+        visible_tiers = [(tier, items) for tier, items in tier_items.items() if items]
+        band_h = (zone_h_each - 44) // max(len(visible_tiers), 1)
+        band_h = max(min(band_h, 92), 58)
+        band_y_cur = 36
+        for tier, items in visible_tiers:
+            display_items = _compact_private_compute_items(items) if tier == "Private" else items
+            first = items[0]
+            subnet_name = (
+                first.get("name") if "subnet" in str(first.get("name") or "").lower()
+                else f"{vpc_label.split()[0].lower()}-{tier.lower()}-subnet-{z}"
+            )
+            sub_id = builder.container(
+                subnet_name,
+                _SG_M, band_y_cur, z_w - 2 * _SG_M, band_h,
+                fill=COLOR.get(tier, "#f4f4f4"),
+                stroke=COLOR["az_stroke"], font_size=9,
+                parent=zone_id,
+            )
+            if z == 1:
+                tile_w = max((z_w - 2 * _SG_M - 18) // 2, 150)
+                for idx, item in enumerate(display_items[:3]):
+                    shape = _stencil_shape(item.get("name") or "") or {
+                        "Public": "load-balancer--vpc",
+                        "Private": "ibm-cloud--virtual-server-vpc",
+                        "Data": "object-storage",
+                        "Management": "cloud--monitoring",
+                    }.get(tier, "cloud-services")
+                    if shape:
+                        tx = _SG_M + 4 + (idx % 2) * (tile_w + 10)
+                        ty = 12 + (idx // 2) * 32
+                        builder.child_service_tile(
+                            item.get("name") or tier,
+                            tx, ty, tile_w, sub_id, shape, d=22,
+                        )
+                hidden_count = max(len(display_items) - 3, 0)
+                if hidden_count:
+                    builder.container(
+                        f"+{hidden_count} more",
+                        z_w - 92, 12, 72, 24,
+                        fill="#ffffff", stroke=COLOR["az_stroke"], font_size=9,
+                        font_style=0, parent=sub_id,
+                    )
+            band_y_cur += band_h + _SG_M
+        z_y += zone_h_each + _SG_M
+
+
+def _render_multi_region_deployment(
+    builder: DrawioBuilder,
+    ibm_cloud: dict,
+    render_plan: dict,
+    regions_data: list[dict],
+    vpcs_data: list[dict],
+    *,
+    has_on_prem: bool,
+    has_tgw: bool,
+    has_powervs: bool,
+    az_count: int,
+) -> None:
+    ent_w = 230
+    conn_w = 170
+    gap = 20
+    cursor_x = _BASE_X
+    users_node: str | None = None
+    on_prem_node: str | None = None
+
+    if has_on_prem:
+        builder.ibm_location(
+            "Enterprise Sites", cursor_x, _BASE_Y, ent_w, 460,
+            shape="network--enterprise", stroke_color=COLOR["grey"],
+        )
+        users_node = builder.ibm_actor("Clinicians / Centers", cursor_x + 20, _BASE_Y + 70, "user", d=40)
+        on_prem_node = builder.ibm_actor("Enterprise WAN", cursor_x + 20, _BASE_Y + 180, "enterprise", d=40)
+        cursor_x += ent_w + gap
+
+        conn_container = builder.ibm_location(
+            "HA Direct Link", cursor_x, _BASE_Y, conn_w, 460,
+            shape="arrows--horizontal", stroke_color=COLOR["network"],
+        )
+        if users_node:
+            builder.edge(users_node, conn_container, "intake/retrieval")
+        if on_prem_node:
+            builder.edge(on_prem_node, conn_container, "")
+        conn_label = str(render_plan.get("connectivity_label") or "HA Direct Link")
+        builder.ibm_node(
+            conn_label, cursor_x + 20, _BASE_Y + 90,
+            _stencil_shape(conn_label) or "ibm-cloud--direct-link-2--connect", d=40,
+        )
+        cursor_x += conn_w + gap
+    else:
+        users_node = builder.ibm_actor("Users / Clients", cursor_x + 10, _BASE_Y + 80, "user", d=40)
+        cursor_x += 90 + gap
+
+    account_w = 1500
+    account_h = 920
+    ibm_account = builder.ibm_location(
+        "IBM Cloud Account", cursor_x, _BASE_Y, account_w, account_h,
+        shape="ibm-cloud", stroke_color=COLOR["network"], stroke_width=2,
+    )
+    if users_node and not has_on_prem:
+        builder.edge(users_node, ibm_account, "HTTPS/API")
+
+    displayed_regions = regions_data[:2]
+    region_w = 710
+    region_h = 585
+    region_ids: list[str] = []
+    vpc_ids: list[str] = []
+
+    for idx, region in enumerate(displayed_regions):
+        rx = 20 + idx * (region_w + gap)
+        region_id = builder.child_ibm_location(
+            _region_label(region, idx), rx, 60, region_w, region_h,
+            "location", COLOR["grey"], ibm_account,
+        )
+        region_ids.append(region_id)
+
+        region_vpcs = [v for v in vpcs_data if _vpc_matches_region(v, region)]
+        if not region_vpcs and idx < len(vpcs_data):
+            region_vpcs = [vpcs_data[idx]]
+        if not region_vpcs:
+            region_vpcs = [{"name": "Primary VPC" if idx == 0 else "DR VPC", "purpose": ""}]
+
+        tgw_id: str | None = None
+        if has_tgw:
+            tgw_id = builder.child_ibm_node(
+                "Transit Gateway", 20, 45, "ibm-cloud--transit-gateway", region_id, d=36,
+            )
+
+        vpc = region_vpcs[0]
+        vpc_label = _clean_diagram_label(str(vpc.get("name") or f"VPC {idx + 1}"))
+        if vpc.get("purpose") and _is_diagram_purpose(str(vpc.get("purpose"))):
+            vpc_label += f"\n{_clean_diagram_label(str(vpc['purpose']))}"
+        vpc_id = builder.child_ibm_location(
+            vpc_label, 30, 95, region_w - 60, 380,
+            "ibm-cloud--vpc", COLOR["network"], region_id,
+        )
+        vpc_ids.append(vpc_id)
+        if tgw_id:
+            builder.edge(tgw_id, vpc_id, "")
+
+        if idx == 0:
+            tier_items = _tiers_for_vpc(vpc, _regional_tier_items(ibm_cloud, region, include_unscoped=True))
+        else:
+            tier_items = _tiers_for_vpc(vpc, _fallback_dr_tier_items(ibm_cloud, region))
+        _render_vpc_zones(builder, vpc_id, vpc_label, region_w - 60, 380, tier_items, az_count)
+
+        if has_powervs:
+            power_id = builder.child_ibm_location(
+                "PowerVS Workspace", 30, 490, region_w - 60, 70,
+                "ibm--power-vs", COLOR["compute"], region_id, dashed=True,
+            )
+            builder.child_service_tile("PowerVS servers", 18, 32, region_w - 120, power_id, "ibm--power-vs", d=20)
+            builder.edge(vpc_id, power_id, "", dashed=True)
+
+    if len(region_ids) > 1:
+        builder.edge(region_ids[0], region_ids[1], "", dashed=True)
+
+    foundation_label = str(
+        render_plan.get("foundation_label")
+        or "Foundation: PowerVS with VPC landing zone + security/observability foundation + regional DR extension"
+    )
+    svc_container = builder.child_ibm_location(
+        "Shared Services / Compliance Foundation", 20, 665, 1460, 225,
+        "cloud-services", COLOR["data"], ibm_account,
+    )
+    builder.container(
+        foundation_label,
+        18, 42, 1422, 34,
+        fill="#f4f4f4", stroke=COLOR["grey"], font_size=12,
+        font_style=1, parent=svc_container,
+    )
+
+    foundation_groups: list[tuple[str, str]] = [
+        (
+            "Security & Compliance",
+            "SCC evidence collection\nKey Protect / HPCS\nSecrets Manager\nVirtual Private Endpoints",
+        ),
+        (
+            "Operations Evidence",
+            "Activity Tracker\nVPC Flow Logs\nMonitoring and Logging\nDR evidence / runbook",
+        ),
+        (
+            "Shared Data Services",
+            "Cloud Object Storage archive\nNFS File Storage\nCross-region replication\nPrivate service access",
+        ),
+    ]
+    group_w = 456
+    for group_idx, (group_label, summary) in enumerate(foundation_groups):
+        gx = 18 + group_idx * (group_w + 18)
+        builder.container(
+            group_label, gx, 92, group_w, 28,
+            fill="#f4f4f4", stroke=COLOR["grey"], font_size=12,
+            font_style=1, parent=svc_container,
+        )
+        builder.container(
+            summary,
+            gx + 10, 132, group_w - 20, 78,
+            fill="#ffffff", stroke=COLOR["grey"], font_size=12,
+            font_style=0, parent=svc_container,
+        )
+
+
+def _render_executive_overview(builder: DrawioBuilder, project: dict, ibm_cloud: dict, render_plan: dict | None = None) -> None:
+    """Render a seller-friendly first page with only the architectural story."""
+    render_plan = render_plan or {}
+    _render_title(builder, project, "executive overview")
+
+    left = 90
+    top = 130
+    gap = 36
+    cloud_x = 430
+    cloud_y = top
+    cloud_w = 1440
+    cloud_h = 650
+
+    enterprise = builder.ibm_location(
+        "Enterprise Sites", left, top + 80, 250, 260,
+        shape="network--enterprise", stroke_color=COLOR["grey"],
+    )
+    users = builder.ibm_actor("Clinicians / Centers", left + 32, top + 150, "user", d=44)
+    wan = builder.ibm_actor("Enterprise WAN", left + 32, top + 245, "enterprise", d=44)
+
+    connectivity = builder.ibm_location(
+        "HA Direct Link", left + 250 + gap, top + 80, 230, 260,
+        shape="arrows--horizontal", stroke_color=COLOR["network"],
+    )
+    dl_label = str(render_plan.get("connectivity_label") or "HA Direct Link 1 Gbps")
+    builder.ibm_node(
+        dl_label,
+        left + 250 + gap + 38,
+        top + 175,
+        _stencil_shape(dl_label) or "ibm-cloud--direct-link-2--connect",
+        d=48,
+    )
+
+    cloud = builder.ibm_location(
+        "IBM Cloud landing zone", cloud_x, cloud_y, cloud_w, cloud_h,
+        shape="ibm-cloud", stroke_color=COLOR["network"], stroke_width=2,
+    )
+
+    region_w = 610
+    region_h = 350
+    primary = builder.child_ibm_location(
+        "Dallas / us-south\nPrimary medical imaging processing",
+        40, 70, region_w, region_h,
+        "location", COLOR["grey"], cloud,
+    )
+    dr = builder.child_ibm_location(
+        "Washington DC / us-east\nDisaster recovery and retrieval",
+        40 + region_w + 60, 70, region_w, region_h,
+        "location", COLOR["grey"], cloud,
+    )
+
+    primary_vpc = builder.child_ibm_location("DAL VPC", 30, 85, region_w - 60, 140, "ibm-cloud--vpc", COLOR["network"], primary)
+    dr_vpc = builder.child_ibm_location("WDC VPC", 30, 85, region_w - 60, 140, "ibm-cloud--vpc", COLOR["network"], dr)
+
+    for parent, title, services in [
+        (primary_vpc, "Image processing", ["Private Load Balancer", "Medical imaging VSIs", "COS + NFS storage"]),
+        (dr_vpc, "Recovery services", ["DR VSI recovery tier", "Replicated imaging data", "PowerVS connectivity"]),
+    ]:
+        builder.container(title, 36, 55, region_w - 132, 28, fill="#f4f4f4", stroke=COLOR["grey"], font_size=12, parent=parent)
+        for idx, service in enumerate(services):
+            builder.child_service_tile(
+                service,
+                46 + idx * 170,
+                96,
+                150,
+                parent,
+                _stencil_shape(service) or "cloud-services",
+                d=22,
+            )
+
+    for parent in (primary, dr):
+        pwr = builder.child_ibm_location("PowerVS Workspace", 30, 245, region_w - 60, 70, "ibm--power-vs", COLOR["compute"], parent, dashed=True)
+        builder.child_service_tile("PowerVS servers", 18, 32, region_w - 120, pwr, "ibm--power-vs", d=22)
+
+    foundation = builder.child_ibm_location(
+        "Shared Security, Compliance, and Operations Foundation",
+        40, 455, cloud_w - 80, 155,
+        "cloud-services", COLOR["data"], cloud,
+    )
+    foundation_text = (
+        "HIPAA evidence and audit: SCC, Activity Tracker, VPC Flow Logs\n"
+        "Customer-managed protection: Key Protect / HPCS, Secrets Manager\n"
+        "Private service access: VPEs for IBM Cloud services, COS archive, NFS file storage"
+    )
+    builder.container(
+        foundation_text, 28, 54, cloud_w - 136, 78,
+        fill="#ffffff", stroke=COLOR["grey"], font_size=13,
+        font_style=0, parent=foundation,
+    )
+
+    builder.edge(users, connectivity, "intake/retrieval")
+    builder.edge(wan, connectivity, "")
+    builder.edge(connectivity, cloud, "")
+    builder.edge(primary_vpc, dr_vpc, "regional DR")
+
+
+def _render_deployment(builder: DrawioBuilder, project: dict, ibm_cloud: dict, render_plan: dict | None = None) -> None:  # noqa: PLR0912, PLR0915
     """Render a deployment diagram driven entirely by the extracted architecture model.
 
     No topology is assumed.  Every structural element (on-prem block, VPC count,
@@ -1187,25 +1808,49 @@ def _render_deployment(builder: DrawioBuilder, project: dict, ibm_cloud: dict) -
     """
     _render_title(builder, project, "deployment")
 
+    render_plan = render_plan or {}
     regions_data   = ibm_cloud.get("regions")          or [{"name": "Region TBD"}]
     conn_items     = ibm_cloud.get("connectivity")      or []
-    vpcs_data      = ibm_cloud.get("vpcs")              or [{"name": "VPC", "purpose": ""}]
+    vpcs_data      = _vpcs_from_render_plan(render_plan, ibm_cloud)
     data_items     = ibm_cloud.get("data")              or []
     security_items = ibm_cloud.get("security")          or []
     obs_items      = ibm_cloud.get("observability")     or []
     private_eps    = ibm_cloud.get("private_endpoints") or []
 
     # ── Pattern detection — from extracted data, no assumptions ──────────
-    has_on_prem = any(
+    detected_on_prem = any(
         kw in (c.get("name") or "").lower()
         for c in conn_items
         for kw in ("direct link", "vpn", "direct-link")
     )
-    has_tgw     = _has_transit_gateway(ibm_cloud)
-    has_powervs = _has_powervs(ibm_cloud)
-    has_dr      = len(regions_data) > 1
-    az_count    = _az_count_from_data(ibm_cloud)
+    has_on_prem = _plan_bool(render_plan, "has_on_prem", detected_on_prem)
+    has_tgw     = _plan_bool(render_plan, "has_tgw", _has_transit_gateway(ibm_cloud))
+    has_powervs = _plan_bool(render_plan, "has_powervs", _has_powervs(ibm_cloud))
+    has_dr      = _plan_bool(render_plan, "has_dr", len(regions_data) > 1)
+    az_count    = int(render_plan.get("az_count") or _az_count_from_data(ibm_cloud))
+    if str(render_plan.get("pattern") or "").lower() == "mzr":
+        az_count = max(az_count, 3)
     vpc_count   = len(vpcs_data)
+
+    region_names = {_region_name(region).lower() for region in regions_data if _region_name(region)}
+    if has_dr and len(region_names) > 1 and any(
+        _region_name(region).lower() == str(vpc.get("region") or "").lower()
+        or _vpc_matches_region(vpc, region)
+        for region in regions_data
+        for vpc in vpcs_data
+    ):
+        _render_multi_region_deployment(
+            builder,
+            ibm_cloud,
+            render_plan,
+            regions_data,
+            vpcs_data,
+            has_on_prem=has_on_prem,
+            has_tgw=has_tgw,
+            has_powervs=has_powervs,
+            az_count=az_count,
+        )
+        return
 
     # ── Layout anchors — shift right if on-prem block is present ─────────
     ent_w    = 260
@@ -1238,6 +1883,8 @@ def _render_deployment(builder: DrawioBuilder, project: dict, ibm_cloud: dict) -
 
         # Connectivity column — items from extracted connectivity
         non_tgw = [c for c in conn_items if "transit" not in (c.get("name") or "").lower()]
+        if not non_tgw and render_plan.get("connectivity_label"):
+            non_tgw = [{"name": str(render_plan.get("connectivity_label")), "type": "connectivity"}]
         if non_tgw:
             conn_container = builder.ibm_location(
                 "Connectivity", cursor_x, _BASE_Y, conn_w, ent_h,
@@ -1303,9 +1950,9 @@ def _render_deployment(builder: DrawioBuilder, project: dict, ibm_cloud: dict) -
     vpc_x_offset = gap
 
     for v_idx, vpc in enumerate(vpcs_data):
-        vpc_label = vpc.get("name") or f"VPC {v_idx + 1}"
-        if vpc.get("purpose"):
-            vpc_label += f"\n{vpc['purpose']}"
+        vpc_label = _clean_diagram_label(vpc.get("name") or f"VPC {v_idx + 1}")
+        if vpc.get("purpose") and _is_diagram_purpose(str(vpc.get("purpose"))):
+            vpc_label += f"\n{_clean_diagram_label(str(vpc['purpose']))}"
 
         vpc_w = per_vpc_w - gap
         vpc_h = ibm_h - 80 - 60 - 20   # fill inside region
@@ -1343,6 +1990,7 @@ def _render_deployment(builder: DrawioBuilder, project: dict, ibm_cloud: dict) -
                     start = v_idx * chunk
                     filtered[tier] = items[start:start + max(chunk, 1)]
             tier_items = filtered
+        tier_items = _tiers_for_vpc(vpc, tier_items)
 
         # ── Availability Zones inside this VPC ──────────────────────────
         zone_h_each = (vpc_h - 60 - az_count * _SG_M) // max(az_count, 1)
@@ -1387,10 +2035,11 @@ def _render_deployment(builder: DrawioBuilder, project: dict, ibm_cloud: dict) -
                 if z == 1:
                     nx = _SG_M + 4
                     for item in items[:3]:
-                        shape = _stencil_shape(item.get("name") or "")
+                        item_name = _clean_diagram_label(item.get("name") or tier)
+                        shape = _stencil_shape(item_name)
                         if shape:
                             builder.child_ibm_node(
-                                item.get("name") or tier,
+                                item_name,
                                 nx, 8, shape, sub_id, d=36,
                             )
                         nx += _NODE_GAP
@@ -1410,6 +2059,14 @@ def _render_deployment(builder: DrawioBuilder, project: dict, ibm_cloud: dict) -
         (security_items, "ibm-cloud--key-protect","Security"),
         (obs_items,      "cloud--monitoring",     "Observability"),
     ]
+    shared_services = render_plan.get("shared_services")
+    if isinstance(shared_services, list) and shared_services:
+        planned_services = [
+            {"name": str(name), "type": "shared_services", "source": "render_plan"}
+            for name in shared_services
+            if str(name).strip()
+        ]
+        svc_items.append((planned_services[:6], "cloud-services", "Pattern Services"))
     if private_eps:
         svc_items.append((private_eps[:3], "ibm-cloud--vpc-endpoints", "VPE"))
 
@@ -1424,7 +2081,8 @@ def _render_deployment(builder: DrawioBuilder, project: dict, ibm_cloud: dict) -
     svc_node_y = 60
     for item_list, default_shape, group_label in svc_items:
         for sitem in item_list[:4]:
-            name = sitem.get("name") or sitem if isinstance(sitem, str) else group_label
+            name = sitem.get("name") if isinstance(sitem, dict) else sitem
+            name = _clean_diagram_label(name or group_label)
             shape = _stencil_shape(name) or default_shape
             builder.child_ibm_node(
                 str(name), 16, svc_node_y, shape, svc_container, d=40,
@@ -1475,14 +2133,17 @@ def render_drawio(architecture: dict, *, diagram_type: str) -> str:
       - 02-logical-architecture.md → logical diagram layout
       - 03-deployment-architecture.md → deployment diagram layout
 
-    Supported diagram_type values: "context", "logical", "deployment".
+    Supported diagram_type values: "executive", "context", "logical", "deployment".
     """
     project = architecture.get("project", {})
     ibm_cloud = architecture.get("ibm_cloud", {})
+    render_plan = architecture.get("render_plan", {})
     builder = DrawioBuilder()
 
-    if diagram_type == "deployment":
-        _render_deployment(builder, project, ibm_cloud)
+    if diagram_type == "executive":
+        _render_executive_overview(builder, project, ibm_cloud, render_plan=render_plan)
+    elif diagram_type == "deployment":
+        _render_deployment(builder, project, ibm_cloud, render_plan=render_plan)
     elif diagram_type == "logical":
         _render_logical(builder, project, ibm_cloud)
     else:
@@ -1677,7 +2338,7 @@ def render_ibm_location_snippet(
 
 
 def render_all_diagrams(architecture: dict) -> dict[str, str]:
-    """Return all three diagram types as a dict keyed by type name.
+    """Return all diagram types as a dict keyed by type name.
 
     Returns::
 
@@ -1690,6 +2351,7 @@ def render_all_diagrams(architecture: dict) -> dict[str, str]:
     Suitable for multi-page imports via the MCP ``import-diagram`` tool.
     """
     return {
+        "executive":  render_drawio(architecture, diagram_type="executive"),
         "context":    render_drawio(architecture, diagram_type="context"),
         "logical":    render_drawio(architecture, diagram_type="logical"),
         "deployment": render_drawio(architecture, diagram_type="deployment"),
@@ -1697,13 +2359,14 @@ def render_all_diagrams(architecture: dict) -> dict[str, str]:
 
 
 def render_multipage_drawio(architecture: dict) -> str:
-    """Return a single multi-page Draw.io XML document with all three diagram types.
+    """Return a single multi-page Draw.io XML document with all diagram types.
 
     Each diagram type becomes a named page (``<diagram>`` element).  The result
     can be saved as a ``.drawio`` file and opened in Draw.io desktop or
     diagrams.net without the MCP server.
     """
     page_names = {
+        "executive":  "Executive Overview",
         "context":    "Context",
         "logical":    "Logical Architecture",
         "deployment": "Deployment",

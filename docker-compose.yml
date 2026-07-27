@@ -1,0 +1,41 @@
+name: network-picasso
+
+services:
+  api:
+    container_name: network-picasso-api
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    environment:
+      NETWORK_PICASSO_HOST: 0.0.0.0
+      NETWORK_PICASSO_PORT: 8787
+      NETWORK_PICASSO_MCP_BASE_URL: http://host.docker.internal:4000
+    ports:
+      - "${NETWORK_PICASSO_API_PORT:-8788}:8787"
+    volumes:
+      - ./inputs:/app/inputs
+      - ./outputs:/app/outputs
+      - ./examples:/app/examples:ro
+    healthcheck:
+      test: ["CMD", "python", "-c", "import json, urllib.request; json.load(urllib.request.urlopen('http://127.0.0.1:8787/api/health', timeout=3))"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  ui:
+    container_name: network-picasso-ui
+    build:
+      context: ./ui
+      dockerfile: Dockerfile
+    environment:
+      NETWORK_PICASSO_UI_PORT: 5173
+      NETWORK_PICASSO_API_TARGET: http://network-picasso-api:8787
+    ports:
+      - "${NETWORK_PICASSO_UI_PORT:-5174}:5173"
+    depends_on:
+      api:
+        condition: service_healthy
+
+networks:
+  default:
+    name: network-picasso-net

@@ -21,10 +21,11 @@ Reference: Model Context Protocol Streamable HTTP transport spec.
 from __future__ import annotations
 
 import json
+import os
 import urllib.request
 from urllib.error import URLError
 
-MCP_BASE_URL = "http://127.0.0.1:4000"
+MCP_BASE_URL = os.environ.get("NETWORK_PICASSO_MCP_BASE_URL", "http://127.0.0.1:4000")
 _HEALTH_URL   = f"{MCP_BASE_URL}/health"
 _MCP_URL      = f"{MCP_BASE_URL}/mcp"
 _EDITOR_URL   = MCP_BASE_URL
@@ -43,7 +44,7 @@ def _next_id() -> int:
 # ---------------------------------------------------------------------------
 
 def is_running(timeout: int = 3) -> bool:
-    """Return True if the drawio-mcp-server is reachable at localhost:4000."""
+    """Return True if the drawio-mcp-server is reachable."""
     try:
         with urllib.request.urlopen(_HEALTH_URL, timeout=timeout) as r:
             body = json.loads(r.read().decode())
@@ -179,17 +180,18 @@ def add_xml_to_diagram(xml: str, *, target_page: dict | None = None) -> dict:
 
 
 def open_all_pages(diagrams: dict[str, str]) -> list[dict]:
-    """Push all three diagram types as separate pages into the MCP editor.
+    """Push all diagram types as separate pages into the MCP editor.
 
     *diagrams* should be the output of ``render_all_diagrams()``::
 
-        {"context": xml, "logical": xml, "deployment": xml}
+        {"executive": xml, "context": xml, "logical": xml, "deployment": xml}
 
     First page replaces page 0; subsequent pages are added as new pages.
     Returns a list of MCP result dicts.
     """
     doc_id = _get_document_id()
     page_names = {
+        "executive":  "Executive Overview",
         "context":    "Context",
         "logical":    "Logical Architecture",
         "deployment": "Deployment",

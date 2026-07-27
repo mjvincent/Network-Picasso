@@ -1,118 +1,285 @@
 # Network Picasso
 
-Agentic IBM Cloud architecture diagram workbench — local-first, no cloud API keys required.
+**Network Picasso** is a local-first IBM Cloud architecture advisor and Draw.io diagram
+workbench for technical sellers, solution architects, and teams that need to turn early customer
+inputs into professional architecture diagrams quickly.
 
-Network Picasso turns customer bills of material, IBM Cloud Solutioning pricing exports,
-architecture notes, and spreadsheets into professional Draw.io diagrams using IBM Cloud stencil
-shapes and layout conventions. A guided design-gap interview fills missing decisions before
-rendering. Optionally uses a local Ollama model for AI-assisted extraction and gap analysis.
+It ingests BOMs, IBM Cloud Solutioning/pricing exports, spreadsheets, notes, and customer
+requirements; asks targeted design-gap questions; recommends an IBM-aligned architecture pattern;
+and generates Draw.io diagrams using IBM Cloud stencil conventions.
+
+The app is designed for sellers who may not be deep network designers. It provides guardrails,
+question prompts, IBM-pattern traceability, and Bob/Draw.io MCP hand-holding so the user can move
+from rough discovery notes to a customer-ready architecture conversation.
+
+Current version: **0.2.0**
+
+---
+
+## What This Tool Does
+
+Network Picasso helps answer:
+
+- What architecture pattern best fits the customer input?
+- What network, resiliency, security, and compliance decisions are missing?
+- What should the high-level customer story look like?
+- What should the logical architecture show?
+- What should the deployment diagram show at region, VPC, zone, subnet, and service level?
+- How can Bob help polish or adjust the generated Draw.io diagram?
+
+It produces four architecture pages:
+
+| Page | Audience | Purpose |
+|---|---|---|
+| **Executive Overview** | Technical sellers, customer executives | One-page story showing business flow, primary/DR posture, and shared foundation |
+| **Context** | Sellers, architects | High-level actors, cloud boundary, regions, and major platform services |
+| **Logical Architecture** | Architects, technical sellers | Component relationships, connectivity, shared services, and platform dependencies |
+| **Deployment** | Architects, implementation teams | Region, VPC, zone, subnet, service placement, PowerVS, connectivity, and evidence services |
+
+---
+
+## Key Capabilities
+
+- **IBM-aligned architecture guidance**
+  - Matches customer input against IBM-style architecture patterns.
+  - Produces pattern rationale, recommended next seller actions, and open decision areas.
+
+- **Guided intake and design-gap questions**
+  - Extracts IBM Cloud components from `.xlsx`, `.csv`, `.tsv`, `.json`, `.md`, and `.txt`.
+  - Asks targeted questions for HA, DR, connectivity, security, observability, compliance, and data services.
+  - Persists answers into the project `architecture.json`.
+
+- **Professional Draw.io generation**
+  - Uses IBM Cloud stencil names and IBM-style node/container patterns.
+  - Generates Executive, Context, Logical, and Deployment pages.
+  - Opens all pages as a real multipage diagrams.net file.
+
+- **Bob and Draw.io MCP workflow**
+  - Pushes diagrams into a live Draw.io MCP editor at `http://127.0.0.1:4000`.
+  - Provides an in-app MCP checklist.
+  - Provides copy-ready Bob prompts for setup, label cleanup, architecture polish, and evidence controls.
+
+- **Local-first operation**
+  - No cloud API keys required.
+  - Optional Ollama mode for local AI-assisted extraction and question generation.
+  - Docker Compose support with host ports chosen to avoid the existing RVTools stacks.
 
 ---
 
 ## Quick Start
 
-> **Full instructions → [`docs/getting-started.md`](docs/getting-started.md)**
+### Option 1: Local Developer Run
 
-### Terminal 1 — API server (port 8787)
+Terminal 1:
 
 ```bash
 PYTHONPATH=src python3 -B -m network_picasso.server
 ```
 
-### Terminal 2 — UI (port 5173)
+Terminal 2:
 
 ```bash
-cd ui && npm run dev
+cd ui
+npm run dev
 ```
 
-Open **[http://localhost:5173](http://localhost:5173)**
+Open:
 
----
+```text
+http://127.0.0.1:5173
+```
 
-## What It Does
-
-| Step | What happens |
-|---|---|
-| **1 — Upload** | Drop in BOM exports, pricing workbooks (`.xlsx`), notes (`.md`/`.txt`), or any CSV/JSON. IBM Cloud components are extracted automatically. |
-| **2 — Review** | Confirm the extracted architecture model. If Ollama is on, low-confidence AI extractions go to a staging table for your review. |
-| **3 — Questions** | Guided design-gap questions fill missing decisions — HA, connectivity, security, observability. Answers persist to `architecture.json`. |
-| **4 — Diagram** | Generate a context, logical, or deployment diagram. Export as a file, clipboard XML, diagrams.net popup, inline preview, or push directly to the local Draw.io MCP editor. |
-
----
-
-## Key Features
-
-- **IBM-prescribed stencil shapes** — colored square background + white icon child, matching the
-  IBM Cloud sidebar pattern in Draw.io
-- **Three diagram types** — Context (executive), Logical (architect), Deployment (full AZ/subnet)
-- **Rule-based design questions** — 20+ gap questions covering MZR, Hub-and-Spoke, Three-Tier VPC,
-  PowerVS, Financial Services, ROKS, Hybrid Connectivity, SCC
-- **Ollama AI mode** — local LLM extracts components from unstructured text and generates
-  additional architecture-specific questions
-- **Answer persistence** — accepted coaching and manual answers write back into `architecture.json`
-  and backfill into the `ibm_cloud` model
-- **Project management** — 2-level customer/project folder hierarchy, rename/duplicate/move/delete
-- **Draw.io MCP integration** — after generation, ask Bob conversationally to add/edit/remove
-  diagram elements live in a running Draw.io editor
-
----
-
-## Conversational Diagram Editing with Bob
-
-After generating a diagram, click **Option E — Open in MCP editor** to push it to
-`http://localhost:4000`. Then ask Bob:
-
-> *"Add a Bastion Host to the Management subnet in zone-1"*
-> *"Connect the Bastion Host to the ROKS cluster with a labeled SSH edge"*
-> *"Generate all three diagram types as separate pages"*
-
-Bob uses the `drawio-mcp-server` MCP tools and the `ibm-drawio-editing` skill to make
-IBM-styled edits live. See [`docs/getting-started.md`](docs/getting-started.md#using-the-mcp-editor-with-bob)
-for full setup instructions.
-
----
-
-## Running Tests
+### Option 2: Docker Compose
 
 ```bash
-# Python (113 tests, stdlib only — no test dependencies beyond pytest)
-PYTHONPATH=src .venv/bin/pytest -v
-
-# UI (Vitest)
-cd ui && npm test -- --run
+docker compose up --build
 ```
+
+Open:
+
+```text
+http://127.0.0.1:5174
+```
+
+Default container ports:
+
+| Service | Host Port | Container Port |
+|---|---:|---:|
+| UI | `5174` | `5173` |
+| API | `8788` | `8787` |
+
+See [docs/containerization.md](docs/containerization.md).
 
 ---
 
-## Architecture
+## Typical Workflow
 
+1. **Upload customer inputs**
+   - BOM exports
+   - IBM Cloud Solutioning/pricing workbooks
+   - discovery notes
+   - architecture requirement text
+   - CSV/JSON inventories
+
+2. **Review the extracted architecture model**
+   - Confirm regions, VPCs, connectivity, compute, storage, security, observability, and DR services.
+   - Accept or reclassify low-confidence items.
+
+3. **Answer design-gap questions**
+   - Fill in missing HA, DR, Direct Link, endpoint, compliance, and observability decisions.
+   - The answers are persisted into the project model.
+
+4. **Review the Architecture Advisor**
+   - Recommended IBM pattern
+   - Well-Architected-style pillar review
+   - Pattern foundation
+   - Seller next actions
+   - Logical design guidance
+
+5. **Generate diagrams**
+   - Save selected diagram type.
+   - Open selected diagram in diagrams.net.
+   - Generate all four pages.
+   - Push selected or all pages to the Draw.io MCP editor.
+
+6. **Use Bob for targeted editing**
+   - Open Bob MCP settings and confirm `drawio` is connected.
+   - Open `http://127.0.0.1:4000`.
+   - In Network Picasso, use **Option E - Open in MCP editor**.
+   - Copy a Bob prompt from the app and ask Bob to polish or adjust the diagram.
+
+---
+
+## Bob / Draw.io MCP
+
+The repo includes [.bob/mcp.json](.bob/mcp.json), which registers `drawio-mcp-server` for IBM Bob.
+
+Use the MCP workflow when you want conversational editing after generation:
+
+```text
+Use the ibm-drawio-editing skill. Inspect the open Draw.io MCP document before making changes.
+Use IBM Cloud stencil patterns, keep labels non-overlapping, and preserve the existing architecture pages.
 ```
+
+Then ask for a focused edit:
+
+```text
+On the Deployment page, improve label placement and connector routing while preserving the DAL/WDC PowerVS DR topology.
+```
+
+Start here for the full walkthrough:
+
+- [docs/drawio-mcp-handbook.md](docs/drawio-mcp-handbook.md)
+- [docs/getting-started.md](docs/getting-started.md#using-the-mcp-editor-with-bob)
+
+---
+
+## Project Structure
+
+```text
 src/network_picasso/
-  server.py       Local HTTP API (port 8787)
-  intake.py       File parsing + IBM Cloud component extraction
+  advisor.py      Architecture advisor and IBM-pattern recommendation logic
+  server.py       Local HTTP API
+  intake.py       File parsing, component extraction, requirements enrichment
   questions.py    Rule-based design-gap questions
-  drawio.py       Deterministic Draw.io XML renderer (IBM stencils)
-  ollama.py       Local Ollama HTTP client (stdlib only)
-  mcp_bridge.py   drawio-mcp-server bridge
+  drawio.py       Deterministic Draw.io renderer using IBM stencil conventions
+  mcp_bridge.py   Draw.io MCP server bridge
   projects.py     Project and folder management
 
-ui/src/App.tsx    React + Carbon Design System workbench
+ui/src/App.tsx    React + Carbon workbench
 
 .bob/
-  mcp.json        drawio-mcp-server MCP registration (auto-starts with Bob)
+  mcp.json        Bob MCP server registration
   skills/
-    ibm-drawio-editing.md   IBM diagram editing skill for Bob
+    ibm-drawio-editing.md
 
 docs/
-  getting-started.md        Full setup and usage guide
+  getting-started.md
+  drawio-mcp-handbook.md
+  containerization.md
+  solutioning-workbook-format.md
   agentic-process.md
 ```
 
 ---
 
-## Direction
+## Documentation
 
-Diagram rendering stays **deterministic** — generated by Python code, never raw LLM output —
-so architects get repeatable, professional diagrams that can be versioned in Git. AI is used
-for intake (extraction from unstructured text), gap analysis (LLM-generated questions beyond
-the rule set), and post-generation editing (conversational MCP tool calls).
+| Document | Purpose |
+|---|---|
+| [docs/getting-started.md](docs/getting-started.md) | Full setup and usage walkthrough |
+| [docs/drawio-mcp-handbook.md](docs/drawio-mcp-handbook.md) | Hand-holding guide for Bob, MCP, and Draw.io editing |
+| [docs/containerization.md](docs/containerization.md) | Docker Compose setup, ports, volumes, MCP host access |
+| [docs/solutioning-workbook-format.md](docs/solutioning-workbook-format.md) | Expected workbook/input structure |
+| [docs/agentic-process.md](docs/agentic-process.md) | Agentic process and design intent notes |
+| [CHANGELOG.md](CHANGELOG.md) | Version history |
+
+---
+
+## Testing
+
+Backend:
+
+```bash
+PYTHONPATH=src .venv/bin/pytest tests/test_drawio.py tests/test_endpoints.py tests/test_advisor.py -q
+```
+
+UI:
+
+```bash
+cd ui
+npm run build
+```
+
+Note: the UI build may report IBM Plex font resolution warnings from Carbon assets. The build
+still completes successfully.
+
+---
+
+## Current Data Persistence
+
+Network Picasso currently uses file-backed project persistence:
+
+- project metadata and architecture data are saved under `inputs/projects/`
+- uploaded/current intake data is saved under `inputs/uploads/`
+- generated diagrams are saved under `outputs/`
+- settings are saved in `inputs/settings.json`
+
+This keeps the tool transparent and easy to version in Git.
+
+A persistent database is not required for the current single-user local workflow, but it becomes
+useful once multiple users, audit history, role-based access, or server-side collaboration are
+needed.
+
+---
+
+## Recommended Next Improvements
+
+1. **Screenshot-based user guide**
+   - Capture the Bob MCP setup, `localhost:4000` editor, Option E workflow, and Bob prompt flow.
+
+2. **Diagram quality analyzer**
+   - Detect overlapping labels, labels outside containers, crowded subnet bands, and crossed/ambiguous connectors before opening Draw.io.
+
+3. **Assumptions and decisions page**
+   - Add a fifth generated page summarizing assumptions, unanswered questions, inferred choices, and customer decisions.
+
+4. **Persistent project store**
+   - Keep file-backed mode as default.
+   - Add SQLite or Postgres only when multi-user history, search, audit trail, or role-based project access is needed.
+
+5. **Export package**
+   - Generate a customer-ready package with `.drawio`, architecture summary, assumptions, open questions, and implementation notes.
+
+6. **Pattern traceability improvements**
+   - Show which IBM pattern elements are explicit, inferred, missing, or recommended.
+
+---
+
+## Design Principles
+
+- Deterministic diagram rendering first; AI assists but does not directly draw arbitrary XML.
+- IBM Cloud visual conventions by default.
+- Local-first and transparent project files.
+- Seller-friendly guidance without hiding architectural assumptions.
+- Draw.io remains the editable source of truth for final diagram polish.

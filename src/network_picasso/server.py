@@ -22,10 +22,12 @@ from .intake import (
     backfill_answer_into_model,
     build_architecture_from_inputs,
     classify_file,
+    enrich_architecture_from_requirements,
     SUPPORTED_EXTENSIONS,
 )
 from . import mcp_bridge as _mcp
 from . import ollama as _ollama
+from .advisor import review_architecture
 from .patterns import best_pattern, match_patterns
 from .projects import (
     create_project,
@@ -62,6 +64,14 @@ _SETTINGS_DEFAULTS: dict = {
 }
 
 
+def apply_saved_requirements(architecture: dict) -> None:
+    for req in architecture.get("requirements", []):
+        if isinstance(req, dict):
+            text = str(req.get("text") or "")
+            source = str(req.get("source") or "requirements")
+            enrich_architecture_from_requirements(architecture, text, source=source)
+
+
 def repo_path(value: str) -> Path:
     path = Path(value).expanduser()
     if not path.is_absolute():
@@ -77,7 +87,7 @@ def relative_to_repo(path: Path) -> str:
 
 
 class NetworkPicassoHandler(BaseHTTPRequestHandler):
-    server_version = "NetworkPicasso/0.1"
+    server_version = "NetworkPicasso/0.2"
 
     def do_OPTIONS(self) -> None:
         self.send_response(204)
@@ -174,6 +184,8 @@ class NetworkPicassoHandler(BaseHTTPRequestHandler):
                 self.handle_intake(payload)
             elif parsed.path == "/api/pattern-match":
                 self.handle_pattern_match(payload)
+            elif parsed.path == "/api/architecture-review":
+                self.handle_architecture_review(payload)
             elif parsed.path == "/api/set-pattern":
                 self.handle_set_pattern(payload)
             elif parsed.path == "/api/questions":
@@ -459,7 +471,7 @@ class NetworkPicassoHandler(BaseHTTPRequestHandler):
         backfill_answer_into_model(architecture, area, answer)
 
         atomic_write_json(architecture_path, architecture)
-        self.send_json({"ok": True, "entry": entry})
+        self.send_json({"ok": True, "entry": entry, "architecture": architecture})
 
     def handle_requirements(self, payload: dict) -> None:
         """Persist customer requirements text into the architecture JSON."""
@@ -481,8 +493,9 @@ class NetworkPicassoHandler(BaseHTTPRequestHandler):
             "timestamp": datetime.now(timezone.utc).isoformat(),
         }
         reqs_block.append(entry)
+        enrich_architecture_from_requirements(architecture, requirements, source=source)
         atomic_write_json(architecture_path, architecture)
-        self.send_json({"ok": True, "entry": entry})
+        self.send_json({"ok": True, "entry": entry, "architecture": architecture})
 
     def handle_confirm_components(self, payload: dict) -> None:
         architecture_path = repo_path(payload.get("architecturePath") or DEFAULT_ARCHITECTURE_PATH)
@@ -555,6 +568,20 @@ class NetworkPicassoHandler(BaseHTTPRequestHandler):
         # Also include the best pattern as a convenience field
         best = patterns[0] if patterns else None
         self.send_json({"patterns": patterns, "best": best})
+
+    def handle_architecture_review(self, payload: dict) -> None:
+        """Return a seller-facing IBM architecture review.
+
+        The review combines deterministic IBM pattern scoring, Well-Architected
+        pillar coverage, top open decisions, and a logical network design.
+        """
+        architecture = payload.get("architecture")
+        if not architecture:
+            arch_path = repo_path(payload.get("architecturePath") or DEFAULT_ARCHITECTURE_PATH)
+            architecture = read_json_file(arch_path)
+        apply_saved_requirements(architecture)
+        requirements = str(payload.get("requirements") or "")
+        self.send_json(review_architecture(architecture, requirements_text=requirements))
 
     def handle_set_pattern(self, payload: dict) -> None:
         """Persist the architect's chosen IBM Think Architecture pattern.
@@ -671,7 +698,7 @@ class NetworkPicassoHandler(BaseHTTPRequestHandler):
         self.send_json({"ok": True, "editorUrl": _mcp.MCP_BASE_URL})
 
     def handle_drawio_mcp_all_pages(self, payload: dict) -> None:
-        """Generate all three diagram types and push them as pages to the MCP editor.
+        """Generate all architecture pages and push them to the MCP editor.
 
         Accepts::
 
@@ -718,24 +745,35 @@ class NetworkPicassoHandler(BaseHTTPRequestHandler):
         output_path.parent.mkdir(parents=True, exist_ok=True)
         xml = render_multipage_drawio(architecture)
         output_path.write_text(xml, encoding="utf-8")
-        self.send_json({"outputPath": relative_to_repo(output_path)})
+        response = {"outputPath": relative_to_repo(output_path)}
+        if payload.get("includeXml"):
+            response["xml"] = xml
+        self.send_json(response)
 
     def handle_drawio_xml(self, payload: dict) -> None:
-        architecture = payload.get("architecture")
-        if not architecture:
-            architecture_path_str = payload.get("architecturePath")
-            if not architecture_path_str:
+        architecture_path_str = payload.get("architecturePath")
+        if architecture_path_str:
+            architecture = read_json_file(repo_path(architecture_path_str))
+            apply_saved_requirements(architecture)
+        else:
+            architecture = payload.get("architecture")
+            if not architecture:
                 self.send_error_json(400, "architecture or architecturePath is required")
                 return
-            architecture = read_json_file(repo_path(architecture_path_str))
+            apply_saved_requirements(architecture)
         diagram_type = str(payload.get("diagramType") or "deployment")
         self.send_xml(render_drawio(architecture, diagram_type=diagram_type))
 
     def handle_generate_drawio(self, payload: dict) -> None:
-        architecture = payload.get("architecture")
-        if not architecture:
-            architecture_path = repo_path(payload.get("architecturePath") or DEFAULT_ARCHITECTURE_PATH)
+        architecture_path = repo_path(payload.get("architecturePath") or DEFAULT_ARCHITECTURE_PATH)
+        if payload.get("architecturePath"):
             architecture = read_json_file(architecture_path)
+            apply_saved_requirements(architecture)
+        else:
+            architecture = payload.get("architecture")
+            if not architecture:
+                architecture = read_json_file(architecture_path)
+            apply_saved_requirements(architecture)
         diagram_type = payload.get("diagramType") or "deployment"
         output_path = repo_path(payload.get("outputPath") or f"outputs/network-picasso-{diagram_type}.drawio")
 
@@ -753,7 +791,12 @@ class NetworkPicassoHandler(BaseHTTPRequestHandler):
             if render_plan:
                 # Persist LLM pattern decision into architecture for logging / later use
                 architecture.setdefault("render_plan", {}).update(render_plan)
+                if payload.get("architecturePath"):
+                    atomic_write_json(architecture_path, architecture)
                 print(f"[generate] LLM render plan: {render_plan.get('pattern')} — {render_plan.get('pattern_reason', '')}")
+
+        if payload.get("architecturePath"):
+            atomic_write_json(architecture_path, architecture)
 
         output_path.parent.mkdir(parents=True, exist_ok=True)
         output_path.write_text(render_drawio(architecture, diagram_type=diagram_type), encoding="utf-8")
@@ -996,7 +1039,9 @@ def run(host: str = "127.0.0.1", port: int = 8787) -> None:
 
 
 def main() -> None:
-    run()
+    host = os.environ.get("NETWORK_PICASSO_HOST", "127.0.0.1")
+    port = int(os.environ.get("NETWORK_PICASSO_PORT", "8787"))
+    run(host=host, port=port)
 
 
 if __name__ == "__main__":

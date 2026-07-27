@@ -67,6 +67,7 @@ import {
   mergeQuestions,
   questionKey,
 } from './utils';
+import { deflateRaw } from 'pako';
 
 type Component = {
   name: string;
@@ -83,6 +84,35 @@ type PatternResult = {
   score: number;
   matched: string[];
   missing: string[];
+};
+
+type PillarReview = {
+  name: string;
+  score: number;
+  status: string;
+  evidence: string[];
+  gaps: string[];
+  recommendation: string;
+};
+
+type LogicalDesignItem = {
+  area: string;
+  design: string;
+};
+
+type ArchitectureReview = {
+  recommendedPattern: PatternResult | null;
+  alternativePatterns: PatternResult[];
+  wellArchitected: PillarReview[];
+  openDecisionCount: number;
+  priorityQuestions: Question[];
+  sellerNextActions: string[];
+  patternFoundation?: {
+    name: string;
+    rationale: string;
+    requiredElements: string[];
+  };
+  logicalDesign: LogicalDesignItem[];
 };
 
 type Architecture = {
@@ -121,6 +151,20 @@ type PendingComponent = {
   notes?: string;
 };
 
+type CarbonTagType =
+  | 'green'
+  | 'teal'
+  | 'red'
+  | 'blue'
+  | 'purple'
+  | 'cyan'
+  | 'gray'
+  | 'magenta'
+  | 'cool-gray'
+  | 'warm-gray'
+  | 'high-contrast'
+  | 'outline';
+
 // Step IDs drive the wizard
 type Step = 'upload' | 'review' | 'questions' | 'diagram';
 const STEPS: Step[] = ['upload', 'review', 'questions', 'diagram'];
@@ -138,6 +182,7 @@ const STEP_DESCRIPTIONS: Record<Step, string> = {
 };
 
 const API_HEADERS = { 'Content-Type': 'application/json' };
+const BROWSER_MCP_EDITOR_URL = 'http://127.0.0.1:4000';
 const ACCEPTED_FILE_TYPES = ['.xlsx', '.csv', '.tsv', '.json', '.md', '.txt'];
 const IBM_CLOUD_KEYS = [
   'regions', 'vpcs', 'zones', 'subnets', 'connectivity', 'ingress',
@@ -151,6 +196,44 @@ async function postJson<T>(url: string, body: unknown): Promise<T> {
     throw new Error(payload.error || `Request failed: ${response.status}`);
   }
   return response.json();
+}
+
+function encodeDrawioUrlPayload(xml: string): string {
+  const compressed = deflateRaw(new TextEncoder().encode(xml), { level: 9 });
+  let binary = '';
+  const chunkSize = 0x8000;
+  for (let i = 0; i < compressed.length; i += chunkSize) {
+    binary += String.fromCharCode(...compressed.slice(i, i + chunkSize));
+  }
+  return encodeURIComponent(btoa(binary));
+}
+
+function bobPromptTemplates(diagramType: string) {
+  const pageName = diagramType === 'executive'
+    ? 'Executive Overview'
+    : diagramType === 'logical'
+      ? 'Logical Architecture'
+      : diagramType === 'context'
+        ? 'Context'
+        : 'Deployment';
+  return [
+    {
+      label: 'Setup Bob',
+      text: 'Use the ibm-drawio-editing skill. Inspect the open Draw.io MCP document before making changes. Use IBM Cloud stencil patterns, keep labels non-overlapping, and preserve the existing architecture pages.',
+    },
+    {
+      label: 'Clean Labels',
+      text: `Use the ibm-drawio-editing skill. Inspect the ${pageName} page in the open Draw.io MCP document. Improve label placement, spacing, and connector routing while preserving the architecture, IBM Cloud container boundaries, and page structure.`,
+    },
+    {
+      label: 'Architecture Polish',
+      text: `Use the ibm-drawio-editing skill. Review the ${pageName} page for IBM Cloud architecture clarity. Make only targeted polish changes: align containers, reduce overlapping labels, improve edge labels, and keep seller-friendly naming.`,
+    },
+    {
+      label: 'Add Evidence',
+      text: 'Use the ibm-drawio-editing skill. On the Deployment page, add or refine security and compliance evidence elements for HIPAA: Security and Compliance Center, Activity Tracker, VPC Flow Logs, Key Protect or HPCS, Secrets Manager, and Virtual Private Endpoints. Preserve the existing DAL/WDC PowerVS DR topology.',
+    },
+  ];
 }
 
 async function postForm<T>(url: string, body: FormData): Promise<T> {
@@ -170,7 +253,7 @@ const DEFAULT_SETTINGS: AppSettings = {
 };
 
 /** Return Carbon Tag props for a file role string, or null if no badge needed. */
-function roleTagProps(role?: string): { type: string; label: string } | null {
+function roleTagProps(role?: string): { type: CarbonTagType; label: string } | null {
   switch (role) {
     case 'bom':                  return { type: 'green',     label: 'BOM' };
     case 'unified_pricing':      return { type: 'teal',      label: 'Unified pricing' };
@@ -211,6 +294,8 @@ export default function App() {
   const [patternResults, setPatternResults] = useState<PatternResult[]>([]);
   const [chosenPattern, setChosenPatternState] = useState<PatternResult | null>(null);
   const [patternBusy, setPatternBusy] = useState(false);
+  const [architectureReview, setArchitectureReview] = useState<ArchitectureReview | null>(null);
+  const [architectureReviewBusy, setArchitectureReviewBusy] = useState(false);
   const [diagramPath, setDiagramPath]     = useState('');
   const [requirementsText, setRequirementsText] = useState('');
   const [requirementsSaved, setRequirementsSaved] = useState(false);
@@ -239,6 +324,9 @@ export default function App() {
   // Draw.io MCP editor state
   const [mcpRunning, setMcpRunning] = useState(false);
   const [mcpStatus, setMcpStatus]   = useState('');
+  const [mcpEditorOpened, setMcpEditorOpened] = useState(false);
+  const [mcpDiagramPushed, setMcpDiagramPushed] = useState(false);
+  const [copiedPrompt, setCopiedPrompt] = useState('');
 
   // Project state
   const [projectTree, setProjectTree]     = useState<ProjectNode[]>([]);
@@ -291,6 +379,7 @@ export default function App() {
         setArchitecture(payload.architecture);
         setQuestions(payload.questions || []);
         setArchitecturePath(payload.architecturePath);
+        runArchitectureReview(payload.architecture, '');
       })
       .catch(() => setStatus('Start the local API server to use this app.'));
 
@@ -460,7 +549,13 @@ export default function App() {
     setPendingAssignments({});
     setSelectedFiles([]);
     setDiagramPath('');
+    setArchitectureReview(null);
+    setPatternResults([]);
+    setChosenPatternState(null);
     setPreviewXml(null);
+    setMcpEditorOpened(false);
+    setMcpDiagramPushed(false);
+    setCopiedPrompt('');
     setRequirementsText('');
     setRequirementsSaved(false);
     setStatus('');
@@ -553,8 +648,8 @@ export default function App() {
         setPendingComponents(payload.pendingComponents);
       }
       setStatus(`Parsed ${payload.files.length} file${payload.files.length === 1 ? '' : 's'} — ${payload.questions.length} design question${payload.questions.length === 1 ? '' : 's'} found`);
-      // Auto-advance: if there are pending low-confidence components stay on review, else go to questions
-      setStep(payload.pendingComponents?.length ? 'review' : 'questions');
+      await runArchitectureReview(payload.architecture, requirementsText);
+      setStep('review');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Upload failed');
       setStatus('');
@@ -599,7 +694,17 @@ export default function App() {
     setAnsweredQuestions((current) => [...current, entry]);
     setStatus('Answer saved');
     try {
-      await postJson('/api/answer', { architecturePath, area: question.area, question: question.question, answer, source: 'architect' });
+      const payload = await postJson<{ architecture?: Architecture }>('/api/answer', {
+        architecturePath,
+        area: question.area,
+        question: question.question,
+        answer,
+        source: 'architect',
+      });
+      if (payload.architecture) {
+        setArchitecture(payload.architecture);
+        await runArchitectureReview(payload.architecture, requirementsText);
+      }
     } catch { console.warn('Failed to persist answer'); }
   }
 
@@ -614,20 +719,36 @@ export default function App() {
     setError('');
     setStatus('Best-practice guidance accepted');
     try {
-      await postJson('/api/answer', { architecturePath, area: question.area, question: question.question, answer, source: 'coaching' });
+      const payload = await postJson<{ architecture?: Architecture }>('/api/answer', {
+        architecturePath,
+        area: question.area,
+        question: question.question,
+        answer,
+        source: 'coaching',
+      });
+      if (payload.architecture) {
+        setArchitecture(payload.architecture);
+        await runArchitectureReview(payload.architecture, requirementsText);
+      }
     } catch { console.warn('Failed to persist coaching answer'); }
   }
 
   async function saveRequirements(text: string, source: 'text' | 'file', filename = '') {
     if (!text.trim()) return;
     try {
-      await postJson('/api/requirements', {
+      const payload = await postJson<{ architecture?: Architecture }>('/api/requirements', {
         architecturePath,
         requirements: text.trim(),
         source,
         filename,
       });
       setRequirementsSaved(true);
+      if (payload.architecture) {
+        setArchitecture(payload.architecture);
+        await runArchitectureReview(payload.architecture, text.trim());
+      } else if (architecture) {
+        await runArchitectureReview(architecture, text.trim());
+      }
       setTimeout(() => setRequirementsSaved(false), 3000);
     } catch { /* non-fatal — requirements are still shown in the UI */ }
   }
@@ -653,6 +774,7 @@ export default function App() {
         current.filter((c) => !discarded.includes(c.id) && !confirmed.find((cf) => cf.id === c.id))
       );
       setStatus('Components confirmed');
+      if (architecture) await runArchitectureReview(architecture, requirementsText);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to confirm components');
     } finally {
@@ -661,6 +783,32 @@ export default function App() {
   }
 
   // ── Pattern matching ─────────────────────────────────────────────────────────
+
+  async function runArchitectureReview(archOverride?: Architecture | null, requirementsOverride?: string) {
+    const arch = archOverride ?? architecture;
+    if (!arch) return;
+    setArchitectureReviewBusy(true);
+    setError('');
+    try {
+      const review = await postJson<ArchitectureReview>('/api/architecture-review', {
+        architecture: arch,
+        requirements: requirementsOverride ?? requirementsText,
+      });
+      setArchitectureReview(review);
+      const ranked = [
+        review.recommendedPattern,
+        ...(review.alternativePatterns || []),
+      ].filter(Boolean) as PatternResult[];
+      setPatternResults(ranked);
+      if (!chosenPattern && review.recommendedPattern) {
+        setChosenPatternState(review.recommendedPattern);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Architecture review failed');
+    } finally {
+      setArchitectureReviewBusy(false);
+    }
+  }
 
   async function runPatternMatch() {
     if (!architecture) return;
@@ -707,7 +855,7 @@ export default function App() {
     setStatus('Generating diagram…');
     try {
       const payload = await postJson<{ outputPath: string }>('/api/generate-drawio', {
-        architecture, architecturePath, diagramType,
+        architecturePath, diagramType, mode: settings.mode, ollamaModel: settings.ollamaModel,
         outputPath: `outputs/network-picasso-${diagramType}.drawio`,
       });
       setDiagramPath(payload.outputPath);
@@ -725,7 +873,7 @@ export default function App() {
     try {
       const response = await fetch('/api/drawio-xml', {
         method: 'POST', headers: API_HEADERS,
-        body: JSON.stringify({ architecture, diagramType }),
+        body: JSON.stringify({ architecturePath, diagramType }),
       });
       if (!response.ok) throw new Error('Failed to get XML');
       const xml = await response.text();
@@ -745,7 +893,7 @@ export default function App() {
     try {
       const response = await fetch('/api/drawio-xml', {
         method: 'POST', headers: API_HEADERS,
-        body: JSON.stringify({ architecture, diagramType }),
+        body: JSON.stringify({ architecturePath, diagramType }),
       });
       if (!response.ok) throw new Error('Failed to get XML');
       const xml = await response.text();
@@ -768,6 +916,17 @@ export default function App() {
     }
   }
 
+  function openXmlInDiagramsNet(xml: string, statusMessage: string) {
+    pendingPopupXml.current = xml;
+    const popup = window.open(
+      'https://embed.diagrams.net/?embed=1&proto=json&spin=1&analytics=0',
+      'drawio-popup',
+      'width=1200,height=800',
+    );
+    popupWindowRef.current = popup;
+    setStatus(statusMessage);
+  }
+
   async function loadPreview() {
     if (!architecture) return;
     setBusy(true);
@@ -775,7 +934,7 @@ export default function App() {
     try {
       const response = await fetch('/api/drawio-xml', {
         method: 'POST', headers: API_HEADERS,
-        body: JSON.stringify({ architecture, diagramType }),
+        body: JSON.stringify({ architecturePath, diagramType }),
       });
       if (!response.ok) throw new Error('Failed to get XML');
       const xml = await response.text();
@@ -800,13 +959,15 @@ export default function App() {
         { architecturePath, diagramType },
       );
       setMcpRunning(true);
+      setMcpDiagramPushed(true);
       // Focus the already-open editor tab rather than opening a new one each time.
       // Only open a new tab if this is the first successful push (tab not yet open).
       if (!mcpRunning) {
-        window.open(result.editorUrl, 'drawio-mcp-editor');
+        window.open(BROWSER_MCP_EDITOR_URL, 'drawio-mcp-editor');
+        setMcpEditorOpened(true);
       }
-      setMcpStatus(`✓ Diagram pushed to editor (${diagramType})`);
-      setStatus(`Diagram pushed to MCP editor at ${result.editorUrl}`);
+      setMcpStatus(`Diagram pushed to the live editor (${diagramType})`);
+      setStatus(`Diagram is open in the live Draw.io editor at ${BROWSER_MCP_EDITOR_URL}`);
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'MCP open failed';
       setMcpStatus(msg);
@@ -816,36 +977,56 @@ export default function App() {
     }
   }
 
+  async function saveAndOpenAllPages() {
+    const payload = await postJson<{ outputPath: string; xml?: string }>(
+      '/api/drawio-multipage',
+      { architecturePath, outputPath: 'outputs/network-picasso-all.drawio', includeXml: true },
+    );
+    setDiagramPath(payload.outputPath);
+    if (payload.xml) {
+      const drawioUrl = `https://app.diagrams.net/#R${encodeDrawioUrlPayload(payload.xml)}`;
+      window.open(drawioUrl, 'drawio-all-pages');
+      setStatus(
+        `Four-page Draw.io file saved to ${payload.outputPath}; opening as a multipage diagrams.net file.`,
+      );
+    } else {
+      setStatus(`Four-page Draw.io file saved to ${payload.outputPath}`);
+    }
+  }
+
   async function generateAllPages() {
     if (!architecture) return;
     setBusy(true);
     setMcpStatus('');
     setError('');
     if (mcpRunning) {
-      // Push all three diagrams to the MCP editor as pages
+      // Push all architecture diagrams to the MCP editor as pages.
       try {
         const result = await postJson<{ ok: boolean; editorUrl: string; pages: number }>(
           '/api/drawio-mcp-all-pages',
           { architecturePath },
         );
-        window.open(result.editorUrl, '_blank');
+        window.open(BROWSER_MCP_EDITOR_URL, 'drawio-mcp-editor');
+        setMcpEditorOpened(true);
+        setMcpDiagramPushed(true);
         setStatus(`All ${result.pages} diagram pages opened in MCP editor`);
       } catch (err) {
         const msg = err instanceof Error ? err.message : 'Multi-page MCP open failed';
         setMcpStatus(msg);
-        setError(msg);
+        setMcpRunning(false);
+        try {
+          await saveAndOpenAllPages();
+          setMcpStatus(`${msg}; opened the all-pages file in diagrams.net instead.`);
+        } catch (fallbackErr) {
+          setError(fallbackErr instanceof Error ? fallbackErr.message : msg);
+        }
       } finally {
         setBusy(false);
       }
     } else {
-      // Fallback: save multi-page .drawio file to disk
+      // Fallback: save a multi-page .drawio file and open it in diagrams.net.
       try {
-        const payload = await postJson<{ outputPath: string }>(
-          '/api/drawio-multipage',
-          { architecturePath, outputPath: 'outputs/network-picasso-all.drawio' },
-        );
-        setDiagramPath(payload.outputPath);
-        setStatus(`All-pages file saved to ${payload.outputPath} — open in Draw.io desktop`);
+        await saveAndOpenAllPages();
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Multi-page export failed');
       } finally {
@@ -858,10 +1039,26 @@ export default function App() {
     try {
       const d = await fetch('/api/drawio-mcp/health').then((r) => r.json()) as { running: boolean };
       setMcpRunning(d.running);
-      setMcpStatus(d.running ? 'MCP editor is running' : 'MCP editor not detected');
+      setMcpStatus(d.running ? `MCP editor service is running. Open ${BROWSER_MCP_EDITOR_URL} before pushing a diagram.` : 'MCP editor service not detected');
     } catch {
       setMcpRunning(false);
       setMcpStatus('MCP editor not detected at localhost:4000');
+    }
+  }
+
+  function openMcpEditorTab() {
+    window.open(BROWSER_MCP_EDITOR_URL, 'drawio-mcp-editor');
+    setMcpEditorOpened(true);
+    setStatus(`MCP editor opened at ${BROWSER_MCP_EDITOR_URL}`);
+  }
+
+  async function copyBobPrompt(label: string, prompt: string) {
+    try {
+      await navigator.clipboard.writeText(prompt);
+      setCopiedPrompt(label);
+      setStatus(`Bob prompt copied: ${label}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Prompt copy failed');
     }
   }
 
@@ -1328,6 +1525,124 @@ export default function App() {
                   </Tile>
                 )}
 
+                {architecture && (
+                  <Tile className="panel advisor-panel">
+                    <Stack gap={5}>
+                      <div className="step-header">
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                          <ListChecked size={20} />
+                          <h2>Architecture advisor</h2>
+                        </div>
+                        <InfoTip text="This review combines IBM pattern scoring, Well-Architected coverage, open design decisions, and a recommended logical network design." />
+                      </div>
+
+                      {architectureReviewBusy && (
+                        <InlineLoading description="Reviewing architecture…" />
+                      )}
+
+                      {!architectureReviewBusy && !architectureReview && (
+                        <div>
+                          <Button size="sm" renderIcon={Renew} onClick={() => runArchitectureReview()}>
+                            Review architecture
+                          </Button>
+                        </div>
+                      )}
+
+                      {architectureReview && (
+                        <>
+                          <div className="advisor-hero">
+                            <div>
+                              <span className="advisor-label">Recommended IBM pattern</span>
+                              <h3>{architectureReview.recommendedPattern?.name || 'Pattern not selected'}</h3>
+                              <p>
+                                {architectureReview.recommendedPattern
+                                  ? `${architectureReview.recommendedPattern.score}% match based on uploaded facts and requirements.`
+                                  : 'Add requirements or answer design questions to improve the recommendation.'}
+                              </p>
+                            </div>
+                            {architectureReview.recommendedPattern && (
+                              <Button
+                                size="sm"
+                                renderIcon={Checkmark}
+                                onClick={() => confirmPattern(architectureReview.recommendedPattern!)}
+                              >
+                                Confirm pattern
+                              </Button>
+                            )}
+                          </div>
+
+                          <div className="advisor-grid">
+                            {architectureReview.patternFoundation && (
+                              <div className="advisor-section advisor-section--foundation">
+                                <h3>IBM pattern foundation</h3>
+                                <strong>{architectureReview.patternFoundation.name}</strong>
+                                <p>{architectureReview.patternFoundation.rationale}</p>
+                                <div className="foundation-tags">
+                                  {architectureReview.patternFoundation.requiredElements.slice(0, 5).map((item) => (
+                                    <Tag key={item} type="cool-gray" size="sm">{item}</Tag>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                            <div className="advisor-section">
+                              <h3>Next seller actions</h3>
+                              <ul>
+                                {architectureReview.sellerNextActions.map((action, idx) => (
+                                  <li key={idx}>{action}</li>
+                                ))}
+                              </ul>
+                            </div>
+                            <div className="advisor-section">
+                              <h3>Logical design</h3>
+                              <div className="logical-design-list">
+                                {architectureReview.logicalDesign.map((item) => (
+                                  <div key={item.area}>
+                                    <strong>{item.area}</strong>
+                                    <p>{item.design}</p>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="pillar-scorecard">
+                            {architectureReview.wellArchitected.map((pillar) => (
+                              <div key={pillar.name} className="pillar-card">
+                                <div className="pillar-card__header">
+                                  <strong>{pillar.name}</strong>
+                                  <Tag
+                                    type={pillar.status === 'Strong' ? 'green' : pillar.status === 'Needs detail' ? 'blue' : 'red'}
+                                    size="sm"
+                                  >
+                                    {pillar.status}
+                                  </Tag>
+                                </div>
+                                <div className="pillar-meter" aria-label={`${pillar.name} score ${pillar.score}%`}>
+                                  <div style={{ width: `${pillar.score}%` }} />
+                                </div>
+                                <span className="pillar-score">{pillar.score}%</span>
+                                {pillar.gaps.length > 0 && (
+                                  <p>{pillar.gaps.slice(0, 2).join('; ')}</p>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+
+                          {architectureReview.priorityQuestions.length > 0 && (
+                            <InlineNotification
+                              kind="warning"
+                              title={`${architectureReview.openDecisionCount} open architecture decisions`}
+                              subtitle={architectureReview.priorityQuestions.slice(0, 2).map((q) => q.question).join(' ')}
+                              lowContrast
+                              hideCloseButton
+                            />
+                          )}
+                        </>
+                      )}
+                    </Stack>
+                  </Tile>
+                )}
+
                 {/* Architecture Model summary */}
                 <Tile className="panel">
                   <Stack gap={5}>
@@ -1700,7 +2015,7 @@ export default function App() {
                       titleText=""
                       label="Select diagram type"
                       selectedItem={diagramType}
-                      items={['context', 'logical', 'deployment']}
+                      items={['executive', 'context', 'logical', 'deployment']}
                       onChange={({ selectedItem }) => selectedItem && setDiagramType(String(selectedItem))}
                     />
                   </div>
@@ -1774,7 +2089,7 @@ export default function App() {
                     <div className="diagram-action-card">
                       <div className="diagram-action-header">
                         <strong>Option E — Open in MCP editor</strong>
-                        <InfoTip text="Opens the diagram directly in the local Draw.io MCP editor (localhost:4000). The drawio-mcp-server must be running — Bob starts it automatically when the MCP panel is active. Once open, you can ask Bob to edit the diagram conversationally." />
+                        <InfoTip text="MCP works against a live Draw.io browser tab at localhost:4000. Start the drawio-mcp-server, open that editor tab, then push the diagram here." />
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
                         {mcpRunning
@@ -1785,9 +2100,30 @@ export default function App() {
                       </div>
                       <p className="panel-copy">
                         {mcpRunning
-                          ? 'Push the current diagram type into the live editor at localhost:4000, then ask Bob to make changes.'
-                          : 'Start the drawio MCP server from Bob\'s MCP panel, then click Check above.'}
+                          ? `Open ${BROWSER_MCP_EDITOR_URL} in your browser, then push this diagram into that live editor tab.`
+                          : 'Start the drawio MCP server from Bob\'s MCP panel, then click Check.'}
                       </p>
+                      <div className="mcp-checklist">
+                        <div className="mcp-checklist-item">
+                          <Tag type={mcpRunning ? 'green' : 'gray'}>{mcpRunning ? 'Ready' : 'Needed'}</Tag>
+                          <span>Bob MCP server connected</span>
+                        </div>
+                        <div className="mcp-checklist-item">
+                          <Tag type={mcpEditorOpened ? 'green' : 'gray'}>{mcpEditorOpened ? 'Open' : 'Next'}</Tag>
+                          <span>Draw.io MCP editor tab open</span>
+                        </div>
+                        <div className="mcp-checklist-item">
+                          <Tag type={mcpDiagramPushed ? 'green' : 'gray'}>{mcpDiagramPushed ? 'Pushed' : 'Next'}</Tag>
+                          <span>Diagram loaded into MCP editor</span>
+                        </div>
+                        <div className="mcp-checklist-item">
+                          <Tag type={copiedPrompt ? 'green' : 'gray'}>{copiedPrompt ? 'Copied' : 'Then'}</Tag>
+                          <span>Prompt Bob for targeted editing</span>
+                        </div>
+                      </div>
+                      <Button kind="ghost" size="sm" renderIcon={Launch} onClick={openMcpEditorTab} disabled={!mcpRunning}>
+                        Open MCP editor tab
+                      </Button>
                       <Button kind="secondary" renderIcon={Launch} onClick={openInMcpEditor}
                         disabled={busy || !architecture || !mcpRunning}>
                         Open in MCP editor
@@ -1803,18 +2139,42 @@ export default function App() {
                     <div className="diagram-action-card">
                       <div className="diagram-action-header">
                         <strong>Generate all diagram types</strong>
-                        <InfoTip text="Generates context, logical, and deployment diagrams in one step. If the MCP editor is running, opens all three as separate pages. Otherwise, saves a multi-page .drawio file to outputs/." />
+                        <InfoTip text="Generates executive, context, logical, and deployment diagrams in one step. Opens them as pages in one diagrams.net file and also saves the multi-page .drawio file to outputs/." />
                       </div>
                       <p className="panel-copy">
                         {mcpRunning
-                          ? 'Opens all three diagram types as separate pages in the MCP editor.'
-                          : 'Saves a three-page .drawio file (context + logical + deployment) to outputs/.'}
+                          ? 'Opens all four diagram pages in the MCP editor.'
+                          : 'Saves and opens a four-page .drawio file: executive, context, logical, and deployment.'}
                       </p>
                       <Button renderIcon={Layers} onClick={generateAllPages}
                         disabled={busy || !architecture}>
-                        {mcpRunning ? 'Open all pages in MCP editor' : 'Save all-pages .drawio file'}
+                        {mcpRunning ? 'Open all pages in MCP editor' : 'Open all-pages .drawio file'}
                       </Button>
                     </div>
+                  </div>
+
+                  <div className="bob-prompts-panel">
+                    <div className="diagram-action-header">
+                      <strong>Bob editing prompts</strong>
+                      <InfoTip text="Copy one of these prompts after the diagram is loaded in the MCP editor. They tell Bob to inspect the current Draw.io document, use the IBM editing skill, and make targeted changes." />
+                    </div>
+                    <div className="bob-prompt-grid">
+                      {bobPromptTemplates(diagramType).map((prompt) => (
+                        <Button
+                          key={prompt.label}
+                          kind={copiedPrompt === prompt.label ? 'primary' : 'tertiary'}
+                          size="sm"
+                          renderIcon={copiedPrompt === prompt.label ? Checkmark : Copy}
+                          onClick={() => copyBobPrompt(prompt.label, prompt.text)}
+                          disabled={busy}
+                        >
+                          {copiedPrompt === prompt.label ? `${prompt.label} copied` : prompt.label}
+                        </Button>
+                      ))}
+                    </div>
+                    <p className="panel-copy">
+                      Start with <strong>Setup Bob</strong>, then use a focused prompt such as <strong>Clean Labels</strong> or <strong>Architecture Polish</strong>.
+                    </p>
                   </div>
 
                   <div className="step-actions">

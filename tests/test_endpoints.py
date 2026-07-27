@@ -99,6 +99,26 @@ def test_get_example(server):
     assert isinstance(body["questions"], list)
 
 
+def test_architecture_review_endpoint(server):
+    status, body = _post(server, "/api/architecture-review", {
+        "architecture": {
+            "project": {"name": "Endpoint review"},
+            "ibm_cloud": {
+                "vpcs": [{"name": "Production VPC"}],
+                "regions": [{"name": "us-south"}],
+                "compute": [{"name": "ROKS cluster"}],
+                "ingress": [{"name": "Application Load Balancer"}],
+            },
+        },
+        "requirements": "Production workload in IBM Cloud.",
+    })
+    assert status == 200
+    assert "recommendedPattern" in body
+    assert "wellArchitected" in body
+    assert len(body["wellArchitected"]) == 6
+    assert "sellerNextActions" in body
+
+
 # ---------------------------------------------------------------------------
 # GET /api/folders
 # ---------------------------------------------------------------------------
@@ -339,12 +359,80 @@ def test_answer_endpoint(server, tmp_path):
     })
     assert status == 200
     assert body.get("ok") is True
+    assert "architecture" in body
     on_disk = json.loads(arch_path.read_text())
     answered = on_disk["questions"]["answered"]
     assert len(answered) == 1
     assert answered[0]["answer"] == "Three tiers: public, private, data."
     # Should no longer be in open list
     assert "Which subnets?" not in on_disk["questions"]["open"]
+    assert body["architecture"]["questions"]["answered"][0]["answer"] == "Three tiers: public, private, data."
+
+
+def test_answer_architecture_pattern_updates_render_plan(server, tmp_path):
+    arch_path = tmp_path / "architecture.json"
+    arch_path.write_text(json.dumps({
+        "project": {"name": "Pattern Answer"},
+        "ibm_cloud": {},
+        "questions": {"answered": [], "open": ["Which pattern?"]},
+    }))
+    status, body = _post(server, "/api/answer", {
+        "architecturePath": str(arch_path),
+        "area": "Architecture pattern",
+        "question": "Which pattern?",
+        "answer": "Use the IBM Hub-and-Spoke Edge VPC pattern.",
+        "source": "architect",
+    })
+    assert status == 200
+    assert body["architecture"]["render_plan"]["pattern"] == "hub-and-spoke"
+    on_disk = json.loads(arch_path.read_text())
+    assert on_disk["render_plan"]["pattern"] == "hub-and-spoke"
+
+
+def test_generate_drawio_prefers_architecture_path_over_stale_payload(server, tmp_path):
+    arch_path = tmp_path / "architecture.json"
+    output_path = tmp_path / "out.drawio"
+    arch_path.write_text(json.dumps({
+        "project": {"name": "Fresh"},
+        "render_plan": {"pattern": "hub-and-spoke"},
+        "ibm_cloud": {"regions": [{"name": "us-south"}]},
+    }))
+    status, body = _post(server, "/api/generate-drawio", {
+        "architecturePath": str(arch_path),
+        "architecture": {
+            "project": {"name": "Stale"},
+            "ibm_cloud": {},
+        },
+        "diagramType": "deployment",
+        "mode": "rules",
+        "outputPath": str(output_path),
+    })
+    assert status == 200
+    xml = output_path.read_text()
+    assert "Fresh" in xml
+    assert "Edge VPC" in xml
+    assert "Stale" not in xml
+
+
+def test_requirements_endpoint_enriches_architecture_model(server, tmp_path):
+    arch_path = tmp_path / "architecture.json"
+    arch_path.write_text(json.dumps({
+        "project": {"name": "OmniCare"},
+        "ibm_cloud": {"regions": [{"name": "us-south"}]},
+        "questions": {"answered": [], "open": []},
+    }))
+    status, body = _post(server, "/api/requirements", {
+        "architecturePath": str(arch_path),
+        "requirements": "HIPAA medical imaging with PowerVS servers, HA Direct Link, COS archive, NFS storage, and WDC DR site.",
+        "source": "text",
+    })
+    assert status == 200
+    arch = body["architecture"]
+    assert any("PowerVS" in c["name"] for c in arch["ibm_cloud"]["compute"])
+    assert any("Security and Compliance Center" in c["name"] for c in arch["ibm_cloud"]["security"])
+    assert any("Direct Link" in c["name"] for c in arch["ibm_cloud"]["connectivity"])
+    assert arch["render_plan"]["has_powervs"] is True
+    assert arch["render_plan"]["has_dr"] is True
 
 
 def test_answer_missing_params(server):

@@ -1,0 +1,20 @@
+FROM python:3.12-slim
+
+WORKDIR /app
+
+ENV PYTHONPATH=/app/src
+ENV NETWORK_PICASSO_HOST=0.0.0.0
+ENV NETWORK_PICASSO_PORT=8787
+
+COPY src ./src
+COPY schemas ./schemas
+COPY rules ./rules
+COPY ["LLM Architecture MD Files", "LLM Architecture MD Files"]
+COPY examples ./examples
+COPY inputs/settings.json ./inputs/settings.json
+
+RUN mkdir -p inputs/uploads inputs/projects outputs
+
+EXPOSE 8787
+
+CMD ["python", "-B", "-m", "network_picasso.server"]

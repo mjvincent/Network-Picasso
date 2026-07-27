@@ -199,14 +199,15 @@ Example: *"Add a Management subnet band to zone-2"*
 
 ---
 
-### "Move all three diagram types into the editor as pages"
+### "Move all four diagram types into the editor as pages"
 
 1. Call `POST http://localhost:8787/api/drawio-mcp-all-pages`:
    ```json
    { "architecturePath": "inputs/projects/<customer>/<project>/architecture.json" }
    ```
-   This generates context, logical, and deployment diagrams and imports them as
-   three named pages: **Context**, **Logical Architecture**, **Deployment**.
+   This generates executive, context, logical, and deployment diagrams and imports them as
+   four named pages: **Executive Overview**, **Context**, **Logical Architecture**, and
+   **Deployment**.
 
 ---
 

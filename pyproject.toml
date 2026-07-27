@@ -1,7 +1,7 @@
 [project]
 name = "network-picasso"
-version = "0.1.0"
-description = "Local-first agentic IBM Cloud network diagram generator."
+version = "0.2.0"
+description = "Local-first IBM Cloud architecture advisor and Draw.io diagram workbench."
 requires-python = ">=3.11"
 dependencies = []
 
