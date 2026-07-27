@@ -143,6 +143,7 @@ type DiagramQualityReview = {
 type Architecture = {
   project: { name: string; environment?: string };
   ibm_cloud: Record<string, Component[] | string[]>;
+  questions?: { answered?: AnsweredQuestionType[]; open?: Question[] | string[] };
   sources?: Array<{ file: string; type: string; records: number; role?: string; skipped?: boolean; skip_reason?: string }>;
 };
 
@@ -385,8 +386,12 @@ export default function App() {
   const [projectTree, setProjectTree]     = useState<ProjectNode[]>([]);
   const [activeProject, setActiveProject] = useState<ProjectNode | null>(null);
   const [showNewProjectModal, setShowNewProjectModal] = useState(false);
+  const [showNewFolderModal, setShowNewFolderModal] = useState(false);
   const [newCustomerName, setNewCustomerName] = useState('');
   const [newProjectName, setNewProjectName]   = useState('');
+  const [newFolderName, setNewFolderName] = useState('');
+  const [autosaveStatus, setAutosaveStatus] = useState('');
+  const autosaveTimerRef = useRef<number | null>(null);
   const importInputRef = useRef<HTMLInputElement>(null);
 
   // Projects page state (folder browser)
@@ -456,6 +461,39 @@ export default function App() {
     refreshProjectTree();
   }, []);
 
+  useEffect(() => {
+    if (!architecture || !activeProject || activeProject.isLegacy) return;
+    if (autosaveTimerRef.current) window.clearTimeout(autosaveTimerRef.current);
+    setAutosaveStatus('Autosaving...');
+    autosaveTimerRef.current = window.setTimeout(async () => {
+      try {
+        const payload = await postJson<{ outputPath: string }>('/api/projects/autosave', {
+          path: activeProject.path,
+          architecture,
+        });
+        setArchitecturePath(payload.outputPath);
+        setActiveProject((current) =>
+          current?.path === activeProject.path && !current.hasArchitecture
+            ? { ...current, hasArchitecture: true }
+            : current
+        );
+        setProjectTree((current) =>
+          current.map((node) =>
+            node.path === activeProject.path && !node.hasArchitecture
+              ? { ...node, hasArchitecture: true }
+              : node
+          )
+        );
+        setAutosaveStatus(`Saved ${new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`);
+      } catch {
+        setAutosaveStatus('Autosave failed');
+      }
+    }, 900);
+    return () => {
+      if (autosaveTimerRef.current) window.clearTimeout(autosaveTimerRef.current);
+    };
+  }, [architecture, activeProject]);
+
   // ── Project helpers ──────────────────────────────────────────────────────────
 
   function refreshProjectTree() {
@@ -498,7 +536,19 @@ export default function App() {
     if (!renameFolderTarget || !renameFolderValue.trim()) return;
     setProjectsActionBusy(true);
     try {
-      await postJson('/api/folders/rename', { path: renameFolderTarget.path, name: renameFolderValue.trim() });
+      const result = await postJson<{ path: string; name: string }>('/api/folders/rename', {
+        path: renameFolderTarget.path,
+        name: renameFolderValue.trim(),
+      });
+      if (activeProject?.path === renameFolderTarget.path || activeProject?.path.startsWith(`${renameFolderTarget.path}/`)) {
+        const nextPath = activeProject.path.replace(renameFolderTarget.path, result.path);
+        setActiveProject({
+          ...activeProject,
+          customer: result.name,
+          path: nextPath,
+        });
+        setArchitecturePath(`${nextPath}/architecture.json`);
+      }
       setRenameFolderTarget(null);
       await loadFolders();
       refreshProjectTree();
@@ -511,6 +561,19 @@ export default function App() {
     try {
       await postJson('/api/folders/delete', { path: folder.path });
       setDeleteTarget(null);
+      if (activeProject?.path === folder.path || activeProject?.path.startsWith(`${folder.path}/`)) {
+        setActiveProject(null);
+        setArchitecture(null);
+        setQuestions([]);
+        setAnsweredQuestions([]);
+        setQuestionAnswers({});
+        setPendingComponents([]);
+        setPendingAssignments({});
+        setArchitectureReview(null);
+        setDiagramQuality(null);
+        setAutosaveStatus('');
+        setStep('upload');
+      }
       await loadFolders();
       refreshProjectTree();
     } catch (e: any) { setProjectsError(e.message || 'Delete failed'); }
@@ -521,7 +584,14 @@ export default function App() {
     if (!renameTarget || !renameValue.trim()) return;
     setProjectsActionBusy(true);
     try {
-      await postJson('/api/projects/rename', { path: renameTarget.path, name: renameValue.trim() });
+      const result = await postJson<{ path: string; name: string }>('/api/projects/rename', {
+        path: renameTarget.path,
+        name: renameValue.trim(),
+      });
+      if (activeProject?.path === renameTarget.path) {
+        setActiveProject({ ...renameTarget, path: result.path, project: result.name });
+        setArchitecturePath(`${result.path}/architecture.json`);
+      }
       setRenameTarget(null);
       if (browseFolder) await loadFolderProjects(browseFolder); else await loadFolders();
       refreshProjectTree();
@@ -534,6 +604,19 @@ export default function App() {
     try {
       await postJson('/api/projects/delete', { path: node.path });
       setDeleteTarget(null);
+      if (activeProject?.path === node.path) {
+        setActiveProject(null);
+        setArchitecture(null);
+        setQuestions([]);
+        setAnsweredQuestions([]);
+        setQuestionAnswers({});
+        setPendingComponents([]);
+        setPendingAssignments({});
+        setArchitectureReview(null);
+        setDiagramQuality(null);
+        setAutosaveStatus('');
+        setStep('upload');
+      }
       if (browseFolder) await loadFolderProjects(browseFolder); else await loadFolders();
       refreshProjectTree();
     } catch (e: any) { setProjectsError(e.message || 'Delete failed'); }
@@ -556,7 +639,11 @@ export default function App() {
     if (!moveTarget || !moveDest) return;
     setProjectsActionBusy(true);
     try {
-      await postJson('/api/projects/move', { path: moveTarget.path, destFolder: moveDest });
+      const result = await postJson<ProjectNode>('/api/projects/move', { path: moveTarget.path, destFolder: moveDest });
+      if (activeProject?.path === moveTarget.path) {
+        setActiveProject(result);
+        setArchitecturePath(`${result.path}/architecture.json`);
+      }
       setMoveTarget(null);
       if (browseFolder) await loadFolderProjects(browseFolder); else await loadFolders();
       refreshProjectTree();
@@ -569,6 +656,25 @@ export default function App() {
     loadFolders();
   }
 
+  async function createCustomerFolder() {
+    const customer = newFolderName.trim();
+    if (!customer) return;
+    setProjectsActionBusy(true);
+    setProjectsError('');
+    try {
+      await postJson('/api/folders', { customer });
+      setShowNewFolderModal(false);
+      setNewFolderName('');
+      await loadFolders();
+      refreshProjectTree();
+      setStatus('Customer folder created');
+    } catch (err) {
+      setProjectsError(err instanceof Error ? err.message : 'Failed to create folder');
+    } finally {
+      setProjectsActionBusy(false);
+    }
+  }
+
   async function createProject() {
     // When inside a folder, that folder IS the customer — only need a project name.
     const inFolder = activeNav === 'projects' && browseFolder != null;
@@ -579,22 +685,58 @@ export default function App() {
       setError('Project name is required.');
       return;
     }
+    setProjectsActionBusy(true);
     try {
-      const result = await postJson<{ path: string }>('/api/projects', {
+      const result = await postJson<ProjectNode>('/api/projects', {
         customer,
         project,
       });
       setShowNewProjectModal(false);
       setNewCustomerName('');
       setNewProjectName('');
-      if (inFolder) await loadFolderProjects(browseFolder!); else refreshProjectTree();
+      const nextProject = {
+        customer: result.customer,
+        project: result.project,
+        path: result.path,
+        hasArchitecture: false,
+        isLegacy: false,
+      };
+      setActiveProject(nextProject);
+      setArchitecturePath(`${result.path}/architecture.json`);
+      setArchitecture(null);
+      setQuestions([]);
+      setAnsweredQuestions([]);
+      setQuestionAnswers({});
+      setPendingComponents([]);
+      setPendingAssignments({});
+      setDiagramPath('');
+      setArchitectureReview(null);
+      setDiagramQuality(null);
+      setPatternResults([]);
+      setChosenPatternState(null);
+      setPreviewXml(null);
+      setRequirementsText('');
+      setRequirementsSaved(false);
+      setAutosaveStatus('');
+      setProjectName(project);
+      if (inFolder) await loadFolderProjects(browseFolder!); else await loadFolders();
+      refreshProjectTree();
       setStatus(`Project created: ${result.path}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create project');
+    } finally {
+      setProjectsActionBusy(false);
     }
   }
 
-  function selectProject(node: ProjectNode) {
+  function normalizeSavedQuestions(items: Question[] | string[] | undefined): Question[] {
+    return (items || []).map((item) => {
+      if (typeof item !== 'string') return item;
+      return { area: 'Saved decision', question: item, source: 'rules' };
+    });
+  }
+
+  async function selectProject(node: ProjectNode) {
     // Reset all intake state so the new project starts completely fresh.
     setActiveProject(node);
     setArchitecturePath(`${node.path}/architecture.json`);
@@ -620,6 +762,35 @@ export default function App() {
     setError('');
     setActiveNav('wizard');
     setStep('upload');
+    setProjectName(node.project || node.customer);
+    if (!node.hasArchitecture) return;
+    try {
+      const response = await fetch(`/api/project-export?path=${encodeURIComponent(node.path)}`);
+      if (!response.ok) throw new Error('Project has no saved architecture yet.');
+      const savedArchitecture = await response.json() as Architecture;
+      const answered = savedArchitecture.questions?.answered || [];
+      const open = normalizeSavedQuestions(savedArchitecture.questions?.open);
+      setArchitecture(savedArchitecture);
+      setAnsweredQuestions(answered);
+      setQuestions(mergeQuestions([], open, answered));
+      setProjectName(savedArchitecture.project?.name || node.project || node.customer);
+      await runArchitectureReview(savedArchitecture, requirementsText);
+      setStep('review');
+      setStatus('Project loaded');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Project load failed');
+    }
+  }
+
+  async function startMoveProject(node: ProjectNode) {
+    setMoveTarget(node);
+    setMoveDest('');
+    if (folders.length === 0) {
+      try {
+        const data: { folders: FolderNode[] } = await fetch('/api/folders').then((r) => r.json());
+        setFolders(data.folders || []);
+      } catch { setProjectsError('Could not load folders.'); }
+    }
   }
 
   function exportArchitecture() {
@@ -637,6 +808,7 @@ export default function App() {
     body.append('architecture', file, 'architecture.json');
     try {
       await postForm('/api/project-import', body);
+      await selectProject({ ...activeProject, hasArchitecture: true });
       refreshProjectTree();
       setStatus('Architecture imported');
     } catch (err) {
@@ -1218,6 +1390,13 @@ export default function App() {
 
       <SideNav aria-label="Workspace navigation" expanded isPersistent>
         <SideNavItems>
+          <SideNavLink
+            renderIcon={Add}
+            isActive={activeNav === 'projects'}
+            onClick={openProjectsPage}
+          >
+            Projects
+          </SideNavLink>
           {/* Wizard steps */}
           <SideNavLink
             renderIcon={DocumentImport}
@@ -1248,13 +1427,6 @@ export default function App() {
             4 · Diagram
           </SideNavLink>
           <SideNavLink
-            renderIcon={Add}
-            isActive={activeNav === 'projects'}
-            onClick={openProjectsPage}
-          >
-            Projects
-          </SideNavLink>
-          <SideNavLink
             renderIcon={Settings}
             isActive={activeNav === 'settings'}
             onClick={() => setActiveNav('settings')}
@@ -1264,18 +1436,44 @@ export default function App() {
           {/* Active project indicator */}
           {activeProject && activeNav === 'wizard' && (
             <SideNavLink renderIcon={IbmCloud} isActive={false} style={{ opacity: 0.75 }}>
-              {activeProject.project || activeProject.customer}
+              {(activeProject.project || activeProject.customer) + (autosaveStatus ? ` · ${autosaveStatus}` : '')}
             </SideNavLink>
           )}
         </SideNavItems>
       </SideNav>
 
+      {/* New Customer Folder Modal */}
+      <Modal
+        open={showNewFolderModal}
+        modalHeading="New customer folder"
+        primaryButtonText={projectsActionBusy ? 'Creating...' : 'Create folder'}
+        secondaryButtonText="Cancel"
+        primaryButtonDisabled={projectsActionBusy || !newFolderName.trim()}
+        onRequestSubmit={createCustomerFolder}
+        onRequestClose={() => { setShowNewFolderModal(false); setNewFolderName(''); }}
+        onSecondarySubmit={() => { setShowNewFolderModal(false); setNewFolderName(''); }}
+      >
+        <Stack gap={5}>
+          <TextInput
+            id="new-folder-name"
+            labelText="Customer name"
+            placeholder="Acme Bank"
+            value={newFolderName}
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewFolderName(e.target.value)}
+          />
+          <p style={{ fontSize: '0.875rem', color: '#525252' }}>
+            Creates a top-level customer folder. Add one or more project workspaces inside it.
+          </p>
+        </Stack>
+      </Modal>
+
       {/* New Project Modal */}
       <Modal
         open={showNewProjectModal}
         modalHeading={activeNav === 'projects' && browseFolder ? `New project in ${browseFolder.name}` : 'New project'}
-        primaryButtonText="Create"
+        primaryButtonText={projectsActionBusy ? 'Creating...' : 'Create project'}
         secondaryButtonText="Cancel"
+        primaryButtonDisabled={projectsActionBusy || !newProjectName.trim() || (!(activeNav === 'projects' && browseFolder) && !newCustomerName.trim())}
         onRequestSubmit={createProject}
         onRequestClose={() => { setShowNewProjectModal(false); setNewCustomerName(''); setNewProjectName(''); }}
         onSecondarySubmit={() => { setShowNewProjectModal(false); setNewCustomerName(''); setNewProjectName(''); }}
@@ -1314,6 +1512,12 @@ export default function App() {
                 </h1>
                 {activeNav === 'wizard' && (
                   <p className="eyebrow" style={{ marginTop: '0.25rem' }}>{STEP_DESCRIPTIONS[step]}</p>
+                )}
+                {activeNav === 'wizard' && activeProject && (
+                  <p className="eyebrow" style={{ marginTop: '0.25rem' }}>
+                    Project: {activeProject.customer}{activeProject.project ? ` / ${activeProject.project}` : ''}
+                    {autosaveStatus && ` · ${autosaveStatus}`}
+                  </p>
                 )}
                 {activeNav === 'projects' && (
                   <p className="eyebrow" style={{ marginTop: '0.25rem' }}>
@@ -1362,9 +1566,20 @@ export default function App() {
                     ← All folders
                   </Button>
                 )}
-                <Button size="sm" renderIcon={Add} onClick={() => setShowNewProjectModal(true)}>
-                  {browseFolder ? 'New project in this folder' : 'New customer folder'}
-                </Button>
+                {browseFolder ? (
+                  <Button size="sm" renderIcon={Add} onClick={() => setShowNewProjectModal(true)}>
+                    New project in this folder
+                  </Button>
+                ) : (
+                  <>
+                    <Button size="sm" renderIcon={Add} onClick={() => setShowNewFolderModal(true)}>
+                      New customer folder
+                    </Button>
+                    <Button kind="secondary" size="sm" renderIcon={Add} onClick={() => setShowNewProjectModal(true)}>
+                      New project with customer
+                    </Button>
+                  </>
+                )}
               </div>
 
               {foldersLoading && <InlineLoading description="Loading…" style={{ marginBottom: '1rem' }} />}
@@ -1449,7 +1664,7 @@ export default function App() {
                               <OverflowMenuItem itemText="Duplicate project"
                                 onClick={() => { setDuplicateTarget(node); setDuplicateName(`${node.project || node.customer}-copy`); }} />
                               <OverflowMenuItem itemText="Move to another folder"
-                                onClick={() => { setMoveTarget(node); setMoveDest(''); }} />
+                                onClick={() => startMoveProject(node)} />
                               <OverflowMenuItem itemText="Delete project" isDelete hasDivider
                                 onClick={() => setDeleteTarget({ kind: 'project', node })} />
                             </OverflowMenu>

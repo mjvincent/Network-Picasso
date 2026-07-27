@@ -32,6 +32,7 @@ from .advisor import review_architecture
 from .patterns import best_pattern, match_patterns
 from .quality import analyze_diagram_quality
 from .projects import (
+    create_customer_folder,
     create_project,
     delete_folder,
     delete_project,
@@ -126,7 +127,7 @@ def sync_project_if_managed(
 
 
 class NetworkPicassoHandler(BaseHTTPRequestHandler):
-    server_version = "NetworkPicasso/0.4.1"
+    server_version = "NetworkPicasso/0.4.2"
 
     def do_OPTIONS(self) -> None:
         self.send_response(204)
@@ -253,6 +254,8 @@ class NetworkPicassoHandler(BaseHTTPRequestHandler):
                 self.handle_save_settings(payload)
             elif parsed.path == "/api/projects":
                 self.handle_create_project(payload)
+            elif parsed.path == "/api/folders":
+                self.handle_create_folder(payload)
             elif parsed.path == "/api/folders/rename":
                 self.handle_rename_folder(payload)
             elif parsed.path == "/api/folders/delete":
@@ -265,6 +268,8 @@ class NetworkPicassoHandler(BaseHTTPRequestHandler):
                 self.handle_duplicate_project(payload)
             elif parsed.path == "/api/projects/move":
                 self.handle_move_project(payload)
+            elif parsed.path == "/api/projects/autosave":
+                self.handle_project_autosave(payload)
             elif parsed.path == "/api/persistence/sync":
                 self.handle_persistence_sync(payload)
             elif parsed.path == "/api/drawio-snippet":
@@ -387,6 +392,23 @@ class NetworkPicassoHandler(BaseHTTPRequestHandler):
             "path": relative_to_repo(proj_path),
             "customer": safe_slug(customer),
             "project": safe_slug(project) if project else "",
+            "hasArchitecture": project_architecture_path(proj_path).exists(),
+            "isLegacy": False,
+        })
+
+    def handle_create_folder(self, payload: dict) -> None:
+        customer = str(payload.get("customer") or "").strip()
+        if not customer:
+            self.send_error_json(400, "customer is required")
+            return
+        settings = load_settings()
+        proj_root = resolve_projects_root(settings)
+        folder_path = create_customer_folder(proj_root, customer)
+        self.send_json({
+            "path": relative_to_repo(folder_path),
+            "name": folder_path.name,
+            "projectCount": 0,
+            "childCount": 0,
         })
 
     def handle_rename_folder(self, payload: dict) -> None:
@@ -514,6 +536,21 @@ class NetworkPicassoHandler(BaseHTTPRequestHandler):
             "hasArchitecture": (new_path / "architecture.json").exists(),
             "isLegacy": False,
         })
+
+    def handle_project_autosave(self, payload: dict) -> None:
+        path_str = str(payload.get("path") or "").strip()
+        architecture = payload.get("architecture")
+        if not path_str or not isinstance(architecture, dict):
+            self.send_error_json(400, "path and architecture are required")
+            return
+        settings = load_settings()
+        project_path = managed_project_path(path_str, settings)
+        arch_path = project_architecture_path(project_path)
+        architecture.setdefault("project", {})
+        architecture.setdefault("ibm_cloud", {})
+        atomic_write_json(arch_path, architecture)
+        sync_project_if_managed(project_path, settings, architecture=architecture, event_type="autosave")
+        self.send_json({"ok": True, "outputPath": relative_to_repo(arch_path)})
 
     def handle_project_import(self) -> None:
         fields, files = self.read_multipart()

@@ -6,6 +6,7 @@ import pathlib
 import pytest
 
 from network_picasso.projects import (
+    create_customer_folder,
     create_project,
     delete_folder,
     delete_project,
@@ -45,6 +46,14 @@ def test_create_project_customer_only(tmp_path):
     assert p.exists()
     assert p.name == "acme-bank"
     assert (p / "uploads").is_dir()
+
+
+def test_create_customer_folder_only(tmp_path):
+    root = tmp_path / "projects"
+    p = create_customer_folder(root, "Acme Bank")
+    assert p == root / "acme-bank"
+    assert p.is_dir()
+    assert not (p / "uploads").exists()
 
 
 def test_create_project_with_sub(tmp_path):

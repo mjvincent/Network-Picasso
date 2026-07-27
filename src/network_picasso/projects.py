@@ -285,6 +285,13 @@ def create_project(root: Path, customer: str, project: str | None = None) -> Pat
 
     return proj_path
 
+
+def create_customer_folder(root: Path, customer: str) -> Path:
+    """Create and return an empty top-level customer folder."""
+    folder_path = root / safe_slug(customer)
+    folder_path.mkdir(parents=True, exist_ok=True)
+    return folder_path
+
 # ---------------------------------------------------------------------------
 # Folder management
 # ---------------------------------------------------------------------------

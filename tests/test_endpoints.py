@@ -200,6 +200,25 @@ def test_create_project_missing_customer(server):
     assert "error" in body or "message" in body
 
 
+def test_create_folder_endpoint(server, tmp_path):
+    settings_path = REPO_ROOT / "inputs" / "settings.json"
+    settings_path.parent.mkdir(parents=True, exist_ok=True)
+    original = settings_path.read_text() if settings_path.exists() else None
+    try:
+        root = tmp_path / "projects"
+        settings_path.write_text(json.dumps({"projectsRoot": str(root)}))
+        status, body = _post(server, "/api/folders", {"customer": "Acme Bank"})
+        assert status == 200
+        assert body["name"] == "acme-bank"
+        assert (root / "acme-bank").is_dir()
+        assert not (root / "acme-bank" / "uploads").exists()
+    finally:
+        if original is not None:
+            settings_path.write_text(original)
+        elif settings_path.exists():
+            settings_path.unlink()
+
+
 # ---------------------------------------------------------------------------
 # POST /api/folders/rename
 # ---------------------------------------------------------------------------
@@ -356,6 +375,34 @@ def test_move_project_endpoint(server, tmp_path):
         assert "path" in body
         assert (root / "contoso" / "q1").exists()
         assert not (root / "acme" / "q1").exists()
+    finally:
+        if original is not None:
+            settings_path.write_text(original)
+        elif settings_path.exists():
+            settings_path.unlink()
+
+
+def test_project_autosave_endpoint(server, tmp_path):
+    settings_path = REPO_ROOT / "inputs" / "settings.json"
+    settings_path.parent.mkdir(parents=True, exist_ok=True)
+    original = settings_path.read_text() if settings_path.exists() else None
+    try:
+        root = tmp_path / "projects"
+        settings_path.write_text(json.dumps({"projectsRoot": str(root)}))
+        _post(server, "/api/projects", {"customer": "acme", "project": "q1"})
+        proj_path = root / "acme" / "q1"
+        architecture = {
+            "project": {"name": "Acme Q1"},
+            "ibm_cloud": {"regions": [{"name": "us-south"}]},
+        }
+        status, body = _post(server, "/api/projects/autosave", {
+            "path": str(proj_path),
+            "architecture": architecture,
+        })
+        assert status == 200
+        assert body["ok"] is True
+        saved = json.loads((proj_path / "architecture.json").read_text())
+        assert saved["project"]["name"] == "Acme Q1"
     finally:
         if original is not None:
             settings_path.write_text(original)

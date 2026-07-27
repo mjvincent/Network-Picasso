@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.4.2 - 2026-07-27
+
+### Added
+
+- Projects navigation now leads the workspace so users start from customer/project organization.
+- Customer folders can be created independently from project subfolders.
+- Active projects autosave their architecture model to `architecture.json` and optional Postgres persistence.
+- Opening a saved project now restores its architecture model and answered/open questions.
+
+### Changed
+
+- Rename, move, and delete actions keep the active workspace state aligned with the underlying project path.
+
 ## 0.4.1 - 2026-07-27
 
 ### Changed

@@ -12,7 +12,7 @@ The app is designed for sellers who may not be deep network designers. It provid
 question prompts, IBM-pattern traceability, and Bob/Draw.io MCP hand-holding so the user can move
 from rough discovery notes to a customer-ready architecture conversation.
 
-Current version: **0.4.1**
+Current version: **0.4.2**
 
 ---
 
@@ -92,6 +92,8 @@ It produces four architecture pages:
 
 - **Lightweight project persistence**
   - Keeps customer folders and project subfolders on disk for easy inspection.
+  - Projects are now the first workspace view: create a customer folder, add project subfolders, open saved work, move projects between customer folders, or delete with confirmation.
+  - Active projects autosave their architecture model as the seller uploads files, answers questions, confirms patterns, and refines requirements.
   - Adds optional Postgres persistence for customer/project metadata, architecture JSON snapshots, and project events.
   - Docker Compose starts Postgres automatically with a named volume so project data survives restarts.
 
