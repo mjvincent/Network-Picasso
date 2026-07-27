@@ -9,6 +9,8 @@ The Compose defaults intentionally avoid ports used by the other local RVTools s
 
 ## Start
 
+From the repository root, run one command:
+
 ```bash
 docker compose up --build
 ```
@@ -18,6 +20,9 @@ Open:
 ```text
 http://127.0.0.1:5174
 ```
+
+For day-to-day use after the first build, the same command is still fine. Docker will reuse cached
+layers unless the source or dependencies changed.
 
 ## Override Ports
 

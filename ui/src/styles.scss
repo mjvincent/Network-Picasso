@@ -197,6 +197,85 @@ body {
   gap: 0.5rem;
 }
 
+/* ── Diagram quality analyzer ────────────────────────────────────────────── */
+
+.quality-panel {
+  background: #ffffff;
+  border: 1px solid #c6c6c6;
+  display: grid;
+  gap: 1rem;
+  padding: 1rem;
+}
+
+.quality-header {
+  align-items: flex-start;
+  display: flex;
+  gap: 1rem;
+  justify-content: space-between;
+}
+
+.quality-results {
+  border-top: 1px solid #e0e0e0;
+  display: grid;
+  gap: 1rem;
+  padding-top: 1rem;
+}
+
+.quality-score {
+  align-items: center;
+  display: flex;
+  gap: 0.875rem;
+}
+
+.quality-score > span {
+  align-items: center;
+  background: #0f62fe;
+  color: #ffffff;
+  display: inline-flex;
+  font-size: 1.25rem;
+  font-weight: 600;
+  height: 3rem;
+  justify-content: center;
+  width: 3rem;
+}
+
+.quality-score p,
+.quality-finding p {
+  color: #525252;
+  line-height: 1.4;
+  margin: 0.125rem 0 0;
+}
+
+.quality-pattern {
+  background: #f4f4f4;
+  display: grid;
+  gap: 0.5rem;
+  padding: 0.875rem;
+}
+
+.quality-pattern a {
+  font-size: 0.875rem;
+}
+
+.quality-checks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+}
+
+.quality-findings {
+  display: grid;
+  gap: 0.625rem;
+}
+
+.quality-finding {
+  align-items: flex-start;
+  border-left: 3px solid #0f62fe;
+  display: flex;
+  gap: 0.75rem;
+  padding: 0.5rem 0.75rem;
+}
+
 /* ── Architecture advisor ────────────────────────────────────────────────── */
 
 .advisor-panel {

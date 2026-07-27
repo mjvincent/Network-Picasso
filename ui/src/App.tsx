@@ -115,6 +115,31 @@ type ArchitectureReview = {
   logicalDesign: LogicalDesignItem[];
 };
 
+type DiagramQualityFinding = {
+  severity: 'info' | 'warning' | 'error';
+  area: string;
+  message: string;
+  recommendation: string;
+  evidence?: string[];
+};
+
+type DiagramQualityReview = {
+  score: number;
+  status: string;
+  diagramType: string;
+  pattern: string;
+  ibmPatternSource: string;
+  checkedCells: number;
+  summary: string;
+  findings: DiagramQualityFinding[];
+  ibmPatternChecks: {
+    id: string;
+    name: string;
+    source: string;
+    checks: Array<{ name: string; present: boolean; tokens: string[] }>;
+  };
+};
+
 type Architecture = {
   project: { name: string; environment?: string };
   ibm_cloud: Record<string, Component[] | string[]>;
@@ -296,6 +321,8 @@ export default function App() {
   const [patternBusy, setPatternBusy] = useState(false);
   const [architectureReview, setArchitectureReview] = useState<ArchitectureReview | null>(null);
   const [architectureReviewBusy, setArchitectureReviewBusy] = useState(false);
+  const [diagramQuality, setDiagramQuality] = useState<DiagramQualityReview | null>(null);
+  const [diagramQualityBusy, setDiagramQualityBusy] = useState(false);
   const [diagramPath, setDiagramPath]     = useState('');
   const [requirementsText, setRequirementsText] = useState('');
   const [requirementsSaved, setRequirementsSaved] = useState(false);
@@ -368,6 +395,7 @@ export default function App() {
   useEffect(() => {
     setPreviewXml(null);
     setPreviewReady(false);
+    setDiagramQuality(null);
   }, [diagramType]);
 
   useEffect(() => {
@@ -550,6 +578,7 @@ export default function App() {
     setSelectedFiles([]);
     setDiagramPath('');
     setArchitectureReview(null);
+    setDiagramQuality(null);
     setPatternResults([]);
     setChosenPatternState(null);
     setPreviewXml(null);
@@ -860,11 +889,30 @@ export default function App() {
       });
       setDiagramPath(payload.outputPath);
       setStatus('Draw.io file saved to ' + payload.outputPath);
+      await runDiagramQuality();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Diagram generation failed');
       setStatus('');
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function runDiagramQuality() {
+    if (!architecture) return;
+    setDiagramQualityBusy(true);
+    setError('');
+    try {
+      const review = await postJson<DiagramQualityReview>('/api/diagram-quality', {
+        architecturePath,
+        diagramType,
+      });
+      setDiagramQuality(review);
+      setStatus(`Diagram quality analyzed: ${review.score}/100 (${review.status})`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Diagram quality analysis failed');
+    } finally {
+      setDiagramQualityBusy(false);
     }
   }
 
@@ -2018,6 +2066,79 @@ export default function App() {
                       items={['executive', 'context', 'logical', 'deployment']}
                       onChange={({ selectedItem }) => selectedItem && setDiagramType(String(selectedItem))}
                     />
+                  </div>
+
+                  <div className="quality-panel">
+                    <div className="quality-header">
+                      <div>
+                        <div className="diagram-action-header">
+                          <strong>Diagram quality analyzer</strong>
+                          <InfoTip text="Checks generated Draw.io XML for label fit, overlap risk, density, and alignment to IBM Think Architecture pattern elements such as VPC landing zone, VSI on VPC, and PowerVS with VPC landing zone." />
+                        </div>
+                        <p className="panel-copy">
+                          Validate the selected page before opening it with a customer or asking Bob for final polish.
+                        </p>
+                      </div>
+                      <Button
+                        kind="tertiary"
+                        size="sm"
+                        renderIcon={ListChecked}
+                        onClick={runDiagramQuality}
+                        disabled={busy || diagramQualityBusy || !architecture}
+                      >
+                        {diagramQualityBusy ? 'Analyzing…' : 'Analyze quality'}
+                      </Button>
+                    </div>
+
+                    {diagramQuality && (
+                      <div className="quality-results">
+                        <div className="quality-score">
+                          <span>{diagramQuality.score}</span>
+                          <div>
+                            <strong>{diagramQuality.status}</strong>
+                            <p>{diagramQuality.summary}</p>
+                          </div>
+                        </div>
+                        <div className="quality-pattern">
+                          <span className="advisor-label">IBM pattern foundation</span>
+                          <strong>{diagramQuality.ibmPatternChecks.name}</strong>
+                          <a href={diagramQuality.ibmPatternSource} target="_blank" rel="noreferrer">
+                            IBM Think Architectures
+                          </a>
+                          <div className="quality-checks">
+                            {diagramQuality.ibmPatternChecks.checks.map((check) => (
+                              <Tag key={check.name} type={check.present ? 'green' : 'red'}>
+                                {check.present ? 'Present' : 'Review'}: {check.name}
+                              </Tag>
+                            ))}
+                          </div>
+                        </div>
+                        {diagramQuality.findings.length > 0 && (
+                          <div className="quality-findings">
+                            {diagramQuality.findings.slice(0, 6).map((finding, index) => (
+                              <div className="quality-finding" key={`${finding.area}-${index}`}>
+                                <Tag
+                                  type={
+                                    finding.severity === 'error'
+                                      ? 'red'
+                                      : finding.severity === 'warning'
+                                        ? 'magenta'
+                                        : 'blue'
+                                  }
+                                >
+                                  {finding.severity}
+                                </Tag>
+                                <div>
+                                  <strong>{finding.area}</strong>
+                                  <p>{finding.message}</p>
+                                  <p>{finding.recommendation}</p>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
 
                   <div className="diagram-actions">

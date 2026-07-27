@@ -119,6 +119,25 @@ def test_architecture_review_endpoint(server):
     assert "sellerNextActions" in body
 
 
+def test_diagram_quality_endpoint(server):
+    status, body = _post(server, "/api/diagram-quality", {
+        "architecture": {
+            "project": {"name": "Endpoint quality"},
+            "render_plan": {"pattern": "vsi-vpc"},
+            "ibm_cloud": {
+                "vpcs": [{"name": "Production VPC"}],
+                "regions": [{"name": "us-south"}],
+                "compute": [{"name": "VSI workload"}],
+            },
+        },
+        "diagramType": "deployment",
+    })
+    assert status == 200
+    assert "score" in body
+    assert "findings" in body
+    assert body["ibmPatternChecks"]["name"] == "VSI on VPC landing zone - Standard"
+
+
 # ---------------------------------------------------------------------------
 # GET /api/folders
 # ---------------------------------------------------------------------------

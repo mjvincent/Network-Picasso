@@ -29,6 +29,7 @@ from . import mcp_bridge as _mcp
 from . import ollama as _ollama
 from .advisor import review_architecture
 from .patterns import best_pattern, match_patterns
+from .quality import analyze_diagram_quality
 from .projects import (
     create_project,
     delete_folder,
@@ -87,7 +88,7 @@ def relative_to_repo(path: Path) -> str:
 
 
 class NetworkPicassoHandler(BaseHTTPRequestHandler):
-    server_version = "NetworkPicasso/0.2"
+    server_version = "NetworkPicasso/0.3"
 
     def do_OPTIONS(self) -> None:
         self.send_response(204)
@@ -186,6 +187,8 @@ class NetworkPicassoHandler(BaseHTTPRequestHandler):
                 self.handle_pattern_match(payload)
             elif parsed.path == "/api/architecture-review":
                 self.handle_architecture_review(payload)
+            elif parsed.path == "/api/diagram-quality":
+                self.handle_diagram_quality(payload)
             elif parsed.path == "/api/set-pattern":
                 self.handle_set_pattern(payload)
             elif parsed.path == "/api/questions":
@@ -582,6 +585,19 @@ class NetworkPicassoHandler(BaseHTTPRequestHandler):
         apply_saved_requirements(architecture)
         requirements = str(payload.get("requirements") or "")
         self.send_json(review_architecture(architecture, requirements_text=requirements))
+
+    def handle_diagram_quality(self, payload: dict) -> None:
+        """Return Draw.io quality and IBM pattern-alignment findings."""
+        architecture = payload.get("architecture")
+        if not architecture:
+            arch_path = repo_path(payload.get("architecturePath") or DEFAULT_ARCHITECTURE_PATH)
+            architecture = read_json_file(arch_path)
+        apply_saved_requirements(architecture)
+        diagram_type = str(payload.get("diagramType") or "deployment")
+        xml = payload.get("xml")
+        if not xml:
+            xml = render_drawio(architecture, diagram_type=diagram_type)
+        self.send_json(analyze_diagram_quality(architecture, diagram_type=diagram_type, xml=str(xml)))
 
     def handle_set_pattern(self, payload: dict) -> None:
         """Persist the architect's chosen IBM Think Architecture pattern.

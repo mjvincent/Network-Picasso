@@ -12,7 +12,7 @@ The app is designed for sellers who may not be deep network designers. It provid
 question prompts, IBM-pattern traceability, and Bob/Draw.io MCP hand-holding so the user can move
 from rough discovery notes to a customer-ready architecture conversation.
 
-Current version: **0.2.0**
+Current version: **0.3.0**
 
 ---
 
@@ -26,6 +26,25 @@ Network Picasso helps answer:
 - What should the logical architecture show?
 - What should the deployment diagram show at region, VPC, zone, subnet, and service level?
 - How can Bob help polish or adjust the generated Draw.io diagram?
+
+## One-Command Container Run
+
+For an end user who already has a copy of the repo and Docker installed, this is the default
+startup path:
+
+```bash
+docker compose up --build
+```
+
+Then open:
+
+```text
+http://127.0.0.1:5174
+```
+
+The Compose stack uses non-default host ports so it can sit beside your other containerized apps:
+UI `5174` and API `8788`. See [docs/containerization.md](docs/containerization.md) for port
+overrides and MCP notes.
 
 It produces four architecture pages:
 
@@ -53,6 +72,13 @@ It produces four architecture pages:
   - Uses IBM Cloud stencil names and IBM-style node/container patterns.
   - Generates Executive, Context, Logical, and Deployment pages.
   - Opens all pages as a real multipage diagrams.net file.
+
+- **Diagram quality analyzer**
+  - Scores generated Draw.io XML for label fit, overlap risk, diagram density, and presentation readiness.
+  - Checks the design against IBM Think Architecture pattern foundations from
+    [IBM Architecture Patterns](https://www.ibm.com/think/architectures/patterns), including VPC landing zone,
+    VSI on VPC landing zone, and PowerVS with VPC landing zone patterns.
+  - Returns seller-friendly remediation guidance before Bob or manual Draw.io editing.
 
 - **Bob and Draw.io MCP workflow**
   - Pushes diagrams into a live Draw.io MCP editor at `http://127.0.0.1:4000`.

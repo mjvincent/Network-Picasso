@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.3.0 - 2026-07-27
+
+### Added
+
+- Diagram Quality Analyzer endpoint and UI panel.
+- Deterministic Draw.io XML checks for label fit, overlap risk, density, and customer-readiness.
+- IBM Think Architecture pattern-alignment checks for VPC landing zone, VSI on VPC landing zone, and PowerVS with VPC landing zone foundations.
+- Prominent README one-command Docker Compose startup path for end users.
+
 ## 0.2.0 - 2026-07-27
 
 ### Added
