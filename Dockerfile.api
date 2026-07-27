@@ -7,6 +7,9 @@ ENV NETWORK_PICASSO_HOST=0.0.0.0
 ENV NETWORK_PICASSO_PORT=8787
 
 COPY src ./src
+COPY pyproject.toml ./
+RUN python -m pip install --no-cache-dir --upgrade pip
+RUN pip install --no-cache-dir -e .
 COPY schemas ./schemas
 COPY rules ./rules
 COPY ["LLM Architecture MD Files", "LLM Architecture MD Files"]

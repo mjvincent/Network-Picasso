@@ -12,7 +12,7 @@ The app is designed for sellers who may not be deep network designers. It provid
 question prompts, IBM-pattern traceability, and Bob/Draw.io MCP hand-holding so the user can move
 from rough discovery notes to a customer-ready architecture conversation.
 
-Current version: **0.3.0**
+Current version: **0.4.0**
 
 ---
 
@@ -43,8 +43,8 @@ http://127.0.0.1:5174
 ```
 
 The Compose stack uses non-default host ports so it can sit beside your other containerized apps:
-UI `5174` and API `8788`. See [docs/containerization.md](docs/containerization.md) for port
-overrides and MCP notes.
+UI `5174`, API `8788`, and optional Postgres host access on `55432`. See
+[docs/containerization.md](docs/containerization.md) for port overrides and MCP notes.
 
 It produces four architecture pages:
 
@@ -90,6 +90,11 @@ It produces four architecture pages:
   - Optional Ollama mode for local AI-assisted extraction and question generation.
   - Docker Compose support with host ports chosen to avoid the existing RVTools stacks.
 
+- **Lightweight project persistence**
+  - Keeps customer folders and project subfolders on disk for easy inspection.
+  - Adds optional Postgres persistence for customer/project metadata, architecture JSON snapshots, and project events.
+  - Docker Compose starts Postgres automatically with a named volume so project data survives restarts.
+
 ---
 
 ## Quick Start
@@ -133,6 +138,7 @@ Default container ports:
 |---|---:|---:|
 | UI | `5174` | `5173` |
 | API | `8788` | `8787` |
+| Postgres | `55432` | `5432` |
 
 See [docs/containerization.md](docs/containerization.md).
 
@@ -209,7 +215,9 @@ src/network_picasso/
   intake.py       File parsing, component extraction, requirements enrichment
   questions.py    Rule-based design-gap questions
   drawio.py       Deterministic Draw.io renderer using IBM stencil conventions
+  quality.py      Diagram quality and IBM pattern-alignment checks
   mcp_bridge.py   Draw.io MCP server bridge
+  persistence.py  Optional Postgres persistence for project metadata
   projects.py     Project and folder management
 
 ui/src/App.tsx    React + Carbon workbench

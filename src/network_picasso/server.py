@@ -27,6 +27,7 @@ from .intake import (
 )
 from . import mcp_bridge as _mcp
 from . import ollama as _ollama
+from . import persistence
 from .advisor import review_architecture
 from .patterns import best_pattern, match_patterns
 from .quality import analyze_diagram_quality
@@ -35,6 +36,7 @@ from .projects import (
     delete_folder,
     delete_project,
     duplicate_project,
+    ensure_within_root,
     list_folders,
     list_projects,
     list_projects_in_folder,
@@ -87,8 +89,44 @@ def relative_to_repo(path: Path) -> str:
         return str(path)
 
 
+def managed_project_path(value: str, settings: dict) -> Path:
+    """Resolve a user-supplied project path and ensure it stays managed."""
+    return ensure_within_root(repo_path(value), resolve_projects_root(settings))
+
+
+def sync_project_if_managed(
+    project_path: Path,
+    settings: dict,
+    *,
+    architecture: dict | None = None,
+    event_type: str | None = None,
+) -> None:
+    root = resolve_projects_root(settings)
+    try:
+        managed = ensure_within_root(project_path, root)
+    except ValueError:
+        return
+    if architecture is not None:
+        try:
+            customer, project = persistence.project_identity(managed, root)
+            persistence.upsert_project(
+                customer=customer,
+                project=project,
+                path=str(managed),
+                architecture=architecture,
+                event_type=event_type,
+            )
+        except Exception as exc:
+            print(f"[persistence] sync skipped: {exc}")
+        return
+    try:
+        persistence.sync_project_path(managed, root, event_type=event_type)
+    except Exception as exc:
+        print(f"[persistence] sync skipped: {exc}")
+
+
 class NetworkPicassoHandler(BaseHTTPRequestHandler):
-    server_version = "NetworkPicasso/0.3"
+    server_version = "NetworkPicasso/0.4"
 
     def do_OPTIONS(self) -> None:
         self.send_response(204)
@@ -119,6 +157,9 @@ class NetworkPicassoHandler(BaseHTTPRequestHandler):
             return
         if parsed.path == "/api/settings":
             self.send_json(load_settings())
+            return
+        if parsed.path == "/api/persistence/status":
+            self.send_json(persistence.status().as_dict())
             return
         if parsed.path == "/api/drawio-xml":
             qs = parse_qs(parsed.query or "")
@@ -154,7 +195,12 @@ class NetworkPicassoHandler(BaseHTTPRequestHandler):
             return
         if parsed.path == "/api/project-export":
             qs = parse_qs(parsed.query or "")
-            project_path = repo_path((qs.get("path") or [""])[0])
+            settings = load_settings()
+            try:
+                project_path = managed_project_path((qs.get("path") or [""])[0], settings)
+            except ValueError as exc:
+                self.send_error_json(400, str(exc))
+                return
             arch_path = project_architecture_path(project_path)
             if not arch_path.exists():
                 self.send_error_json(404, "No architecture.json found for this project")
@@ -219,6 +265,8 @@ class NetworkPicassoHandler(BaseHTTPRequestHandler):
                 self.handle_duplicate_project(payload)
             elif parsed.path == "/api/projects/move":
                 self.handle_move_project(payload)
+            elif parsed.path == "/api/persistence/sync":
+                self.handle_persistence_sync(payload)
             elif parsed.path == "/api/drawio-snippet":
                 self.handle_drawio_snippet(payload)
             elif parsed.path == "/api/drawio-mcp-open":
@@ -265,6 +313,7 @@ class NetworkPicassoHandler(BaseHTTPRequestHandler):
                 "pendingComponents": pending,
             }
         )
+        sync_project_if_managed(output_path.parent, settings, architecture=architecture, event_type="intake")
 
     def handle_upload_intake(self) -> None:
         fields, files = self.read_multipart()
@@ -322,6 +371,7 @@ class NetworkPicassoHandler(BaseHTTPRequestHandler):
                 "pendingComponents": pending,
             }
         )
+        sync_project_if_managed(output_path.parent, settings, architecture=architecture, event_type="upload-intake")
 
     def handle_create_project(self, payload: dict) -> None:
         customer = str(payload.get("customer") or "").strip()
@@ -332,6 +382,7 @@ class NetworkPicassoHandler(BaseHTTPRequestHandler):
         settings = load_settings()
         proj_root = resolve_projects_root(settings)
         proj_path = create_project(proj_root, customer, project)
+        sync_project_if_managed(proj_path, settings, event_type="project-created")
         self.send_json({
             "path": relative_to_repo(proj_path),
             "customer": safe_slug(customer),
@@ -344,12 +395,15 @@ class NetworkPicassoHandler(BaseHTTPRequestHandler):
         if not path_str or not new_name:
             self.send_error_json(400, "path and name are required")
             return
-        folder_path = repo_path(path_str)
+        settings = load_settings()
+        folder_path = managed_project_path(path_str, settings)
         try:
             new_path = rename_folder(folder_path, new_name)
         except ValueError as exc:
             self.send_error_json(409, str(exc))
             return
+        for project_node in list_projects_in_folder(new_path):
+            sync_project_if_managed(repo_path(project_node["path"]), settings, event_type="folder-renamed")
         self.send_json({"path": relative_to_repo(new_path), "name": new_path.name})
 
     def handle_delete_folder(self, payload: dict) -> None:
@@ -357,8 +411,14 @@ class NetworkPicassoHandler(BaseHTTPRequestHandler):
         if not path_str:
             self.send_error_json(400, "path is required")
             return
-        folder_path = repo_path(path_str)
+        settings = load_settings()
+        folder_path = managed_project_path(path_str, settings)
+        customer_slug = folder_path.name
         delete_folder(folder_path)
+        try:
+            persistence.delete_customer(customer_slug)
+        except Exception as exc:
+            print(f"[persistence] customer delete skipped: {exc}")
         self.send_json({"ok": True})
 
     def handle_rename_project(self, payload: dict) -> None:
@@ -367,12 +427,26 @@ class NetworkPicassoHandler(BaseHTTPRequestHandler):
         if not path_str or not new_name:
             self.send_error_json(400, "path and name are required")
             return
-        project_path = repo_path(path_str)
+        settings = load_settings()
+        project_path = managed_project_path(path_str, settings)
+        root = resolve_projects_root(settings)
+        old_customer, old_project = persistence.project_identity(project_path, root)
         try:
             new_path = rename_project(project_path, new_name)
         except ValueError as exc:
             self.send_error_json(409, str(exc))
             return
+        try:
+            persistence.rename_project_record(
+                old_id=f"{old_customer}/{old_project}",
+                customer_slug=old_customer,
+                new_project_slug=new_path.name,
+                new_display_name=new_name,
+                new_path=str(new_path),
+            )
+        except Exception as exc:
+            print(f"[persistence] project rename skipped: {exc}")
+        sync_project_if_managed(new_path, settings, event_type="project-renamed")
         self.send_json({"path": relative_to_repo(new_path), "name": new_path.name})
 
     def handle_delete_project(self, payload: dict) -> None:
@@ -380,8 +454,14 @@ class NetworkPicassoHandler(BaseHTTPRequestHandler):
         if not path_str:
             self.send_error_json(400, "path is required")
             return
-        project_path = repo_path(path_str)
+        settings = load_settings()
+        project_path = managed_project_path(path_str, settings)
+        customer, project = persistence.project_identity(project_path, resolve_projects_root(settings))
         delete_project(project_path)
+        try:
+            persistence.delete_project_record(f"{customer}/{project}")
+        except Exception as exc:
+            print(f"[persistence] project delete skipped: {exc}")
         self.send_json({"ok": True})
 
     def handle_duplicate_project(self, payload: dict) -> None:
@@ -390,13 +470,14 @@ class NetworkPicassoHandler(BaseHTTPRequestHandler):
         if not path_str or not new_name:
             self.send_error_json(400, "path and name are required")
             return
-        project_path = repo_path(path_str)
+        settings = load_settings()
+        project_path = managed_project_path(path_str, settings)
         try:
             new_path = duplicate_project(project_path, new_name)
         except ValueError as exc:
             self.send_error_json(409, str(exc))
             return
-        settings = load_settings()
+        sync_project_if_managed(new_path, settings, event_type="project-duplicated")
         root = resolve_projects_root(settings)
         self.send_json({
             "path": relative_to_repo(new_path),
@@ -412,13 +493,20 @@ class NetworkPicassoHandler(BaseHTTPRequestHandler):
         if not path_str or not dest_str:
             self.send_error_json(400, "path and destFolder are required")
             return
-        project_path = repo_path(path_str)
-        dest_folder = repo_path(dest_str)
+        settings = load_settings()
+        project_path = managed_project_path(path_str, settings)
+        dest_folder = managed_project_path(dest_str, settings)
+        old_customer, old_project = persistence.project_identity(project_path, resolve_projects_root(settings))
         try:
             new_path = move_project(project_path, dest_folder)
         except ValueError as exc:
             self.send_error_json(409, str(exc))
             return
+        try:
+            persistence.delete_project_record(f"{old_customer}/{old_project}")
+        except Exception as exc:
+            print(f"[persistence] project move cleanup skipped: {exc}")
+        sync_project_if_managed(new_path, settings, event_type="project-moved")
         self.send_json({
             "path": relative_to_repo(new_path),
             "customer": new_path.parent.name,
@@ -437,10 +525,13 @@ class NetworkPicassoHandler(BaseHTTPRequestHandler):
         if not arch_files:
             self.send_error_json(400, "Upload a .json architecture file")
             return
-        proj_path = repo_path(project_path_str)
+        settings = load_settings()
+        proj_path = managed_project_path(project_path_str, settings)
         arch_path = project_architecture_path(proj_path)
         arch_path.parent.mkdir(parents=True, exist_ok=True)
         arch_path.write_bytes(arch_files[0]["content"])
+        architecture = read_json_file(arch_path)
+        sync_project_if_managed(proj_path, settings, architecture=architecture, event_type="project-imported")
         self.send_json({"ok": True, "outputPath": relative_to_repo(arch_path)})
 
     def handle_answer(self, payload: dict) -> None:
@@ -474,6 +565,7 @@ class NetworkPicassoHandler(BaseHTTPRequestHandler):
         backfill_answer_into_model(architecture, area, answer)
 
         atomic_write_json(architecture_path, architecture)
+        sync_project_if_managed(architecture_path.parent, load_settings(), architecture=architecture, event_type="answer-saved")
         self.send_json({"ok": True, "entry": entry, "architecture": architecture})
 
     def handle_requirements(self, payload: dict) -> None:
@@ -498,6 +590,7 @@ class NetworkPicassoHandler(BaseHTTPRequestHandler):
         reqs_block.append(entry)
         enrich_architecture_from_requirements(architecture, requirements, source=source)
         atomic_write_json(architecture_path, architecture)
+        sync_project_if_managed(architecture_path.parent, load_settings(), architecture=architecture, event_type="requirements-saved")
         self.send_json({"ok": True, "entry": entry, "architecture": architecture})
 
     def handle_confirm_components(self, payload: dict) -> None:
@@ -522,6 +615,7 @@ class NetworkPicassoHandler(BaseHTTPRequestHandler):
             ibm_cloud.setdefault(key, []).append(entry)
 
         atomic_write_json(architecture_path, architecture)
+        sync_project_if_managed(architecture_path.parent, load_settings(), architecture=architecture, event_type="components-confirmed")
         self.send_json({"ok": True, "confirmed": len(confirmed)})
 
     def handle_questions(self, payload: dict) -> None:
@@ -632,6 +726,7 @@ class NetworkPicassoHandler(BaseHTTPRequestHandler):
             render_plan["pattern_score"] = float(score)
 
         atomic_write_json(architecture_path, architecture)
+        sync_project_if_managed(architecture_path.parent, load_settings(), architecture=architecture, event_type="pattern-set")
         self.send_json({"ok": True, "patternId": pattern_id, "renderPlan": render_plan})
 
     def handle_save_settings(self, payload: dict) -> None:
@@ -642,6 +737,18 @@ class NetworkPicassoHandler(BaseHTTPRequestHandler):
         settings_path = repo_path(SETTINGS_PATH)
         atomic_write_json(settings_path, settings)
         self.send_json({"ok": True, "settings": settings})
+
+    def handle_persistence_sync(self, payload: dict) -> None:
+        settings = load_settings()
+        root = resolve_projects_root(settings)
+        count = 0
+        if root.exists():
+            for project_node in list_projects(root):
+                if project_node.get("isLegacy"):
+                    continue
+                sync_project_if_managed(repo_path(project_node["path"]), settings, event_type="manual-sync")
+                count += 1
+        self.send_json({"ok": True, "synced": count, "status": persistence.status().as_dict()})
 
     def handle_drawio_snippet(self, payload: dict) -> None:
         """Return IBM-styled XML for a single node or location container.
@@ -1049,6 +1156,10 @@ def _clear_upload_dir(upload_dir: Path) -> None:
 
 
 def run(host: str = "127.0.0.1", port: int = 8787) -> None:
+    try:
+        persistence.init_schema()
+    except Exception as exc:
+        print(f"[persistence] Postgres initialization skipped: {exc}")
     server = ThreadingHTTPServer((host, port), NetworkPicassoHandler)
     print(f"Network Picasso API listening on http://{host}:{port}")
     server.serve_forever()

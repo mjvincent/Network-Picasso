@@ -10,6 +10,7 @@ from network_picasso.projects import (
     delete_folder,
     delete_project,
     duplicate_project,
+    ensure_within_root,
     list_folders,
     list_projects,
     list_projects_in_folder,
@@ -85,6 +86,21 @@ def test_resolve_projects_root_custom(tmp_path):
     custom = tmp_path / "my-projects"
     root = resolve_projects_root({"projectsRoot": str(custom)})
     assert root == custom.resolve()
+
+
+def test_ensure_within_root_allows_child(tmp_path):
+    root = tmp_path / "projects"
+    child = root / "acme" / "q1"
+    child.mkdir(parents=True)
+    assert ensure_within_root(child, root) == child.resolve()
+
+
+def test_ensure_within_root_rejects_escape(tmp_path):
+    root = tmp_path / "projects"
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    with pytest.raises(ValueError, match="outside"):
+        ensure_within_root(outside, root)
 
 
 # ---------------------------------------------------------------------------

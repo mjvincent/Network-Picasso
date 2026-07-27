@@ -547,9 +547,12 @@ export default function App() {
     // When inside a folder, that folder IS the customer — only need a project name.
     const inFolder = activeNav === 'projects' && browseFolder != null;
     const customer = inFolder ? browseFolder!.name : newCustomerName.trim();
-    const project  = inFolder ? newProjectName.trim() : newProjectName.trim() || undefined;
+    const project  = newProjectName.trim();
     if (!customer) return;
-    if (inFolder && !project) return; // project name required when customer is fixed
+    if (!project) {
+      setError('Project name is required.');
+      return;
+    }
     try {
       const result = await postJson<{ path: string }>('/api/projects', {
         customer,
@@ -1258,13 +1261,13 @@ export default function App() {
               onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewCustomerName(e.target.value)} />
           )}
           <TextInput id="new-project-name"
-            labelText={activeNav === 'projects' && browseFolder ? 'Project name' : 'Project name (optional)'}
+            labelText="Project name"
             placeholder="Q1 Modernisation"
             value={newProjectName}
             onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewProjectName(e.target.value)} />
           {!(activeNav === 'projects' && browseFolder) && (
             <p style={{ fontSize: '0.875rem', color: '#525252' }}>
-              Leave project name blank to create a single-project customer folder.
+              Creates a customer folder with a project subfolder.
             </p>
           )}
         </Stack>

@@ -5,6 +5,7 @@ The Compose defaults intentionally avoid ports used by the other local RVTools s
 
 - API: host `8788` to container `8787`
 - UI: host `5174` to container `5173`
+- Postgres: host `55432` to container `5432`
 - Compose project/network/container names are prefixed with `network-picasso`
 
 ## Start
@@ -27,7 +28,7 @@ layers unless the source or dependencies changed.
 ## Override Ports
 
 ```bash
-NETWORK_PICASSO_API_PORT=8790 NETWORK_PICASSO_UI_PORT=5176 docker compose up --build
+NETWORK_PICASSO_API_PORT=8790 NETWORK_PICASSO_UI_PORT=5176 NETWORK_PICASSO_DB_PORT=55433 docker compose up --build
 ```
 
 ## Storage
@@ -36,6 +37,37 @@ The Compose stack mounts local folders so generated work remains available on th
 
 - `./inputs:/app/inputs`
 - `./outputs:/app/outputs`
+
+Postgres stores durable metadata in the named Docker volume:
+
+- `network-picasso_network_picasso_postgres`
+
+The filesystem remains the easiest place to inspect generated project artifacts:
+
+```text
+inputs/projects/<customer>/<project>/architecture.json
+inputs/projects/<customer>/<project>/uploads/
+outputs/
+```
+
+Postgres stores a searchable project index, architecture JSON snapshots, and project events.
+The API initializes its tables automatically at startup when
+`NETWORK_PICASSO_DATABASE_URL` is set.
+
+Check persistence health:
+
+```bash
+curl http://127.0.0.1:8788/api/persistence/status
+```
+
+Re-index existing filesystem projects into Postgres:
+
+```bash
+curl -X POST http://127.0.0.1:8788/api/persistence/sync
+```
+
+Use `docker compose down` to stop the app while preserving the Postgres volume. Use
+`docker compose down -v` only when you intentionally want to delete persisted database state.
 
 ## Ollama And MCP Notes
 

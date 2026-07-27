@@ -75,6 +75,21 @@ def resolve_projects_root(settings: dict) -> Path:
     return path.resolve()
 
 
+def ensure_within_root(path: Path, root: Path) -> Path:
+    """Return resolved *path* only if it is inside *root*.
+
+    Raises ``ValueError`` when a caller supplies an absolute or relative path
+    that escapes the configured projects directory.
+    """
+    resolved = path.resolve()
+    root_resolved = root.resolve()
+    try:
+        resolved.relative_to(root_resolved)
+    except ValueError as exc:
+        raise ValueError("Project path is outside the configured projects root") from exc
+    return resolved
+
+
 # ---------------------------------------------------------------------------
 # Project discovery
 # ---------------------------------------------------------------------------
@@ -183,9 +198,11 @@ def list_folders(root: Path) -> list[dict]:
             continue
         sub_dirs = [s for s in d.iterdir() if s.is_dir() and s.name != "uploads"]
         # A directory with sub-dirs contains project sub-folders.
-        # A directory without sub-dirs IS itself a project.
+        # A directory without sub-dirs is a legacy single-project customer
+        # only when it still has project content.
         child_count   = len(sub_dirs)
-        project_count = child_count if child_count else 1
+        has_legacy_project = (d / "architecture.json").exists() or (d / "uploads").exists()
+        project_count = child_count if child_count else int(has_legacy_project)
         folders.append({
             "name":         d.name,
             "path":         _rel(d),
@@ -365,4 +382,3 @@ def move_project(project_path: Path, dest_folder_path: Path) -> Path:
     dest_folder_path.mkdir(parents=True, exist_ok=True)
     project_path.rename(dest_path)
     return dest_path
-

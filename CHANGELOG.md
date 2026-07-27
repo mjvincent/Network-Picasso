@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.4.0 - 2026-07-27
+
+### Added
+
+- Optional Postgres persistence for customer folders, project subfolders, architecture JSON snapshots, and project events.
+- Docker Compose Postgres service with a named volume and non-conflicting optional host port `55432`.
+- Persistence status and manual sync API endpoints.
+
+### Changed
+
+- New project creation now uses a customer folder plus required project subfolder.
+- Project import/export and destructive project operations now validate paths against the configured projects root.
+
 ## 0.3.0 - 2026-07-27
 
 ### Added

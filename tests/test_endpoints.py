@@ -87,6 +87,15 @@ def test_get_settings(server):
     assert "ollamaModel" in body
 
 
+def test_persistence_status_endpoint(server, monkeypatch):
+    monkeypatch.delenv("NETWORK_PICASSO_DATABASE_URL", raising=False)
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    status, body = _get(server, "/api/persistence/status")
+    assert status == 200
+    assert body["enabled"] is False
+    assert body["connected"] is False
+
+
 # ---------------------------------------------------------------------------
 # GET /api/example
 # ---------------------------------------------------------------------------
