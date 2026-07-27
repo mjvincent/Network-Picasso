@@ -213,6 +213,52 @@ def delete_project_record(project_id: str) -> None:
         conn.execute("delete from np_projects where id = %s", (project_id,))
 
 
+def project_activity(project_id: str, *, limit: int = 12) -> dict[str, Any] | None:
+    """Return persisted project metadata and recent events for *project_id*."""
+    if not is_enabled():
+        return None
+    with _connect() as conn:
+        project = conn.execute(
+            """
+            select id, customer_slug, project_slug, display_name, path,
+                   has_architecture, created_at::text, updated_at::text
+            from np_projects
+            where id = %s
+            """,
+            (project_id,),
+        ).fetchone()
+        if not project:
+            return None
+        events = conn.execute(
+            """
+            select event_type, detail, created_at::text
+            from np_project_events
+            where project_id = %s
+            order by created_at desc, id desc
+            limit %s
+            """,
+            (project_id, limit),
+        ).fetchall()
+    return {
+        "id": project[0],
+        "customer": project[1],
+        "project": project[2],
+        "displayName": project[3],
+        "path": project[4],
+        "hasArchitecture": project[5],
+        "createdAt": project[6],
+        "updatedAt": project[7],
+        "events": [
+            {
+                "eventType": row[0],
+                "detail": row[1] if isinstance(row[1], dict) else {},
+                "createdAt": row[2],
+            }
+            for row in events
+        ],
+    }
+
+
 def project_identity(project_path: Path, projects_root: Path) -> tuple[str, str]:
     rel = project_path.resolve().relative_to(projects_root.resolve())
     parts = rel.parts

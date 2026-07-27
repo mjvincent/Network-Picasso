@@ -410,6 +410,32 @@ def test_project_autosave_endpoint(server, tmp_path):
             settings_path.unlink()
 
 
+def test_project_activity_endpoint_returns_file_metadata(server, tmp_path):
+    settings_path = REPO_ROOT / "inputs" / "settings.json"
+    settings_path.parent.mkdir(parents=True, exist_ok=True)
+    original = settings_path.read_text() if settings_path.exists() else None
+    try:
+        root = tmp_path / "projects"
+        settings_path.write_text(json.dumps({"projectsRoot": str(root)}))
+        _post(server, "/api/projects", {"customer": "acme", "project": "q1"})
+        proj_path = root / "acme" / "q1"
+        (proj_path / "architecture.json").write_text(json.dumps({
+            "project": {"name": "Acme Q1"},
+            "ibm_cloud": {},
+        }))
+        status, body = _get(server, f"/api/project-activity?path={proj_path}")
+        assert status == 200
+        assert body["id"] == "acme/q1"
+        assert body["file"]["hasArchitecture"] is True
+        assert body["file"]["architectureSize"] > 0
+        assert "architecture.json" in body["file"]["architecturePath"]
+    finally:
+        if original is not None:
+            settings_path.write_text(original)
+        elif settings_path.exists():
+            settings_path.unlink()
+
+
 # ---------------------------------------------------------------------------
 # POST /api/answer
 # ---------------------------------------------------------------------------
@@ -513,3 +539,24 @@ def test_requirements_endpoint_enriches_architecture_model(server, tmp_path):
 def test_answer_missing_params(server):
     status, body = _post(server, "/api/answer", {"area": "Subnet design"})
     assert status == 400
+
+
+def test_diagram_quality_persists_last_review(server, tmp_path):
+    arch_path = tmp_path / "architecture.json"
+    arch_path.write_text(json.dumps({
+        "project": {"name": "Quality Save"},
+        "render_plan": {"pattern": "vsi-vpc"},
+        "ibm_cloud": {
+            "vpcs": [{"name": "Production VPC"}],
+            "regions": [{"name": "us-south"}],
+            "compute": [{"name": "VSI workload"}],
+        },
+    }))
+    status, body = _post(server, "/api/diagram-quality", {
+        "architecturePath": str(arch_path),
+        "diagramType": "deployment",
+    })
+    assert status == 200
+    saved = json.loads(arch_path.read_text())
+    assert saved["quality"]["lastReview"]["score"] == body["score"]
+    assert saved["quality"]["lastReview"]["diagramType"] == "deployment"

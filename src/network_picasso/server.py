@@ -126,8 +126,43 @@ def sync_project_if_managed(
         print(f"[persistence] sync skipped: {exc}")
 
 
+def project_activity_payload(project_path: Path, settings: dict) -> dict:
+    root = resolve_projects_root(settings)
+    managed = ensure_within_root(project_path, root)
+    customer, project = persistence.project_identity(managed, root)
+    project_id = f"{customer}/{project}"
+    arch_path = project_architecture_path(managed)
+    file_meta: dict = {
+        "path": relative_to_repo(managed),
+        "architecturePath": relative_to_repo(arch_path),
+        "hasArchitecture": arch_path.exists(),
+        "architectureSize": 0,
+        "architectureModifiedAt": "",
+    }
+    if arch_path.exists():
+        stat = arch_path.stat()
+        file_meta.update({
+            "architectureSize": stat.st_size,
+            "architectureModifiedAt": datetime.fromtimestamp(stat.st_mtime, timezone.utc).isoformat(),
+        })
+    persisted = None
+    try:
+        persisted = persistence.project_activity(project_id)
+    except Exception as exc:
+        print(f"[persistence] activity skipped: {exc}")
+    return {
+        "id": project_id,
+        "customer": customer,
+        "project": project,
+        "file": file_meta,
+        "persistence": persistence.status().as_dict(),
+        "persisted": persisted,
+        "events": (persisted or {}).get("events", []),
+    }
+
+
 class NetworkPicassoHandler(BaseHTTPRequestHandler):
-    server_version = "NetworkPicasso/0.4.2"
+    server_version = "NetworkPicasso/0.4.3"
 
     def do_OPTIONS(self) -> None:
         self.send_response(204)
@@ -214,6 +249,16 @@ class NetworkPicassoHandler(BaseHTTPRequestHandler):
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
             self.wfile.write(body)
+            return
+        if parsed.path == "/api/project-activity":
+            qs = parse_qs(parsed.query or "")
+            settings = load_settings()
+            try:
+                project_path = managed_project_path((qs.get("path") or [""])[0], settings)
+            except ValueError as exc:
+                self.send_error_json(400, str(exc))
+                return
+            self.send_json(project_activity_payload(project_path, settings))
             return
         self.send_error_json(404, "Route not found")
 
@@ -720,6 +765,7 @@ class NetworkPicassoHandler(BaseHTTPRequestHandler):
     def handle_diagram_quality(self, payload: dict) -> None:
         """Return Draw.io quality and IBM pattern-alignment findings."""
         architecture = payload.get("architecture")
+        arch_path: Path | None = None
         if not architecture:
             arch_path = repo_path(payload.get("architecturePath") or DEFAULT_ARCHITECTURE_PATH)
             architecture = read_json_file(arch_path)
@@ -728,7 +774,19 @@ class NetworkPicassoHandler(BaseHTTPRequestHandler):
         xml = payload.get("xml")
         if not xml:
             xml = render_drawio(architecture, diagram_type=diagram_type)
-        self.send_json(analyze_diagram_quality(architecture, diagram_type=diagram_type, xml=str(xml)))
+        review = analyze_diagram_quality(architecture, diagram_type=diagram_type, xml=str(xml))
+        if arch_path is not None:
+            architecture.setdefault("quality", {})["lastReview"] = {
+                "score": review["score"],
+                "status": review["status"],
+                "diagramType": diagram_type,
+                "summary": review["summary"],
+                "findingCount": len(review.get("findings", [])),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            }
+            atomic_write_json(arch_path, architecture)
+            sync_project_if_managed(arch_path.parent, load_settings(), architecture=architecture, event_type="diagram-quality")
+        self.send_json(review)
 
     def handle_set_pattern(self, payload: dict) -> None:
         """Persist the architect's chosen IBM Think Architecture pattern.

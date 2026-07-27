@@ -596,6 +596,68 @@ body {
   margin: 0;
 }
 
+.project-activity-panel {
+  position: sticky;
+  top: 4.5rem;
+}
+
+.project-activity-summary,
+.project-activity-quality,
+.project-activity-facts,
+.project-events {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.project-activity-summary span,
+.project-activity-facts span,
+.project-event span,
+.project-activity-quality span {
+  color: #6f6f6f;
+  font-size: 0.75rem;
+}
+
+.project-activity-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.project-activity-facts > div {
+  border-top: 1px solid #e0e0e0;
+  display: grid;
+  gap: 0.25rem;
+  padding-top: 0.625rem;
+}
+
+.project-activity-facts code {
+  color: #525252;
+  font-size: 0.75rem;
+  overflow-wrap: anywhere;
+}
+
+.project-activity-quality {
+  background: #f4f4f4;
+  border-left: 3px solid #0f62fe;
+  padding: 0.75rem;
+}
+
+.project-activity-quality p {
+  color: #525252;
+  font-size: 0.8125rem;
+  line-height: 1.4;
+  margin: 0;
+}
+
+.project-event {
+  border-top: 1px solid #e0e0e0;
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding-top: 0.5rem;
+  text-transform: capitalize;
+}
+
 /* ── IBM Think Architecture pattern cards ─────────────────────────────────── */
 
 .pattern-list {

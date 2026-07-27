@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.4.3 - 2026-07-27
+
+### Added
+
+- Project Activity panel with autosave status, architecture file metadata, Postgres status, latest quality score, recent events, and export/refresh actions.
+- Project activity API endpoint with file metadata fallback and optional Postgres event history.
+
+### Changed
+
+- Diagram quality analysis now records the latest quality score in the active project's architecture metadata.
+
 ## 0.4.2 - 2026-07-27
 
 ### Added

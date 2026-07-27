@@ -144,6 +144,16 @@ type Architecture = {
   project: { name: string; environment?: string };
   ibm_cloud: Record<string, Component[] | string[]>;
   questions?: { answered?: AnsweredQuestionType[]; open?: Question[] | string[] };
+  quality?: {
+    lastReview?: {
+      score: number;
+      status: string;
+      diagramType: string;
+      summary: string;
+      findingCount: number;
+      timestamp: string;
+    };
+  };
   sources?: Array<{ file: string; type: string; records: number; role?: string; skipped?: boolean; skip_reason?: string }>;
 };
 
@@ -165,6 +175,35 @@ type ProjectNode = {
   path: string;
   hasArchitecture: boolean;
   isLegacy: boolean;
+};
+
+type ProjectActivity = {
+  id: string;
+  customer: string;
+  project: string;
+  file: {
+    path: string;
+    architecturePath: string;
+    hasArchitecture: boolean;
+    architectureSize: number;
+    architectureModifiedAt: string;
+  };
+  persistence: {
+    enabled: boolean;
+    connected: boolean;
+    schemaVersion: number;
+    message: string;
+  };
+  persisted?: {
+    updatedAt?: string;
+    createdAt?: string;
+    hasArchitecture?: boolean;
+  } | null;
+  events: Array<{
+    eventType: string;
+    detail: Record<string, unknown>;
+    createdAt: string;
+  }>;
 };
 
 type AnsweredQuestion = AnsweredQuestionType;
@@ -392,6 +431,8 @@ export default function App() {
   const [newFolderName, setNewFolderName] = useState('');
   const [autosaveStatus, setAutosaveStatus] = useState('');
   const autosaveTimerRef = useRef<number | null>(null);
+  const [projectActivity, setProjectActivity] = useState<ProjectActivity | null>(null);
+  const [projectActivityBusy, setProjectActivityBusy] = useState(false);
   const importInputRef = useRef<HTMLInputElement>(null);
 
   // Projects page state (folder browser)
@@ -485,6 +526,7 @@ export default function App() {
           )
         );
         setAutosaveStatus(`Saved ${new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`);
+        await loadProjectActivity(activeProject);
       } catch {
         setAutosaveStatus('Autosave failed');
       }
@@ -501,6 +543,23 @@ export default function App() {
       .then((r) => r.json())
       .then((data: { projects: ProjectNode[] }) => setProjectTree(data.projects || []))
       .catch(() => {});
+  }
+
+  async function loadProjectActivity(node = activeProject) {
+    if (!node || node.isLegacy) {
+      setProjectActivity(null);
+      return;
+    }
+    setProjectActivityBusy(true);
+    try {
+      const data = await fetch(`/api/project-activity?path=${encodeURIComponent(node.path)}`)
+        .then((r) => r.json()) as ProjectActivity;
+      setProjectActivity(data);
+    } catch {
+      setProjectActivity(null);
+    } finally {
+      setProjectActivityBusy(false);
+    }
   }
 
   // ── Folder browser (Projects page) ──────────────────────────────────────
@@ -572,6 +631,7 @@ export default function App() {
         setArchitectureReview(null);
         setDiagramQuality(null);
         setAutosaveStatus('');
+        setProjectActivity(null);
         setStep('upload');
       }
       await loadFolders();
@@ -615,6 +675,7 @@ export default function App() {
         setArchitectureReview(null);
         setDiagramQuality(null);
         setAutosaveStatus('');
+        setProjectActivity(null);
         setStep('upload');
       }
       if (browseFolder) await loadFolderProjects(browseFolder); else await loadFolders();
@@ -718,6 +779,7 @@ export default function App() {
       setRequirementsText('');
       setRequirementsSaved(false);
       setAutosaveStatus('');
+      setProjectActivity(null);
       setProjectName(project);
       if (inFolder) await loadFolderProjects(browseFolder!); else await loadFolders();
       refreshProjectTree();
@@ -758,11 +820,13 @@ export default function App() {
     setCopiedPrompt('');
     setRequirementsText('');
     setRequirementsSaved(false);
+    setProjectActivity(null);
     setStatus('');
     setError('');
     setActiveNav('wizard');
     setStep('upload');
     setProjectName(node.project || node.customer);
+    await loadProjectActivity(node);
     if (!node.hasArchitecture) return;
     try {
       const response = await fetch(`/api/project-export?path=${encodeURIComponent(node.path)}`);
@@ -777,6 +841,7 @@ export default function App() {
       await runArchitectureReview(savedArchitecture, requirementsText);
       setStep('review');
       setStatus('Project loaded');
+      await loadProjectActivity(node);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Project load failed');
     }
@@ -1109,6 +1174,21 @@ export default function App() {
         diagramType,
       });
       setDiagramQuality(review);
+      setArchitecture((current) => current ? {
+        ...current,
+        quality: {
+          ...(current.quality || {}),
+          lastReview: {
+            score: review.score,
+            status: review.status,
+            diagramType,
+            summary: review.summary,
+            findingCount: review.findings.length,
+            timestamp: new Date().toISOString(),
+          },
+        },
+      } : current);
+      await loadProjectActivity();
       setStatus(`Diagram quality analyzed: ${review.score}/100 (${review.status})`);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Diagram quality analysis failed');
@@ -1376,6 +1456,24 @@ export default function App() {
         </button>
       </Tooltip>
     );
+  }
+
+  function formatActivityDate(value?: string) {
+    if (!value) return 'Not saved yet';
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return value;
+    return parsed.toLocaleString([], {
+      month: 'short',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+    });
+  }
+
+  function formatBytes(value: number) {
+    if (!value) return '0 KB';
+    if (value < 1024) return `${value} B`;
+    return `${Math.round(value / 1024)} KB`;
   }
 
   // ── Render ───────────────────────────────────────────────────────────────────
@@ -1675,6 +1773,99 @@ export default function App() {
                   )}
                 </>
               )}
+            </Column>
+          )}
+
+          {activeNav === 'projects' && (
+            <Column sm={4} md={8} lg={4}>
+              <Tile className="panel project-activity-panel">
+                <Stack gap={5}>
+                  <div className="step-header">
+                    <h2>Project activity</h2>
+                    <InfoTip text="Shows the active project's autosave status, architecture JSON location, optional Postgres sync status, latest diagram quality score, and recent project events." />
+                  </div>
+
+                  {!activeProject ? (
+                    <p className="panel-copy">
+                      Open a project to see autosave, quality, and recovery details.
+                    </p>
+                  ) : (
+                    <>
+                      <div className="project-activity-summary">
+                        <strong>{activeProject.project || activeProject.customer}</strong>
+                        <span>{activeProject.customer}{activeProject.project ? ` / ${activeProject.project}` : ''}</span>
+                        {autosaveStatus && <Tag type={autosaveStatus.includes('failed') ? 'red' : 'green'} size="sm">{autosaveStatus}</Tag>}
+                      </div>
+
+                      <div className="project-activity-actions">
+                        <Button
+                          kind="secondary"
+                          size="sm"
+                          renderIcon={Renew}
+                          onClick={() => loadProjectActivity()}
+                          disabled={projectActivityBusy || activeProject.isLegacy}
+                        >
+                          {projectActivityBusy ? 'Refreshing...' : 'Refresh activity'}
+                        </Button>
+                        <Button
+                          kind="ghost"
+                          size="sm"
+                          renderIcon={Download}
+                          onClick={exportArchitecture}
+                          disabled={!activeProject.hasArchitecture}
+                        >
+                          Export JSON
+                        </Button>
+                      </div>
+
+                      {projectActivity?.file && (
+                        <div className="project-activity-facts">
+                          <div>
+                            <span>Architecture file</span>
+                            <code>{projectActivity.file.architecturePath}</code>
+                          </div>
+                          <div>
+                            <span>Last file save</span>
+                            <strong>{formatActivityDate(projectActivity.file.architectureModifiedAt)}</strong>
+                          </div>
+                          <div>
+                            <span>File size</span>
+                            <strong>{formatBytes(projectActivity.file.architectureSize)}</strong>
+                          </div>
+                          <div>
+                            <span>Postgres</span>
+                            <Tag type={projectActivity.persistence.connected ? 'green' : 'gray'} size="sm">
+                              {projectActivity.persistence.connected ? 'Connected' : 'Not connected'}
+                            </Tag>
+                          </div>
+                        </div>
+                      )}
+
+                      {architecture?.quality?.lastReview && (
+                        <div className="project-activity-quality">
+                          <span>Latest quality score</span>
+                          <strong>{architecture.quality.lastReview.score}/100 · {architecture.quality.lastReview.status}</strong>
+                          <p>{architecture.quality.lastReview.summary}</p>
+                        </div>
+                      )}
+
+                      <div className="project-events">
+                        <span className="advisor-label">Recent events</span>
+                        {projectActivityBusy && <InlineLoading description="Loading activity..." />}
+                        {!projectActivityBusy && projectActivity?.events?.length === 0 && (
+                          <p className="panel-copy">No recorded events yet. The next autosave or quality check will appear here.</p>
+                        )}
+                        {!projectActivityBusy && (projectActivity?.events || []).slice(0, 8).map((event) => (
+                          <div className="project-event" key={`${event.eventType}-${event.createdAt}`}>
+                            <strong>{event.eventType.replace(/-/g, ' ')}</strong>
+                            <span>{formatActivityDate(event.createdAt)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  )}
+                </Stack>
+              </Tile>
             </Column>
           )}
 
