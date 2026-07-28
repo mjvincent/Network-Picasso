@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.5.8 - 2026-07-28
+
+### Added
+
+- Guided Bob/MCP remediation presets for label spacing, connector routing, Deployment-page polish, all-five-page review, IBM pattern alignment, and customer-ready preparation.
+- Preset prompts now include current quality analyzer findings, IBM pattern checks, five-page diagram structure, and topology-preservation guardrails.
+
+### Changed
+
+- The new Assumptions & Decisions page is recognized by Bob prompt helpers instead of being treated as Deployment.
+- README roadmap now treats guided remediation presets as shipped and moves the next opportunity to prompt execution feedback.
+
 ## 0.5.7 - 2026-07-28
 
 ### Added

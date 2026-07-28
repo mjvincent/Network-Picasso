@@ -197,6 +197,50 @@ body {
   gap: 0.5rem;
 }
 
+.guided-preset-grid {
+  display: grid;
+  gap: 0.5rem;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.guided-preset-card {
+  background: #f4f4f4;
+  border: 1px solid #c6c6c6;
+  color: #161616;
+  cursor: pointer;
+  display: grid;
+  gap: 0.25rem;
+  min-height: 86px;
+  padding: 0.75rem;
+  text-align: left;
+}
+
+.guided-preset-card:hover {
+  background: #e8e8e8;
+  border-color: #8d8d8d;
+}
+
+.guided-preset-card:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.guided-preset-card.is-copied {
+  background: #edf5ff;
+  border-color: #0f62fe;
+}
+
+.guided-preset-card span {
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.guided-preset-card small {
+  color: #525252;
+  font-size: 0.75rem;
+  line-height: 1.35;
+}
+
 .bob-prompt-sections {
   display: grid;
   gap: 0.875rem;

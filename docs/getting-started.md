@@ -142,8 +142,9 @@ when you want Bob to edit the diagram conversationally.
 
 Use the Diagram Quality Analyzer to check label fit, crowding, connector clarity, and IBM
 pattern alignment. If findings identify missing IBM pattern-foundation elements, use
-**Apply analyzer fixes**, regenerate, and re-analyze. Use the provided Bob prompt or MCP editor
-for visual layout issues such as overlapping labels and connector polish.
+**Apply analyzer fixes**, regenerate, and re-analyze. Use the guided Bob/MCP remediation presets
+for visual layout issues such as overlapping labels, connector polish, Deployment-page polish,
+IBM pattern alignment, and customer-readiness.
 
 ### 8. Use restore points
 

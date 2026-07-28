@@ -337,7 +337,9 @@ function bobPromptTemplates(diagramType: string) {
       ? 'Logical Architecture'
       : diagramType === 'context'
         ? 'Context'
-        : 'Deployment';
+        : diagramType === 'decisions'
+          ? 'Assumptions & Decisions'
+          : 'Deployment';
   return [
     {
       category: 'Start',
@@ -408,6 +410,115 @@ function bobPromptTemplates(diagramType: string) {
       category: 'Final QA',
       label: 'No Topology Change',
       text: `Use the ibm-drawio-editing skill. Inspect the ${pageName} page and make presentation-only improvements. Do not add, delete, reconnect, or rename architecture components. Only adjust size, spacing, alignment, connector routing, label placement, and visual hierarchy.`,
+    },
+  ];
+}
+
+type GuidedRemediationPreset = {
+  id: string;
+  label: string;
+  description: string;
+  prompt: string;
+};
+
+function qualityFindingSummary(review: DiagramQualityReview | null): string {
+  if (!review) {
+    return 'No Network Picasso quality analysis has been run yet. Inspect the diagram visually and make presentation-safe improvements.';
+  }
+  const findings = review.findings.slice(0, 8);
+  const findingText = findings.length
+    ? findings.map((finding, index) =>
+        `${index + 1}. ${finding.area}: ${finding.message} Recommendation: ${finding.recommendation}`
+      ).join('\n')
+    : 'No analyzer findings were reported. Perform a final visual inspection.';
+  const missing = review.ibmPatternChecks.checks
+    .filter((check) => !check.present)
+    .map((check) => `- ${check.name}`)
+    .join('\n') || '- No missing IBM pattern checks reported.';
+  return `Quality score: ${review.score}/100 (${review.status})
+IBM pattern foundation: ${review.ibmPatternChecks.name}
+
+Quality findings:
+${findingText}
+
+IBM pattern checks needing review:
+${missing}`;
+}
+
+function guidedRemediationPresets(diagramType: string, review: DiagramQualityReview | null): GuidedRemediationPreset[] {
+  const pageName = diagramType === 'executive'
+    ? 'Executive Overview'
+    : diagramType === 'logical'
+      ? 'Logical Architecture'
+      : diagramType === 'context'
+        ? 'Context'
+        : diagramType === 'decisions'
+          ? 'Assumptions & Decisions'
+          : 'Deployment';
+  const context = qualityFindingSummary(review);
+  const allPages = 'Executive Overview, Context, Logical Architecture, Deployment, and Assumptions & Decisions';
+  const guardrails = 'Preserve IBM Cloud stencil shapes, page names, customer-specific architecture facts, network topology, and IBM container hierarchy. Do not invent services or connectivity that are not already present or clearly implied by the model.';
+
+  return [
+    {
+      id: 'labels-spacing',
+      label: 'Fix labels and spacing',
+      description: 'Best first visual cleanup when labels overlap or text is cramped.',
+      prompt: `Use the ibm-drawio-editing skill. Inspect the ${pageName} page in the Draw.io MCP editor. Fix label placement, label box sizing, text wrapping, whitespace, and local alignment issues.
+
+${context}
+
+${guardrails} Keep edits presentation-focused and summarize changed labels or moved objects by area.`,
+    },
+    {
+      id: 'connector-routing',
+      label: 'Clean connector routing',
+      description: 'Use when connector labels cross shapes or traffic flow is hard to follow.',
+      prompt: `Use the ibm-drawio-editing skill. Inspect the ${pageName} page in the Draw.io MCP editor. Clean connector routing with orthogonal paths, move connector labels away from shapes and lines, reduce crossings, and keep directional flow clear.
+
+${context}
+
+${guardrails} Preserve all existing source-to-target relationships and summarize each connector change.`,
+    },
+    {
+      id: 'deployment-polish',
+      label: 'Polish Deployment page',
+      description: 'Targets the most technical page for professional customer presentation.',
+      prompt: `Use the ibm-drawio-editing skill. Inspect the Deployment page in the Draw.io MCP editor. Tighten the IBM Cloud account, region, VPC, zone, subnet, shared services, PowerVS, and connectivity layout so the design reads professionally.
+
+${context}
+
+${guardrails} Prioritize visible hierarchy, non-overlapping service labels, readable connector labels, and clear primary/DR or hybrid boundaries. Summarize changes by container.`,
+    },
+    {
+      id: 'all-five-pages',
+      label: 'Review all five pages',
+      description: 'Runs a full customer-readiness pass across the whole multipage file.',
+      prompt: `Use the ibm-drawio-editing skill. Inspect all five pages in the open Draw.io MCP document: ${allPages}. Make targeted professional-grade cleanup on each page.
+
+${context}
+
+${guardrails} Fix overlaps, cramped labels, ambiguous connector labels, inconsistent naming, and unclear flow direction. Preserve the meaning of every page. Summarize changes separately for each page.`,
+    },
+    {
+      id: 'pattern-alignment',
+      label: 'Improve IBM pattern alignment',
+      description: 'Use when the analyzer reports missing IBM pattern elements.',
+      prompt: `Use the ibm-drawio-editing skill. Inspect the ${pageName} page and the Assumptions & Decisions page. Improve visible IBM Think Architecture pattern alignment without changing the customer intent.
+
+${context}
+
+${guardrails} Make explicit only supported pattern evidence: VPC landing zone structure, private endpoints, security/compliance services, observability, hybrid connectivity, resiliency, and workload placement. If something is uncertain, add it as an assumption or validation item rather than as a confirmed component. Summarize explicit, inferred, and still-missing pattern elements.`,
+    },
+    {
+      id: 'customer-ready',
+      label: 'Prepare customer-ready version',
+      description: 'Final pass before sharing with a technical or executive audience.',
+      prompt: `Use the ibm-drawio-editing skill. Prepare the open five-page Draw.io architecture for customer sharing. Inspect ${allPages}.
+
+${context}
+
+${guardrails} Ensure each page has clear audience fit: executive page is simple, context page shows boundaries, logical page shows relationships, deployment page shows implementable topology, and assumptions page clearly states validation items. Do not make broad topology changes. Summarize final readiness by page.`,
     },
   ];
 }
@@ -1828,6 +1939,7 @@ export default function App() {
     new Map<string, ReturnType<typeof bobPromptTemplates>>(),
   );
   const bobPromptRecommendation = recommendedBobPrompt(diagramQuality);
+  const guidedPresets = guidedRemediationPresets(diagramType, diagramQuality);
 
   return (
     <>
@@ -3254,8 +3366,8 @@ export default function App() {
 
                   <div className="bob-prompts-panel">
                     <div className="diagram-action-header">
-                      <strong>Bob editing prompts</strong>
-                      <InfoTip text="Copy one of these prompts after the diagram is loaded in the MCP editor. They tell Bob to inspect the current Draw.io document, use the IBM editing skill, and make targeted changes." />
+                      <strong>Guided Bob/MCP remediation presets</strong>
+                      <InfoTip text="Use these first after opening the diagram in the MCP editor. Each preset creates a full Bob prompt with the current page, five-page diagram structure, IBM pattern checks, and quality analyzer findings." />
                     </div>
                     <InlineNotification
                       kind="info"
@@ -3264,6 +3376,27 @@ export default function App() {
                       lowContrast
                       hideCloseButton
                     />
+                    <div className="guided-preset-grid">
+                      {guidedPresets.map((preset) => (
+                        <button
+                          type="button"
+                          className={`guided-preset-card${copiedPrompt === preset.label ? ' is-copied' : ''}`}
+                          key={preset.id}
+                          onClick={() => copyBobPrompt(preset.label, preset.prompt)}
+                          disabled={busy}
+                        >
+                          <span>{copiedPrompt === preset.label ? `${preset.label} copied` : preset.label}</span>
+                          <small>{preset.description}</small>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="bob-prompts-panel">
+                    <div className="diagram-action-header">
+                      <strong>Bob editing prompts</strong>
+                      <InfoTip text="Copy one of these focused prompts after the diagram is loaded in the MCP editor. The guided presets above are best for analyzer-driven remediation; these are smaller manual editing prompts." />
+                    </div>
                     <div className="bob-prompt-sections">
                       {Array.from(bobPromptsByCategory.entries()).map(([category, prompts]) => (
                         <div className="bob-prompt-section" key={category}>

@@ -12,7 +12,7 @@ The app is designed for sellers who may not be deep network designers. It provid
 question prompts, IBM-pattern traceability, and Bob/Draw.io MCP hand-holding so the user can move
 from rough discovery notes to a customer-ready architecture conversation.
 
-Current version: **0.5.7**
+Current version: **0.5.8**
 
 ---
 
@@ -46,7 +46,7 @@ The Compose stack uses non-default host ports so it can sit beside your other co
 UI `5174`, API `8788`, and optional Postgres host access on `55432`. See
 [docs/containerization.md](docs/containerization.md) for port overrides and MCP notes.
 
-It produces four architecture pages:
+It produces five architecture pages:
 
 | Page | Audience | Purpose |
 |---|---|---|
@@ -54,6 +54,7 @@ It produces four architecture pages:
 | **Context** | Sellers, architects | High-level actors, cloud boundary, regions, and major platform services |
 | **Logical Architecture** | Architects, technical sellers | Component relationships, connectivity, shared services, and platform dependencies |
 | **Deployment** | Architects, implementation teams | Region, VPC, zone, subnet, service placement, PowerVS, connectivity, and evidence services |
+| **Assumptions & Decisions** | Sellers, architects | IBM pattern traceability, inferred choices, validation items, question status, and quality status |
 
 ---
 
@@ -84,6 +85,7 @@ It produces four architecture pages:
 - **Bob and Draw.io MCP workflow**
   - Pushes diagrams into a live Draw.io MCP editor at `http://127.0.0.1:4000`.
   - Provides an in-app MCP checklist.
+  - Provides guided Bob/MCP remediation presets for fixing labels and spacing, cleaning connector routing, polishing the Deployment page, reviewing all five pages, improving IBM pattern alignment, and preparing a customer-ready version.
   - Provides grouped, copy-ready Bob prompts for setup, label cleanup, connector fixes, IBM pattern review, landing-zone polish, executive simplification, security, DR, data flow, and final customer-readiness QA.
   - Adds help bubbles and a recommended-next-prompt cue so sellers know which Bob prompt fits the current diagram need.
 
@@ -328,8 +330,8 @@ server-side collaboration.
 4. **Pattern traceability improvements**
    - Make the diagram quality analyzer distinguish explicit, inferred, missing, and recommended IBM pattern elements in the UI.
 
-5. **Guided Bob/MCP remediation**
-   - Turn remaining visual quality findings into one-click Bob prompt presets for spacing, label placement, connector routing, and customer-ready polish.
+5. **Bob/MCP prompt execution feedback**
+   - Track which guided remediation preset was copied, which page it targeted, and whether the user re-analyzed after Bob edits.
 
 ---
 

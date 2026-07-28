@@ -187,12 +187,14 @@ Use the remediation loop:
 2. Click **Apply analyzer fixes** for model-safe IBM pattern-foundation recommendations.
 3. Regenerate the diagram.
 4. Open the diagram in MCP editor when visual polish is needed.
-5. Copy the Bob quality remediation prompt.
-6. Ask Bob to fix labels, connectors, spacing, or customer-readiness issues.
+5. Copy a guided Bob/MCP remediation preset for the exact issue.
+6. Ask Bob to fix labels, connectors, spacing, IBM pattern alignment, or customer-readiness issues.
 7. Re-run the analyzer.
 
 The analyzer is most useful when paired with action. It identifies model fixes that Network
-Picasso can apply and presentation fixes that Bob/MCP should handle.
+Picasso can apply and presentation fixes that Bob/MCP should handle. The guided presets include
+current analyzer findings and five-page guardrails so sellers do not need to write Draw.io
+editing prompts from scratch.
 
 ## 9. Use Project Activity And Restore Points
 
@@ -276,7 +278,16 @@ Use the ibm-drawio-editing skill. Inspect the open Draw.io MCP document before m
 Use IBM Cloud stencil patterns, keep labels non-overlapping, and preserve the existing architecture pages.
 ```
 
-Useful editing prompts:
+Useful guided remediation presets:
+
+- **Fix labels and spacing**
+- **Clean connector routing**
+- **Polish Deployment page**
+- **Review all five pages**
+- **Improve IBM pattern alignment**
+- **Prepare customer-ready version**
+
+Useful focused editing prompts:
 
 ```text
 On the Deployment page, improve label placement and connector routing without changing the architecture.
