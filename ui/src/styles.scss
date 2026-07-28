@@ -581,6 +581,10 @@ body {
     display: grid;
     gap: 1rem;
   }
+
+  .project-browser-controls {
+    grid-template-columns: 1fr;
+  }
 }
 
 /* ── Projects page browser ─────────────────────────────────────────────── */
@@ -589,6 +593,18 @@ body {
   display: flex;
   flex-direction: column;
   gap: 0.25rem;
+}
+
+.project-browser-controls {
+  align-items: end;
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: minmax(16rem, 1fr) minmax(10rem, 12rem) minmax(10rem, 12rem) auto;
+  margin-bottom: 1rem;
+}
+
+.project-browser-controls .cds--search {
+  min-width: 0;
 }
 
 .project-browser-row {

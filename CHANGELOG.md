@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.4 - 2026-07-28
+
+### Added
+
+- Project browser search, status filtering, and sorting controls for customer folders and project workspaces.
+
 ## 0.5.3 - 2026-07-28
 
 ### Added

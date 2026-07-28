@@ -1,3 +1,3 @@
 """Network Picasso local diagram generation toolkit."""
 
-__version__ = "0.5.3"
+__version__ = "0.5.4"

@@ -1,5 +1,12 @@
 import { describe, it, expect } from 'vitest';
-import { questionKey, mergeQuestions, type Question, type AnsweredQuestion } from '../utils';
+import {
+  filterAndSortProjectFolders,
+  filterAndSortProjects,
+  questionKey,
+  mergeQuestions,
+  type Question,
+  type AnsweredQuestion,
+} from '../utils';
 
 const q1: Question = { area: 'Regions and availability', question: 'Which regions?', source: 'rules' };
 const q2: Question = { area: 'VPC topology', question: 'How many VPCs?', source: 'rules' };
@@ -52,5 +59,37 @@ describe('mergeQuestions', () => {
     const questions = result.map((q) => q.question);
     expect(questions).toContain(q1.question);
     expect(questions).toContain(q3.question);
+  });
+});
+
+describe('project browser utilities', () => {
+  it('filters and sorts customer folders', () => {
+    const result = filterAndSortProjectFolders([
+      { name: 'Zenith Health', projectCount: 1 },
+      { name: 'Acme Bank', projectCount: 3 },
+      { name: 'Acme Retail', projectCount: 2 },
+    ], 'acme', 'projectCountDesc');
+
+    expect(result.map((folder) => folder.name)).toEqual(['Acme Bank', 'Acme Retail']);
+  });
+
+  it('filters projects by architecture status and search term', () => {
+    const result = filterAndSortProjects([
+      { customer: 'Acme Bank', project: 'DR Design', path: '/acme/dr', hasArchitecture: true },
+      { customer: 'Acme Bank', project: 'Discovery', path: '/acme/discovery', hasArchitecture: false },
+      { customer: 'Contoso', project: 'Landing Zone', path: '/contoso/lz', hasArchitecture: false },
+    ], 'acme', 'withoutArchitecture', 'nameAsc');
+
+    expect(result).toHaveLength(1);
+    expect(result[0].project).toBe('Discovery');
+  });
+
+  it('can sort projects that still need architecture first', () => {
+    const result = filterAndSortProjects([
+      { customer: 'Acme Bank', project: 'Ready', path: '/acme/ready', hasArchitecture: true },
+      { customer: 'Acme Bank', project: 'Needs Work', path: '/acme/needs', hasArchitecture: false },
+    ], '', 'all', 'needsArchitectureFirst');
+
+    expect(result[0].project).toBe('Needs Work');
   });
 });

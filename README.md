@@ -12,7 +12,7 @@ The app is designed for sellers who may not be deep network designers. It provid
 question prompts, IBM-pattern traceability, and Bob/Draw.io MCP hand-holding so the user can move
 from rough discovery notes to a customer-ready architecture conversation.
 
-Current version: **0.5.3**
+Current version: **0.5.4**
 
 ---
 
@@ -314,8 +314,8 @@ server-side collaboration.
 1. **Add guide screenshots**
    - Capture the full Docker-first usage flow, Projects, upload, advisor, diagram generation, Project Activity, restore preview, Bob MCP setup, and MCP editor workflow.
 
-2. **Project search and filters**
-   - Search customers/projects by name, industry, selected IBM pattern, quality score, region, and service family.
+2. **Richer project metadata search**
+   - Extend the new Projects search/filter controls to include industry, selected IBM pattern, quality score, region, and service family.
 
 3. **Assumptions and decisions page**
    - Add a fifth generated page summarizing assumptions, unanswered questions, inferred choices, and customer decisions.

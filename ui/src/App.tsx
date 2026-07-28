@@ -24,6 +24,7 @@ import {
   SideNavMenu,
   SideNavMenuItem,
   Stack,
+  Search,
   StructuredListBody,
   StructuredListCell,
   StructuredListHead,
@@ -63,6 +64,10 @@ import {
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   type AnsweredQuestion as AnsweredQuestionType,
+  filterAndSortProjectFolders,
+  filterAndSortProjects,
+  type ProjectFilterStatus,
+  type ProjectSortOrder,
   type Question,
   mergeQuestions,
   questionKey,
@@ -652,6 +657,9 @@ export default function App() {
   const [renameFolderValue, setRenameFolderValue]   = useState('');
   const [projectsActionBusy, setProjectsActionBusy] = useState(false);
   const [projectsError, setProjectsError] = useState('');
+  const [projectSearch, setProjectSearch] = useState('');
+  const [projectStatusFilter, setProjectStatusFilter] = useState<ProjectFilterStatus>('all');
+  const [projectSortOrder, setProjectSortOrder] = useState<ProjectSortOrder>('nameAsc');
 
   // Send XML to the embed iframe whenever both are ready
   useEffect(() => {
@@ -735,6 +743,15 @@ export default function App() {
       if (autosaveTimerRef.current) window.clearTimeout(autosaveTimerRef.current);
     };
   }, [architecture, activeProject]);
+
+  useEffect(() => {
+    if (browseFolder && projectSortOrder === 'projectCountDesc') {
+      setProjectSortOrder('nameAsc');
+    }
+    if (!browseFolder && ['architectureFirst', 'needsArchitectureFirst'].includes(projectSortOrder)) {
+      setProjectSortOrder('nameAsc');
+    }
+  }, [browseFolder, projectSortOrder]);
 
   // ── Project helpers ──────────────────────────────────────────────────────────
 
@@ -1180,6 +1197,26 @@ export default function App() {
     }
     return snapshots.filter((snapshot) => restoreFilterForEvent(snapshot.eventType) === restoreFilter);
   }, [projectActivity?.snapshots, restoreFilter]);
+
+  const visibleFolders = useMemo(
+    () => filterAndSortProjectFolders(folders, projectSearch, projectSortOrder),
+    [folders, projectSearch, projectSortOrder],
+  );
+
+  const visibleFolderProjects = useMemo(
+    () => filterAndSortProjects(folderProjects, projectSearch, projectStatusFilter, projectSortOrder),
+    [folderProjects, projectSearch, projectStatusFilter, projectSortOrder],
+  );
+
+  const hasProjectBrowserFilters = projectSearch.trim() !== ''
+    || projectStatusFilter !== 'all'
+    || projectSortOrder !== 'nameAsc';
+
+  function clearProjectBrowserFilters() {
+    setProjectSearch('');
+    setProjectStatusFilter('all');
+    setProjectSortOrder('nameAsc');
+  }
 
   async function uploadAndRunIntake() {
     setBusy(true);
@@ -1996,6 +2033,48 @@ export default function App() {
 
               {foldersLoading && <InlineLoading description="Loading…" style={{ marginBottom: '1rem' }} />}
 
+              <div className="project-browser-controls">
+                <Search
+                  id="project-browser-search"
+                  labelText={browseFolder ? 'Search projects' : 'Search customer folders'}
+                  placeholder={browseFolder ? 'Search projects, customer, path, or status' : 'Search customer folders'}
+                  size="md"
+                  value={projectSearch}
+                  onChange={(event) => setProjectSearch(event.target.value)}
+                />
+                {browseFolder && (
+                  <Select
+                    id="project-status-filter"
+                    labelText="Status"
+                    size="md"
+                    value={projectStatusFilter}
+                    onChange={(event) => setProjectStatusFilter(event.target.value as ProjectFilterStatus)}
+                  >
+                    <SelectItem value="all" text="All projects" />
+                    <SelectItem value="withArchitecture" text="Has architecture" />
+                    <SelectItem value="withoutArchitecture" text="Needs architecture" />
+                  </Select>
+                )}
+                <Select
+                  id="project-sort-order"
+                  labelText="Sort"
+                  size="md"
+                  value={projectSortOrder}
+                  onChange={(event) => setProjectSortOrder(event.target.value as ProjectSortOrder)}
+                >
+                  <SelectItem value="nameAsc" text="Name A-Z" />
+                  <SelectItem value="nameDesc" text="Name Z-A" />
+                  {!browseFolder && <SelectItem value="projectCountDesc" text="Most projects" />}
+                  {browseFolder && <SelectItem value="architectureFirst" text="Ready first" />}
+                  {browseFolder && <SelectItem value="needsArchitectureFirst" text="Needs architecture first" />}
+                </Select>
+                {hasProjectBrowserFilters && (
+                  <Button kind="ghost" size="md" onClick={clearProjectBrowserFilters}>
+                    Clear filters
+                  </Button>
+                )}
+              </div>
+
               {/* ── Root view: show folders ── */}
               {!browseFolder && !foldersLoading && (
                 <>
@@ -2007,9 +2086,16 @@ export default function App() {
                         Create a customer folder to start. Each folder can hold one or more project workspaces.
                       </p>
                     </Tile>
+                  ) : visibleFolders.length === 0 ? (
+                    <Tile className="panel" style={{ textAlign: 'center', padding: '2.5rem 1rem' }}>
+                      <p style={{ fontWeight: 600, marginBottom: '0.5rem' }}>No matching customer folders</p>
+                      <p style={{ color: '#525252', fontSize: '0.875rem' }}>
+                        Adjust the search or clear filters to show all customer folders.
+                      </p>
+                    </Tile>
                   ) : (
                     <div className="project-browser-list">
-                      {folders.map((folder) => (
+                      {visibleFolders.map((folder) => (
                         <div key={folder.path}
                           className="project-browser-row folder-row"
                           onClick={() => loadFolderProjects(folder)}
@@ -2051,9 +2137,16 @@ export default function App() {
                         Use &quot;New project in this folder&quot; above to add one.
                       </p>
                     </Tile>
+                  ) : visibleFolderProjects.length === 0 ? (
+                    <Tile className="panel" style={{ textAlign: 'center', padding: '2.5rem 1rem' }}>
+                      <p style={{ fontWeight: 600, marginBottom: '0.5rem' }}>No matching projects</p>
+                      <p style={{ color: '#525252', fontSize: '0.875rem' }}>
+                        Adjust the search or status filter to show more project workspaces.
+                      </p>
+                    </Tile>
                   ) : (
                     <div className="project-browser-list">
-                      {folderProjects.map((node) => (
+                      {visibleFolderProjects.map((node) => (
                         <div key={node.path}
                           className="project-browser-row"
                           onClick={() => { selectProject(node); setActiveNav('wizard'); }}
