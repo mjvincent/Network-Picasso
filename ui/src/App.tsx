@@ -229,6 +229,14 @@ type ProjectActivity = {
     createdAt: string;
   }>;
   snapshots: ProjectSnapshot[];
+  retention?: {
+    autosaveLimit: number;
+    milestonesRetained: boolean;
+    description: string;
+    autosaveCount?: number;
+    milestoneCount?: number;
+    totalCount?: number;
+  };
 };
 
 type AnsweredQuestion = AnsweredQuestionType;
@@ -2138,6 +2146,14 @@ export default function App() {
                               <SelectItem key={filter.id} value={filter.id} text={filter.label} />
                             ))}
                           </Select>
+                        )}
+                        {projectActivity?.retention && (
+                          <p className="project-retention-note">
+                            Autosaves capped at {projectActivity.retention.autosaveLimit}; milestones retained
+                            {projectActivity.retention.autosaveCount != null
+                              ? ` (${projectActivity.retention.autosaveCount} autosaves, ${projectActivity.retention.milestoneCount || 0} milestones).`
+                              : '.'}
+                          </p>
                         )}
                         {projectActivity?.persistence.connected && !projectActivityBusy && (projectActivity.snapshots || []).length > 0 && restoreSnapshots.length === 0 && (
                           <p className="panel-copy">No restore points match this filter.</p>

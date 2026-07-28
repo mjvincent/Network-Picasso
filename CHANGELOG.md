@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.5.0 - 2026-07-28
+
+### Added
+
+- Restore-point retention policy that keeps milestone restore points while pruning excess routine autosaves per project.
+- Project Activity now displays the active restore retention policy.
+- `NETWORK_PICASSO_AUTOSAVE_RETENTION` environment variable to tune autosave restore-point retention; default is `25`.
+
 ## 0.4.9 - 2026-07-28
 
 ### Added

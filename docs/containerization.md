@@ -57,6 +57,13 @@ Postgres stores a searchable project index, architecture JSON snapshots, and pro
 The API initializes its tables automatically at startup when
 `NETWORK_PICASSO_DATABASE_URL` is set.
 
+Routine autosave restore points are pruned per project while milestone restore points are kept.
+The default autosave limit is `25`. Override it if needed:
+
+```bash
+NETWORK_PICASSO_AUTOSAVE_RETENTION=50 docker compose up --build
+```
+
 Check persistence health:
 
 ```bash

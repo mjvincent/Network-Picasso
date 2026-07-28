@@ -159,6 +159,7 @@ def project_activity_payload(project_path: Path, settings: dict) -> dict:
         "persisted": persisted,
         "events": (persisted or {}).get("events", []),
         "snapshots": (persisted or {}).get("snapshots", []),
+        "retention": (persisted or {}).get("retention", persistence.retention_policy()),
     }
 
 
@@ -256,7 +257,7 @@ def _quality_label(quality: dict) -> str:
 
 
 class NetworkPicassoHandler(BaseHTTPRequestHandler):
-    server_version = "NetworkPicasso/0.4.9"
+    server_version = "NetworkPicasso/0.5.0"
 
     def do_OPTIONS(self) -> None:
         self.send_response(204)

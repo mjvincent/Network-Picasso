@@ -25,6 +25,18 @@ SNAPSHOT_EVENT_TYPES = {
     "manual-sync",
     "restore-point",
 }
+AUTOSAVE_RETENTION_LIMIT = 25
+
+
+def _retention_limit_from_env() -> int:
+    raw_limit = os.environ.get("NETWORK_PICASSO_AUTOSAVE_RETENTION", str(AUTOSAVE_RETENTION_LIMIT))
+    try:
+        return max(1, int(raw_limit))
+    except ValueError:
+        return AUTOSAVE_RETENTION_LIMIT
+
+
+AUTOSAVE_RETENTION_LIMIT = _retention_limit_from_env()
 
 
 @dataclass(frozen=True)
@@ -196,6 +208,7 @@ def upsert_project(
                         json.dumps(architecture),
                     ),
                 )
+                _prune_autosave_snapshots(conn, project_id)
 
 
 def rename_customer(*, old_slug: str, new_slug: str, new_display_name: str, new_path: str) -> None:
@@ -281,6 +294,7 @@ def project_activity(project_id: str, *, limit: int = 12) -> dict[str, Any] | No
             (project_id, limit),
         ).fetchall()
         snapshots = _project_snapshots(conn, project_id, limit=limit)
+        retention_counts = _snapshot_counts(conn, project_id)
     return {
         "id": project[0],
         "customer": project[1],
@@ -299,6 +313,18 @@ def project_activity(project_id: str, *, limit: int = 12) -> dict[str, Any] | No
             for row in events
         ],
         "snapshots": snapshots,
+        "retention": {**retention_policy(), **retention_counts},
+    }
+
+
+def retention_policy() -> dict[str, Any]:
+    return {
+        "autosaveLimit": AUTOSAVE_RETENTION_LIMIT,
+        "milestonesRetained": True,
+        "description": (
+            f"Routine autosave restore points are capped at {AUTOSAVE_RETENTION_LIMIT} per project; "
+            "milestone restore points are retained."
+        ),
     }
 
 
@@ -421,8 +447,46 @@ def _project_snapshots(conn, project_id: str, *, limit: int = 12) -> list[dict[s
     ]
 
 
+def _snapshot_counts(conn, project_id: str) -> dict[str, int]:
+    rows = conn.execute(
+        """
+        select
+          count(*) filter (where event_type = 'autosave') as autosaves,
+          count(*) filter (where event_type <> 'autosave') as milestones,
+          count(*) as total
+        from np_project_snapshots
+        where project_id = %s
+        """,
+        (project_id,),
+    ).fetchone()
+    return {
+        "autosaveCount": int(rows[0] or 0),
+        "milestoneCount": int(rows[1] or 0),
+        "totalCount": int(rows[2] or 0),
+    }
+
+
 def _coerce_float(value: Any) -> float | None:
     try:
         return float(value)
     except (TypeError, ValueError):
         return None
+
+
+def _prune_autosave_snapshots(conn, project_id: str) -> int:
+    if AUTOSAVE_RETENTION_LIMIT < 1:
+        return 0
+    result = conn.execute(
+        """
+        delete from np_project_snapshots
+        where id in (
+          select id
+          from np_project_snapshots
+          where project_id = %s and event_type = 'autosave'
+          order by created_at desc, id desc
+          offset %s
+        )
+        """,
+        (project_id, AUTOSAVE_RETENTION_LIMIT),
+    )
+    return result.rowcount or 0

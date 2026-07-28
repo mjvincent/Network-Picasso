@@ -12,7 +12,7 @@ The app is designed for sellers who may not be deep network designers. It provid
 question prompts, IBM-pattern traceability, and Bob/Draw.io MCP hand-holding so the user can move
 from rough discovery notes to a customer-ready architecture conversation.
 
-Current version: **0.4.9**
+Current version: **0.5.0**
 
 ---
 
@@ -98,6 +98,7 @@ It produces four architecture pages:
   - Project Activity shows last save metadata, Postgres connection state, latest diagram quality score, recent project events, and restore points so autosave is visible and recoverable.
   - Restore previews compare the current architecture with the selected restore point before replacing the working model.
   - Restore timeline filters separate milestones, autosaves, intake/imports, design decisions, quality checks, and restores/syncs.
+  - Retains milestone restore points while pruning excess routine autosaves per project.
   - Adds optional Postgres persistence for customer/project metadata, architecture JSON restore points, and project events.
   - Docker Compose starts Postgres automatically with a named volume so project data survives restarts.
 
@@ -308,8 +309,8 @@ server-side collaboration.
 3. **Assumptions and decisions page**
    - Add a fifth generated page summarizing assumptions, unanswered questions, inferred choices, and customer decisions.
 
-4. **Restore point retention policy**
-   - Keep milestone restore points indefinitely while pruning routine autosaves after a configurable limit.
+4. **Restore retention controls**
+   - Add a settings control for the autosave retention limit and an admin action to prune existing history on demand.
 
 5. **Export package**
    - Generate a customer-ready package with `.drawio`, architecture summary, assumptions, open questions, and implementation notes.

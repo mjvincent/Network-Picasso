@@ -159,6 +159,9 @@ Restore points can be filtered by milestones, autosaves, intake/imports, design 
 quality checks, and restores/syncs. Before restoring, the app compares the current architecture
 against the selected restore point.
 
+Milestone restore points are retained. Routine autosaves are capped per project to keep the
+database from growing indefinitely.
+
 ## Full Usage Guide
 
 For a broader walkthrough that can be expanded with screenshots, see:

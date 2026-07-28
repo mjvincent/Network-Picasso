@@ -196,6 +196,10 @@ Timeline filters help find useful checkpoints:
 Before restore, Network Picasso shows a comparison between the current model and the selected
 restore point.
 
+Routine autosave restore points are capped per project so the database does not grow forever.
+Milestone restore points such as intake, design decisions, quality checks, imports, and manual
+restores are retained. The default autosave limit is `25`.
+
 ## 10. Edit With Bob And MCP
 
 Use Bob/MCP when deterministic generation gets you close but the diagram needs professional
