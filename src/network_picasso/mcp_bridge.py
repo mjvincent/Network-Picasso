@@ -138,11 +138,57 @@ def _get_document_id() -> str:
     )
 
 
+def _decode_tool_text(resp: dict) -> dict:
+    """Decode the drawio-mcp-server JSON payload nested inside text content."""
+    content = resp.get("content", [])
+    if not content:
+        return {}
+    text = str(content[0].get("text", "")).strip()
+    if not text:
+        return {}
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        return {}
+
+
+def _list_pages(doc_id: str) -> list[dict]:
+    resp = call_tool("list-pages", {
+        "target_document": {"id": doc_id},
+    }, timeout=10)
+    inner = _decode_tool_text(resp)
+    pages = inner.get("result", [])
+    return pages if isinstance(pages, list) else []
+
+
+def _rename_page(doc_id: str, index: int, name: str) -> dict:
+    return call_tool("rename-page", {
+        "page":            {"index": index},
+        "name":            name,
+        "target_document": {"id": doc_id},
+    }, timeout=10)
+
+
+def _ensure_page_count(doc_id: str, count: int) -> None:
+    pages = _list_pages(doc_id)
+    while len(pages) < count:
+        call_tool("create-page", {
+            "name":            f"Network Picasso Page {len(pages) + 1}",
+            "target_document": {"id": doc_id},
+        }, timeout=10)
+        pages = _list_pages(doc_id)
+
+
 # ---------------------------------------------------------------------------
 # High-level helpers used by server.py
 # ---------------------------------------------------------------------------
 
-def open_diagram_in_editor(xml: str, *, filename: str = "diagram.drawio") -> dict:
+def open_diagram_in_editor(
+    xml: str,
+    *,
+    filename: str = "diagram.drawio",
+    page_name: str | None = None,
+) -> dict:
     """Push *xml* into the live Draw.io editor via ``import-diagram`` (replace mode).
 
     The editor must be open at http://localhost:4000 and have an active document.
@@ -151,7 +197,7 @@ def open_diagram_in_editor(xml: str, *, filename: str = "diagram.drawio") -> dic
     Returns the MCP tool result dict.
     """
     doc_id = _get_document_id()
-    return call_tool("import-diagram", {
+    result = call_tool("import-diagram", {
         "data":            xml,
         "format":          "xml",
         "mode":            "replace",
@@ -159,6 +205,9 @@ def open_diagram_in_editor(xml: str, *, filename: str = "diagram.drawio") -> dic
         "target_page":     {"index": 0},
         "target_document": {"id": doc_id},
     }, timeout=15)
+    if page_name:
+        _rename_page(doc_id, 0, page_name)
+    return result
 
 
 def add_xml_to_diagram(xml: str, *, target_page: dict | None = None) -> dict:
@@ -188,33 +237,25 @@ def open_all_pages(diagrams: dict[str, str]) -> list[dict]:
 
         {"executive": xml, "context": xml, "logical": xml, "deployment": xml, "decisions": xml}
 
-    First page replaces page 0; subsequent pages are added as new pages.
+    Page slots 0-4 are reused and renamed so stale tabs from previous imports
+    do not survive as duplicate Deployment pages. New blank pages are created
+    only when the live editor has fewer pages than Network Picasso needs.
     Returns a list of MCP result dicts.
     """
     doc_id = _get_document_id()
+    page_items = [(dtype, page_name) for dtype, page_name in DIAGRAM_PAGE_NAMES.items() if diagrams.get(dtype, "")]
+    _ensure_page_count(doc_id, len(page_items))
     results: list[dict] = []
-    first = True
-    for dtype, page_name in DIAGRAM_PAGE_NAMES.items():
-        xml = diagrams.get(dtype, "")
-        if not xml:
-            continue
-        if first:
-            result = call_tool("import-diagram", {
-                "data":            xml,
-                "format":          "xml",
-                "mode":            "replace",
-                "filename":        f"{page_name}.drawio",
-                "target_page":     {"index": 0},
-                "target_document": {"id": doc_id},
-            }, timeout=30)
-            first = False
-        else:
-            result = call_tool("import-diagram", {
-                "data":            xml,
-                "format":          "xml",
-                "mode":            "new-page",
-                "filename":        f"{page_name}.drawio",
-                "target_document": {"id": doc_id},
-            }, timeout=30)
+    for index, (dtype, page_name) in enumerate(page_items):
+        xml = diagrams[dtype]
+        result = call_tool("import-diagram", {
+            "data":            xml,
+            "format":          "xml",
+            "mode":            "replace",
+            "filename":        f"{page_name}.drawio",
+            "target_page":     {"index": index},
+            "target_document": {"id": doc_id},
+        }, timeout=30)
+        _rename_page(doc_id, index, page_name)
         results.append(result)
     return results

@@ -11,6 +11,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 from .drawio import (
+    DIAGRAM_PAGE_NAMES,
     render_all_diagrams,
     render_drawio,
     render_ibm_location_snippet,
@@ -415,7 +416,7 @@ def _export_readme_markdown(summary: dict, customer: str, project: str) -> str:
 
 
 class NetworkPicassoHandler(BaseHTTPRequestHandler):
-    server_version = "NetworkPicasso/0.6.1"
+    server_version = "NetworkPicasso/0.6.2"
 
     def do_OPTIONS(self) -> None:
         self.send_response(204)
@@ -1295,7 +1296,11 @@ class NetworkPicassoHandler(BaseHTTPRequestHandler):
             self.send_error_json(503, "drawio-mcp-server is not running at localhost:4000. Start it via the MCP panel in Bob.")
             return
         try:
-            _mcp.open_diagram_in_editor(xml, filename=f"network-picasso-{diagram_type}.drawio")
+            _mcp.open_diagram_in_editor(
+                xml,
+                filename=f"network-picasso-{diagram_type}.drawio",
+                page_name=DIAGRAM_PAGE_NAMES.get(diagram_type, diagram_type.title()),
+            )
         except (ConnectionError, RuntimeError) as exc:
             self.send_error_json(503, str(exc))
             return

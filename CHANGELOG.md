@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.6.2 - 2026-07-28
+
+### Fixed
+
+- MCP all-pages open now replaces and renames existing page slots 0-4 instead of appending behind stale tabs, preventing duplicate Deployment tabs in the live Draw.io MCP editor.
+- Single-page MCP opens now rename page 0 to the selected diagram type after replacing content.
+- Added MCP bridge tests for stale tab reuse and missing page-slot creation.
+
 ## 0.6.1 - 2026-07-28
 
 ### Fixed
