@@ -675,6 +675,22 @@ body {
   margin: 0;
 }
 
+.project-restore-header,
+.project-restore-title {
+  align-items: center;
+  display: flex;
+  gap: 0.5rem;
+  justify-content: space-between;
+}
+
+.project-restore-title {
+  align-items: flex-start;
+}
+
+.project-restore-title strong {
+  min-width: 0;
+}
+
 .project-restore-point {
   align-items: flex-start;
   border-top: 1px solid #e0e0e0;

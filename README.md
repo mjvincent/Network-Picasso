@@ -12,7 +12,7 @@ The app is designed for sellers who may not be deep network designers. It provid
 question prompts, IBM-pattern traceability, and Bob/Draw.io MCP hand-holding so the user can move
 from rough discovery notes to a customer-ready architecture conversation.
 
-Current version: **0.4.7**
+Current version: **0.4.8**
 
 ---
 
@@ -97,6 +97,7 @@ It produces four architecture pages:
   - Active projects autosave their architecture model as the seller uploads files, answers questions, confirms patterns, and refines requirements.
   - Project Activity shows last save metadata, Postgres connection state, latest diagram quality score, recent project events, and restore points so autosave is visible and recoverable.
   - Restore previews compare the current architecture with the selected restore point before replacing the working model.
+  - Restore timeline filters separate milestones, autosaves, intake/imports, design decisions, quality checks, and restores/syncs.
   - Adds optional Postgres persistence for customer/project metadata, architecture JSON restore points, and project events.
   - Docker Compose starts Postgres automatically with a named volume so project data survives restarts.
 
@@ -299,14 +300,14 @@ server-side collaboration.
 1. **Screenshot-based user guide**
    - Capture the Bob MCP setup, `localhost:4000` editor, Option E workflow, and Bob prompt flow.
 
-2. **Restore point timeline filters**
-   - Filter restore points by autosave, intake, quality check, pattern selection, requirement update, or manual restore.
+2. **Project search and filters**
+   - Search customers/projects by name, industry, selected IBM pattern, quality score, region, and service family.
 
 3. **Assumptions and decisions page**
    - Add a fifth generated page summarizing assumptions, unanswered questions, inferred choices, and customer decisions.
 
-4. **Project search and filters**
-   - Search customers/projects by name, industry, selected IBM pattern, quality score, region, and service family.
+4. **Restore point retention policy**
+   - Keep milestone restore points indefinitely while pruning routine autosaves after a configurable limit.
 
 5. **Export package**
    - Generate a customer-ready package with `.drawio`, architecture summary, assumptions, open questions, and implementation notes.

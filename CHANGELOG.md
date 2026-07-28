@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.8 - 2026-07-28
+
+### Added
+
+- Restore-point timeline filter in Project Activity for milestones, autosaves, intake/imports, design decisions, quality checks, and restores/syncs.
+- Restore-point category tags and visible filtered/total counts so routine autosaves do not hide important checkpoints.
+
 ## 0.4.7 - 2026-07-27
 
 ### Added

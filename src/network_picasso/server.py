@@ -256,7 +256,7 @@ def _quality_label(quality: dict) -> str:
 
 
 class NetworkPicassoHandler(BaseHTTPRequestHandler):
-    server_version = "NetworkPicasso/0.4.7"
+    server_version = "NetworkPicasso/0.4.8"
 
     def do_OPTIONS(self) -> None:
         self.send_response(204)

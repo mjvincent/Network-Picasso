@@ -185,6 +185,8 @@ type ProjectSnapshot = {
   createdAt: string;
 };
 
+type RestoreFilter = 'all' | 'milestones' | 'autosave' | 'intake' | 'decisions' | 'quality' | 'restores';
+
 type RestorePreview = {
   snapshot: {
     id: number;
@@ -487,6 +489,47 @@ function formatRestoreValue(value: unknown): string {
   return JSON.stringify(value);
 }
 
+const RESTORE_FILTERS: Array<{ id: RestoreFilter; label: string }> = [
+  { id: 'milestones', label: 'Milestones' },
+  { id: 'all', label: 'All restore points' },
+  { id: 'autosave', label: 'Autosaves' },
+  { id: 'intake', label: 'Intake and imports' },
+  { id: 'decisions', label: 'Design decisions' },
+  { id: 'quality', label: 'Quality checks' },
+  { id: 'restores', label: 'Restores and syncs' },
+];
+
+function restoreFilterForEvent(eventType: string): RestoreFilter {
+  if (eventType === 'autosave') return 'autosave';
+  if (['intake', 'upload-intake', 'project-imported', 'project-duplicated'].includes(eventType)) return 'intake';
+  if (['answer-saved', 'requirements-saved', 'components-confirmed', 'pattern-set'].includes(eventType)) return 'decisions';
+  if (eventType === 'diagram-quality') return 'quality';
+  if (['restore-point', 'manual-sync'].includes(eventType)) return 'restores';
+  return 'milestones';
+}
+
+function restoreEventLabel(eventType: string): string {
+  switch (restoreFilterForEvent(eventType)) {
+    case 'autosave': return 'Autosave';
+    case 'intake': return 'Intake';
+    case 'decisions': return 'Decision';
+    case 'quality': return 'Quality';
+    case 'restores': return 'Restore';
+    default: return 'Milestone';
+  }
+}
+
+function restoreEventTagType(eventType: string): CarbonTagType {
+  switch (restoreFilterForEvent(eventType)) {
+    case 'autosave': return 'gray';
+    case 'intake': return 'blue';
+    case 'decisions': return 'teal';
+    case 'quality': return 'purple';
+    case 'restores': return 'green';
+    default: return 'cool-gray';
+  }
+}
+
 // Re-export utilities for tests
 export { questionKey, mergeQuestions };
 
@@ -569,6 +612,7 @@ export default function App() {
   const [restorePreview, setRestorePreview] = useState<RestorePreview | null>(null);
   const [restorePreviewBusy, setRestorePreviewBusy] = useState(false);
   const [restoreBusy, setRestoreBusy] = useState(false);
+  const [restoreFilter, setRestoreFilter] = useState<RestoreFilter>('milestones');
   const importInputRef = useRef<HTMLInputElement>(null);
 
   // Projects page state (folder browser)
@@ -1099,6 +1143,15 @@ export default function App() {
     () => questions.filter((q) => !answeredKeys.has(q.question)),
     [answeredKeys, questions],
   );
+
+  const restoreSnapshots = useMemo(() => {
+    const snapshots = projectActivity?.snapshots || [];
+    if (restoreFilter === 'all') return snapshots;
+    if (restoreFilter === 'milestones') {
+      return snapshots.filter((snapshot) => snapshot.eventType !== 'autosave');
+    }
+    return snapshots.filter((snapshot) => restoreFilterForEvent(snapshot.eventType) === restoreFilter);
+  }, [projectActivity?.snapshots, restoreFilter]);
 
   async function uploadAndRunIntake() {
     setBusy(true);
@@ -2059,17 +2112,45 @@ export default function App() {
                       )}
 
                       <div className="project-restore-points">
-                        <span className="advisor-label">Restore points</span>
+                        <div className="project-restore-header">
+                          <span className="advisor-label">Restore points</span>
+                          {projectActivity?.persistence.connected && (
+                            <Tag type="cool-gray" size="sm">
+                              {restoreSnapshots.length}/{(projectActivity.snapshots || []).length}
+                            </Tag>
+                          )}
+                        </div>
                         {!projectActivity?.persistence.connected && (
                           <p className="panel-copy">Connect Postgres to keep recoverable architecture restore points.</p>
                         )}
                         {projectActivity?.persistence.connected && !projectActivityBusy && (projectActivity.snapshots || []).length === 0 && (
                           <p className="panel-copy">No restore points yet. Intake, quality checks, pattern changes, and periodic autosaves create them.</p>
                         )}
-                        {!projectActivityBusy && (projectActivity?.snapshots || []).slice(0, 5).map((snapshot) => (
+                        {projectActivity?.persistence.connected && (projectActivity?.snapshots || []).length > 0 && (
+                          <Select
+                            id="restore-filter-select"
+                            labelText="Timeline filter"
+                            size="sm"
+                            value={restoreFilter}
+                            onChange={(event: React.ChangeEvent<HTMLSelectElement>) => setRestoreFilter(event.target.value as RestoreFilter)}
+                          >
+                            {RESTORE_FILTERS.map((filter) => (
+                              <SelectItem key={filter.id} value={filter.id} text={filter.label} />
+                            ))}
+                          </Select>
+                        )}
+                        {projectActivity?.persistence.connected && !projectActivityBusy && (projectActivity.snapshots || []).length > 0 && restoreSnapshots.length === 0 && (
+                          <p className="panel-copy">No restore points match this filter.</p>
+                        )}
+                        {!projectActivityBusy && restoreSnapshots.slice(0, 8).map((snapshot) => (
                           <div className="project-restore-point" key={snapshot.id}>
                             <div>
-                              <strong>{snapshot.label}</strong>
+                              <div className="project-restore-title">
+                                <strong>{snapshot.label}</strong>
+                                <Tag type={restoreEventTagType(snapshot.eventType)} size="sm">
+                                  {restoreEventLabel(snapshot.eventType)}
+                                </Tag>
+                              </div>
                               <span>
                                 {formatActivityDate(snapshot.createdAt)}
                                 {snapshot.qualityScore != null ? ` · ${snapshot.qualityScore}/100` : ''}
