@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.4.9 - 2026-07-28
+
+### Added
+
+- End-to-end user guide covering Docker startup, project workflow, intake, questions, advisor, diagrams, quality analysis, restore points, Bob/MCP, exports, and troubleshooting.
+- Screenshot checklist for building a full illustrated usage guide.
+
+### Changed
+
+- Getting Started is now Docker-first and presents the containerized app as the recommended end-user entry point.
+- Containerization docs now explicitly call Docker Compose the recommended end-user startup path.
+
 ## 0.4.8 - 2026-07-28
 
 ### Added

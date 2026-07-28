@@ -22,6 +22,9 @@ Open:
 http://127.0.0.1:5174
 ```
 
+This is the recommended entry point for end users. It starts the UI, API, and Postgres
+persistence together, so Project Activity and restore points work immediately.
+
 For day-to-day use after the first build, the same command is still fine. Docker will reuse cached
 layers unless the source or dependencies changed.
 

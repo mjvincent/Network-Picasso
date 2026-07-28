@@ -12,7 +12,7 @@ The app is designed for sellers who may not be deep network designers. It provid
 question prompts, IBM-pattern traceability, and Bob/Draw.io MCP hand-holding so the user can move
 from rough discovery notes to a customer-ready architecture conversation.
 
-Current version: **0.4.8**
+Current version: **0.4.9**
 
 ---
 
@@ -235,6 +235,7 @@ ui/src/App.tsx    React + Carbon workbench
 
 docs/
   getting-started.md
+  user-guide.md
   drawio-mcp-handbook.md
   containerization.md
   solutioning-workbook-format.md
@@ -247,7 +248,8 @@ docs/
 
 | Document | Purpose |
 |---|---|
-| [docs/getting-started.md](docs/getting-started.md) | Full setup and usage walkthrough |
+| [docs/getting-started.md](docs/getting-started.md) | Docker-first quick start, usage flow, and troubleshooting |
+| [docs/user-guide.md](docs/user-guide.md) | End-to-end tool usage guide and screenshot checklist |
 | [docs/drawio-mcp-handbook.md](docs/drawio-mcp-handbook.md) | Hand-holding guide for Bob, MCP, and Draw.io editing |
 | [docs/containerization.md](docs/containerization.md) | Docker Compose setup, ports, volumes, MCP host access |
 | [docs/solutioning-workbook-format.md](docs/solutioning-workbook-format.md) | Expected workbook/input structure |
@@ -297,8 +299,8 @@ server-side collaboration.
 
 ## Recommended Next Improvements
 
-1. **Screenshot-based user guide**
-   - Capture the Bob MCP setup, `localhost:4000` editor, Option E workflow, and Bob prompt flow.
+1. **Add guide screenshots**
+   - Capture the full Docker-first usage flow, Projects, upload, advisor, diagram generation, Project Activity, restore preview, Bob MCP setup, and MCP editor workflow.
 
 2. **Project search and filters**
    - Search customers/projects by name, industry, selected IBM pattern, quality score, region, and service family.

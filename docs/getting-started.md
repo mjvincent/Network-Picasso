@@ -1,402 +1,281 @@
 # Getting Started with Network Picasso
 
-Network Picasso is a **local-first** IBM Cloud architecture diagram workbench. It ingests your
-customer's bill of materials, pricing exports, or architecture notes and guides you through a
-structured interview to fill design gaps — then generates professional Draw.io diagrams using
-IBM Cloud stencil shapes and layout conventions.
+Network Picasso is a local-first IBM Cloud architecture advisor and Draw.io workbench for
+technical sellers. It turns customer source files, notes, and design answers into IBM-aligned
+architecture guidance and editable diagrams.
 
-Everything runs on your laptop. No cloud API keys required. Optionally uses a local Ollama model
-for AI-assisted component extraction.
+For most users, the Docker Compose path is the easiest entry point. It starts the UI, API, and
+Postgres persistence with one command and avoids local Python/npm setup.
 
----
+## Fastest Start: Docker Compose
 
-## Prerequisites
+### Prerequisites
 
-| Requirement | Version | Check |
+| Requirement | Why it is needed | Check |
 |---|---|---|
-| Python | 3.11 or later | `python3 --version` |
-| Node.js | 18 or later | `node --version` |
-| npm | 9 or later | `npm --version` |
-| Draw.io desktop *(optional)* | any | [diagrams.net/desktop](https://www.diagrams.net/blog/diagrams-desktop) |
-| Ollama *(optional, for AI mode)* | any | `ollama --version` |
+| Docker Desktop or Docker Engine | Runs the app, API, and Postgres | `docker --version` |
+| Git or a downloaded repo copy | Gets the project files onto your laptop | `git --version` |
+| Browser | Opens the Network Picasso UI and diagrams.net | Any modern browser |
+| IBM Bob | Optional, for conversational Draw.io editing | Bob MCP settings |
+| Ollama | Optional, for local AI-assisted intake | `ollama --version` |
 
----
-
-## First-Time Setup
-
-### 1. Clone the repository
+### 1. Get the repository
 
 ```bash
-git clone https://github.com/mjvincent/Network-Picasso.git
+git clone <repo-url>
 cd "Network Picasso"
 ```
 
-### 2. Create a Python virtual environment
+If you received a zip file instead, extract it and open a terminal in the extracted
+`Network Picasso` folder.
+
+### 2. Start the app
+
+```bash
+docker compose up --build
+```
+
+Open:
+
+```text
+http://127.0.0.1:5174
+```
+
+Leave the terminal running while you use the app. Stop it with `Ctrl+C`.
+
+For background mode:
+
+```bash
+docker compose up --build -d
+```
+
+Stop background containers:
+
+```bash
+docker compose down
+```
+
+### 3. Confirm the services
+
+```bash
+curl http://127.0.0.1:8788/api/health
+curl http://127.0.0.1:8788/api/persistence/status
+```
+
+Expected result:
+
+- API returns `"ok": true`
+- Persistence returns `"connected": true`
+- UI is open at `http://127.0.0.1:5174`
+
+Default container ports:
+
+| Service | Host port | Container port |
+|---|---:|---:|
+| UI | `5174` | `5173` |
+| API | `8788` | `8787` |
+| Postgres | `55432` | `5432` |
+
+These ports are intentionally different from the other RVTools container stacks.
+
+## First Use
+
+### 1. Open Projects
+
+Use the **Projects** tab first. Create:
+
+1. A customer folder.
+2. A project subfolder inside that customer.
+
+Each project gets its own saved architecture model, uploads, activity history, and restore
+points.
+
+### 2. Upload customer inputs
+
+Use the wizard to upload one or more files:
+
+| File type | Good for |
+|---|---|
+| `.xlsx` | IBM Cloud Solutioning/pricing exports, BOM workbooks |
+| `.csv`, `.tsv` | Component inventories or bill of materials |
+| `.md`, `.txt` | Discovery notes, requirements, architecture descriptions |
+| `.json` | Existing Network Picasso architecture model |
+
+The app extracts IBM Cloud regions, VPCs, compute, storage, security, observability,
+connectivity, and data services.
+
+### 3. Review the model
+
+Review extracted components. If Ollama mode is enabled, low-confidence items may appear in a
+staging area where you can confirm or discard them.
+
+### 4. Answer design-gap questions
+
+Questions identify missing HA, DR, network, security, compliance, observability, and data
+decisions. Answers are written back into the architecture model and autosaved.
+
+### 5. Review Architecture Advisor
+
+Use the advisor output to understand:
+
+- Recommended IBM architecture pattern.
+- Pattern rationale.
+- Well-Architected-style gaps.
+- Seller next actions.
+- Logical design guidance.
+
+### 6. Generate diagrams
+
+Network Picasso can generate:
+
+| Page | Purpose |
+|---|---|
+| Executive Overview | Customer-facing story and business flow |
+| Context | External actors, cloud boundary, major services |
+| Logical Architecture | Component relationships and dependencies |
+| Deployment | Regions, VPCs, zones, subnets, PowerVS, services, and connectivity |
+
+Use **Generate all diagram types** for a four-page Draw.io file. Use **Open in MCP editor**
+when you want Bob to edit the diagram conversationally.
+
+### 7. Analyze and refine diagram quality
+
+Use the Diagram Quality Analyzer to check label fit, crowding, connector clarity, and IBM
+pattern alignment. If findings appear, use the provided Bob prompt or open the diagram in the
+MCP editor, refine it, and re-analyze.
+
+### 8. Use restore points
+
+Project Activity shows:
+
+- Autosave status.
+- Architecture file metadata.
+- Postgres status.
+- Latest quality score.
+- Recent events.
+- Restore points.
+
+Restore points can be filtered by milestones, autosaves, intake/imports, design decisions,
+quality checks, and restores/syncs. Before restoring, the app compares the current architecture
+against the selected restore point.
+
+## Full Usage Guide
+
+For a broader walkthrough that can be expanded with screenshots, see:
+
+- [User Guide](user-guide.md)
+- [Draw.io MCP Handbook](drawio-mcp-handbook.md)
+- [Containerization Guide](containerization.md)
+
+## Bob and Draw.io MCP
+
+Bob/MCP is optional. Use it when you want conversational diagram editing after Network Picasso
+has generated the diagram.
+
+The repository includes:
+
+```text
+.bob/mcp.json
+.bob/skills/ibm-drawio-editing.md
+```
+
+Bob should show a `drawio` MCP server in settings. The live MCP editor runs at:
+
+```text
+http://127.0.0.1:4000
+```
+
+Typical flow:
+
+1. Open the Network Picasso workspace in Bob.
+2. Confirm Bob settings show `drawio` connected.
+3. Open `http://127.0.0.1:4000`.
+4. In Network Picasso, generate a diagram.
+5. Click **Open in MCP editor** or **Open all pages in MCP editor**.
+6. Ask Bob to inspect the open Draw.io document and make a targeted edit.
+
+Recommended starting prompt:
+
+```text
+Use the ibm-drawio-editing skill. Inspect the open Draw.io MCP document before making changes.
+Use IBM Cloud stencil patterns, keep labels non-overlapping, and preserve the existing architecture pages.
+```
+
+See [Draw.io MCP Handbook](drawio-mcp-handbook.md) for detailed troubleshooting.
+
+## Optional Ollama Mode
+
+The default mode is deterministic rules. Ollama is optional and runs locally if installed on the
+host.
+
+1. Start Ollama on the host.
+2. Pull a model such as `phi4-mini:latest`.
+3. In Network Picasso, open **Settings**.
+4. Select Ollama-assisted mode.
+5. Test the connection and save settings.
+
+The containerized API can use a host Ollama service when host networking is reachable from
+Docker. If your platform handles host networking differently, use the local developer workflow
+or adjust the API environment variables.
+
+## Local Developer Run
+
+Use this path only when you are changing code or debugging locally without containers.
+
+### Backend
 
 ```bash
 python3 -m venv .venv
-source .venv/bin/activate        # macOS / Linux
-# .venv\Scripts\activate         # Windows
+source .venv/bin/activate
+python -m pip install -e ".[dev]"
+PYTHONPATH=src python3 -B -m network_picasso.server
 ```
 
-### 3. Install Python dependencies
+Backend opens at:
 
-Network Picasso has **no third-party Python dependencies** — only the standard library.
-The virtual environment is used for test tooling only:
-
-```bash
-pip install pytest
+```text
+http://127.0.0.1:8787
 ```
 
-### 4. Install UI dependencies
+### UI
 
 ```bash
 cd ui
 npm install
-cd ..
-```
-
----
-
-## Starting the Application
-
-You need **two terminal windows** — one for the API server and one for the UI.
-
-### Terminal 1 — Python API server (port 8787)
-
-```bash
-# From the repo root
-PYTHONPATH=src python3 -B -m network_picasso.server
-```
-
-You should see:
-
-```
-Network Picasso API listening on http://127.0.0.1:8787
-```
-
-To run in the background:
-
-```bash
-PYTHONPATH=src nohup python3 -B -m network_picasso.server > /tmp/np-server.log 2>&1 &
-```
-
-Check it is running:
-
-```bash
-curl http://localhost:8787/api/health
-# → {"ok": true, "repoRoot": "..."}
-```
-
-Stop the background server:
-
-```bash
-kill $(lsof -ti:8787)
-```
-
-### Terminal 2 — React UI (port 5173)
-
-```bash
-cd ui
 npm run dev
 ```
 
-You should see:
+UI opens at:
 
+```text
+http://127.0.0.1:5173
 ```
-  VITE v5.x.x  ready in Xms
-  ➜  Local:   http://localhost:5173/
-```
 
-### Open the app
+## Troubleshooting
 
-Open **[http://localhost:5173](http://localhost:5173)** in your browser.
-
-> Both servers must be running at the same time. The UI calls the Python API on port 8787.
-
----
-
-## The Four-Step Workflow
-
-### Step 1 — Upload source files
-
-Drag in one or more of:
-
-| File type | Description |
+| Symptom | What to check |
 |---|---|
-| `.xlsx` | IBM Cloud Solutioning pricing workbook or BOM spreadsheet |
-| `.csv` / `.tsv` | Bill of materials, component list |
-| `.md` / `.txt` | Architecture notes, solution description |
-| `.json` | Existing architecture model |
-
-Give the project a name, then click **Parse files and continue**.
-
-Network Picasso extracts IBM Cloud components (regions, VPCs, compute, data, security,
-connectivity, observability) from your files automatically.
-
-### Step 2 — Review the model
-
-The extracted architecture model is shown as a summary table. If Ollama AI mode is on, any
-components extracted with low confidence are shown in a **staging table** where you can
-confirm or discard them.
-
-Click **Continue to questions** when satisfied.
-
-### Step 3 — Answer design questions
-
-Guided design questions identify gaps in the architecture — missing HA, connectivity, security,
-or observability choices. For each question you can:
-
-- Type your own answer and click **Save answer**
-- Click **Accept guidance as answer** to use IBM Cloud best-practice coaching text
-
-Questions tagged **AI** were generated by the Ollama model based on your specific architecture.
-Questions tagged **Rules** came from the built-in IBM Cloud reference architecture rule set.
-
-Answered questions are immediately persisted to `architecture.json` on disk and also feed back
-into the architecture model (e.g. answering the regions question auto-populates `ibm_cloud.regions`).
-
-### Step 4 — Generate your diagram
-
-Choose a diagram type:
-
-| Type | Audience | What it shows |
-|---|---|---|
-| **Context** | Executive / stakeholder | IBM Cloud boundary, external actors, major services |
-| **Logical** | Architects | Component relationships, data flows, functional groupings |
-| **Deployment** | Implementation teams | Full AZ layout, VPC, subnet bands, all services placed |
-
-Then use one of the export options:
-
-| Option | What it does |
-|---|---|
-| **A — Save to file** | Writes `.drawio` XML to `outputs/` — open in Draw.io desktop |
-| **B — Copy XML** | Copies raw XML to clipboard — paste into diagrams.net via Edit › XML |
-| **C — Open in diagrams.net** | Opens diagrams.net popup, diagram loads automatically |
-| **D — Preview here** | Inline interactive preview using the diagrams.net embed API |
-| **E — Open in MCP editor** | Pushes diagram to localhost:4000 for conversational editing with Bob |
-| **Generate all diagram types** | Produces context + logical + deployment in one step |
-
----
-
-## Project Management
-
-Click **Projects** in the left sidebar to manage customer projects.
-
-- **New customer folder** — creates a top-level folder for a customer
-- **New project in this folder** — creates a project inside the selected customer folder
-- Each project stores its `architecture.json` and uploaded files independently
-- **OverflowMenu (⋮)** per row: rename, duplicate, move, or delete
-
-Projects are stored under `inputs/projects/` by default. You can change the root folder in
-Settings.
-
----
-
-## Settings
-
-Click the **Settings** gear icon in the sidebar.
-
-### Intake mode
-
-| Mode | Description |
-|---|---|
-| **Rules only** | Fast keyword-based extraction, no AI, instant results |
-| **Ollama assisted** | Sends document text to a local Ollama model for deeper extraction and additional design questions |
-
-### Ollama model
-
-1. Make sure Ollama is running: `ollama serve`
-2. Pull a model: `ollama pull phi4-mini:latest`
-3. In Settings, click **Test connection** to populate the model list
-4. Select your model from the dropdown
-5. Click **Save settings**
-
-Recommended model: `phi4-mini:latest` (fast, 3B parameters, good extraction quality).
-Any model in your local Ollama instance works.
-
-### Draw.io MCP editor
-
-Shows whether the `drawio-mcp-server` is running at `localhost:4000`. Click **Check MCP editor**
-to probe it. For a click-by-click walkthrough, start with
-[`docs/drawio-mcp-handbook.md`](drawio-mcp-handbook.md). See the
-[MCP Editor section](#using-the-mcp-editor-with-bob) below for implementation details.
-
-### Projects folder
-
-Override the default `inputs/projects/` path if you want to store projects elsewhere on disk
-(e.g. `~/Documents/NetworkPicasso/projects`). Changes take effect immediately after saving.
-
----
-
-## Using the MCP Editor with Bob
-
-The Draw.io MCP server (`drawio-mcp-server`) lets Bob (your AI assistant in this IDE) edit
-diagrams conversationally after Network Picasso generates them.
-
-The repository is configured for IBM Bob through `.bob/mcp.json`. VS Code can also work only
-when your VS Code agent/client supports MCP server definitions; use the same server command from
-`.bob/mcp.json`. See [`docs/drawio-mcp-handbook.md`](drawio-mcp-handbook.md) for the practical
-Bob vs VS Code explanation.
-
-### How it works
-
-```
-Network Picasso                    drawio-mcp-server              Bob
-──────────────                     ─────────────────              ───
-Generate diagram  ──Option E──▶   localhost:4000               │
-                                  (Draw.io editor open)         │
-                                         ▲                      │
-                             MCP tools ──┘   ◀── "add a Bastion Host to zone-1"
-```
-
-Bob calls MCP tools (`import-diagram`, `add-edge`, `delete-cell-by-id`, etc.) to make changes
-live in the running Draw.io editor tab. No files are uploaded externally — everything is local.
-
-### Step-by-step setup
-
-#### 1. Confirm the MCP server is registered
-
-The file `.bob/mcp.json` in the repo root registers the server automatically. Bob starts it
-when the workspace is open. Check Bob's **MCP panel** — you should see `drawio` listed as a
-connected server.
-
-If it does not appear:
-- Open Bob's MCP panel (usually via the status bar or command palette)
-- Look for connection errors
-- The first time `npx -y drawio-mcp-server` runs it downloads the package (~30 seconds)
-- Node.js v22+ is required: `node --version`
-
-#### 2. Generate a diagram
-
-In the Network Picasso workbench:
-
-1. Complete Steps 1–3 (upload, review, questions)
-2. Go to **Step 4 — Generate your diagram**
-3. Choose a diagram type (Context / Logical / Deployment)
-
-#### 3. Open the diagram in the MCP editor
-
-Click **Option E — Open in MCP editor**.
-
-If the **MCP editor running** green tag is not shown, click **Check** first. The button
-becomes active once the MCP server is detected. This pushes your diagram XML into the live
-Draw.io editor at `http://localhost:4000` and opens it in a new browser tab.
-
-#### 4. Ask Bob to edit the diagram
-
-In your Bob chat, ask conversational questions like:
-
-> *"Add a Bastion Host to the Management subnet in zone-1"*
-
-> *"Connect the Bastion Host to the ROKS cluster with a labeled SSH edge"*
-
-> *"Remove the Activity Tracker node from the diagram"*
-
-> *"Add a second VPC container labeled 'Edge VPC' and connect it to the Transit Gateway"*
-
-Bob will:
-1. Call `list-paged-model` to read the current diagram structure
-2. Call `POST /api/drawio-snippet` to generate IBM-styled XML for any new components
-3. Call `import-diagram` in `add` mode to inject the new cells while preserving the existing diagram
-4. Confirm the change by reading the model again
-
-#### 5. Generate all four diagram types at once
-
-Click **Generate all diagram types**. This saves `outputs/network-picasso-all.drawio` and opens
-one diagrams.net file with four pages: **Executive Overview**, **Context**,
-**Logical Architecture**, and **Deployment**. If the MCP editor is running, **Open all pages in
-MCP editor** pushes those same four pages to the live editor at `localhost:4000`.
-
-### Activating the IBM diagram editing skill
-
-For best results, activate the skill before asking Bob to edit:
-
-In Bob chat, type:
-```
-use skill ibm-drawio-editing
-```
-
-This loads the IBM stencil name reference, color palette, and step-by-step tool sequences so
-Bob knows the correct IBM Cloud visual conventions.
-
-### Troubleshooting the MCP editor
-
-| Symptom | Fix |
-|---|---|
-| `drawio` not shown in MCP panel | Check `.bob/mcp.json` exists in the repo root; open a folder in Bob before the MCP panel activates |
-| First connection takes 30+ seconds | Normal — `npx` is downloading `drawio-mcp-server` for the first time |
-| Option E button is greyed out | Click **Check** in the Option E card to probe `localhost:4000`; the button only activates when the server is detected |
-| "No connected Draw.io documents" | Open `http://localhost:4000` in your browser first; the MCP editor needs an active browser tab |
-| Diagram looks wrong after Bob edits | Bob used a raw shape instead of the IBM prescribed node pattern; activate the `ibm-drawio-editing` skill and retry |
-| Node v22 not found | Install from [nodejs.org](https://nodejs.org) — v22 LTS is recommended |
-
----
-
-## Running Tests
+| UI does not open at `5174` | Confirm `docker compose up --build` is still running and no other app is using port `5174`. |
+| API health fails | Run `docker ps` and confirm `network-picasso-api` is healthy. |
+| Postgres says disconnected | Confirm `network-picasso-db` is healthy and restart with `docker compose up --build`. |
+| Restore points do not appear | Restore points require connected Postgres persistence and at least one autosave/intake/quality/design event. |
+| Bob says `drawio` disconnected | Open Bob MCP settings, refresh/reconnect `drawio`, then open `http://127.0.0.1:4000`. |
+| Container cannot reach MCP editor | Confirm `NETWORK_PICASSO_MCP_BASE_URL=http://host.docker.internal:4000` in Compose. |
+| Only one Draw.io page appears | Use **Generate all diagram types** and confirm diagrams.net shows page tabs. Refresh the app if the browser cached old UI code. |
+
+## Tests
+
+Backend:
 
 ```bash
-# Python tests (95+ tests, stdlib only)
-PYTHONPATH=src .venv/bin/pytest -v
-
-# UI tests (Vitest)
-cd ui && npm test -- --run
-
-# Type check + production build
-cd ui && npm run build
+PYTHONPATH=src .venv/bin/pytest tests/test_advisor.py tests/test_drawio.py tests/test_endpoints.py -q
 ```
 
----
+UI:
 
-## Directory Structure
-
+```bash
+cd ui
+npm test -- --run
+npm run build
+npm audit
 ```
-Network Picasso/
-├── src/network_picasso/
-│   ├── server.py          API server (port 8787)
-│   ├── intake.py          File parsing and IBM Cloud component extraction
-│   ├── questions.py       Rule-based design-gap questions
-│   ├── drawio.py          Deterministic Draw.io XML renderer
-│   ├── ollama.py          Thin local Ollama HTTP client
-│   ├── mcp_bridge.py      drawio-mcp-server HTTP bridge
-│   └── projects.py        Project and folder management
-├── ui/src/
-│   └── App.tsx            React + Carbon UI workbench
-├── tests/                 Python test suite
-├── examples/
-│   ├── sample-inputs/     Neutral sample BOM and architecture notes
-│   └── sample/            Extracted architecture.json example
-├── docs/
-│   ├── getting-started.md ← this file
-│   └── agentic-process.md
-├── .bob/
-│   ├── mcp.json           drawio-mcp-server MCP registration
-│   └── skills/
-│       └── ibm-drawio-editing.md   IBM diagram editing skill for Bob
-├── inputs/
-│   ├── projects/          Named customer projects (gitignored)
-│   ├── uploads/           Legacy upload workspace (gitignored)
-│   └── settings.json      Persisted settings (gitignored)
-└── outputs/               Generated .drawio files (gitignored)
-```
-
----
-
-## Quick Reference — API Endpoints
-
-| Endpoint | Method | Purpose |
-|---|---|---|
-| `/api/health` | GET | Server health check |
-| `/api/settings` | GET / POST | Read or save settings |
-| `/api/upload-intake` | POST (multipart) | Upload files and run intake |
-| `/api/questions` | POST | Get design-gap questions for an architecture |
-| `/api/answer` | POST | Persist an answered question |
-| `/api/drawio-xml` | GET / POST | Generate diagram XML |
-| `/api/drawio-snippet` | POST | Get IBM-styled XML for a single node or container |
-| `/api/drawio-mcp-open` | POST | Push diagram to MCP editor |
-| `/api/drawio-mcp-all-pages` | POST | Push all four diagram pages to MCP editor |
-| `/api/drawio-multipage` | POST | Save multi-page `.drawio` file to disk |
-| `/api/drawio-mcp/health` | GET | Check whether MCP editor is running |
-| `/api/ollama/models` | GET | List available Ollama models |
-| `/api/projects` | GET / POST | List or create projects |
-| `/api/folders` | GET | List customer folders |
