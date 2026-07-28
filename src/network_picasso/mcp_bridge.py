@@ -184,7 +184,7 @@ def open_all_pages(diagrams: dict[str, str]) -> list[dict]:
 
     *diagrams* should be the output of ``render_all_diagrams()``::
 
-        {"executive": xml, "context": xml, "logical": xml, "deployment": xml}
+        {"executive": xml, "context": xml, "logical": xml, "deployment": xml, "decisions": xml}
 
     First page replaces page 0; subsequent pages are added as new pages.
     Returns a list of MCP result dicts.
@@ -195,6 +195,7 @@ def open_all_pages(diagrams: dict[str, str]) -> list[dict]:
         "context":    "Context",
         "logical":    "Logical Architecture",
         "deployment": "Deployment",
+        "decisions":  "Assumptions & Decisions",
     }
     results: list[dict] = []
     first = True

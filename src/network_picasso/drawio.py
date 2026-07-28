@@ -4,6 +4,8 @@ from html import escape
 from itertools import count
 from pathlib import Path
 
+from .patterns import best_pattern, match_patterns
+
 # ---------------------------------------------------------------------------
 # IBM Cloud Architecture MD Files — layout conventions loaded at import time
 # ---------------------------------------------------------------------------
@@ -2124,6 +2126,149 @@ def _render_deployment(builder: DrawioBuilder, project: dict, ibm_cloud: dict, r
 # Public entry point
 # ---------------------------------------------------------------------------
 
+def _names_for_category(ibm_cloud: dict, category: str, limit: int = 4) -> list[str]:
+    items = ibm_cloud.get(category, [])
+    if not isinstance(items, list):
+        return []
+    names: list[str] = []
+    for item in items:
+        if isinstance(item, dict):
+            name = str(item.get("name") or item.get("type") or "").strip()
+        else:
+            name = str(item).strip()
+        if name and name not in names:
+            names.append(name)
+    return names[:limit]
+
+
+def _decision_rows(architecture: dict) -> list[tuple[str, str, str]]:
+    project = architecture.get("project", {}) if isinstance(architecture, dict) else {}
+    ibm_cloud = architecture.get("ibm_cloud", {}) if isinstance(architecture, dict) else {}
+    render_plan = architecture.get("render_plan", {}) if isinstance(architecture, dict) else {}
+    questions = architecture.get("questions", {}) if isinstance(architecture, dict) else {}
+    quality = architecture.get("quality", {}) if isinstance(architecture, dict) else {}
+    review = quality.get("lastReview", {}) if isinstance(quality, dict) else {}
+    pattern = best_pattern(architecture)
+
+    selected_pattern = str(render_plan.get("pattern") or pattern.get("id") or "unclassified")
+    pattern_name = str(render_plan.get("pattern_name") or pattern.get("name") or "IBM Think pattern to confirm")
+    pattern_score = pattern.get("score")
+    score_label = f"{pattern_score}/100 match" if pattern_score is not None else "not scored"
+
+    regions = _names_for_category(ibm_cloud, "regions", 3)
+    vpcs = _names_for_category(ibm_cloud, "vpcs", 4)
+    connectivity = _names_for_category(ibm_cloud, "connectivity", 4)
+    security = _names_for_category(ibm_cloud, "security", 4)
+    observability = _names_for_category(ibm_cloud, "observability", 4)
+    data = _names_for_category(ibm_cloud, "data", 4)
+
+    open_questions = questions.get("open", []) if isinstance(questions, dict) else []
+    open_count = len(open_questions) if isinstance(open_questions, list) else 0
+    answered = questions.get("answered", []) if isinstance(questions, dict) else []
+    answered_count = len(answered) if isinstance(answered, list) else 0
+
+    rows = [
+        ("Customer / workload", str(project.get("name") or "Customer architecture"), "Confirm business owner, workload criticality, and environment."),
+        ("IBM foundation", f"{pattern_name} ({selected_pattern}, {score_label})", "Use the IBM Think Architecture pattern as the deployment baseline."),
+        ("Regions", ", ".join(regions) if regions else "Primary region inferred", "Confirm data residency, latency, and DR location constraints."),
+        ("Network topology", ", ".join(vpcs) if vpcs else "VPC landing zone inferred", "Confirm VPC boundaries, subnet tiers, and routing ownership."),
+        ("Hybrid connectivity", ", ".join(connectivity) if connectivity else "No private connectivity captured", "Confirm Direct Link, VPN, BGP, and firewall handoff details."),
+        ("Security foundation", ", ".join(security) if security else "SCC, key management, and secrets handling to confirm", "Confirm encryption, IAM, evidence, and compliance controls."),
+        ("Operations evidence", ", ".join(observability) if observability else "Activity Tracker, flow logs, monitoring, and logging to confirm", "Confirm audit, retention, alerting, and runbook ownership."),
+        ("Data services", ", ".join(data) if data else "Data tier and backup approach to confirm", "Confirm RPO/RTO, replication, backup immutability, and restore tests."),
+        ("Question status", f"{answered_count} answered, {open_count} open", "Resolve open questions before treating this as final architecture."),
+        ("Diagram quality", f"{review.get('score', 'Not analyzed')} {review.get('status', '')}".strip(), "Run quality analyzer after every model or Bob/MCP diagram edit."),
+    ]
+    return rows
+
+
+def _render_assumptions_decisions(builder: DrawioBuilder, project: dict, architecture: dict) -> None:
+    _render_title(builder, project, "assumptions and decisions")
+    ibm_cloud = architecture.get("ibm_cloud", {}) if isinstance(architecture, dict) else {}
+    top_patterns = match_patterns(architecture, top_n=3)
+
+    x = 80
+    y = 170
+    w = 1460
+    builder.box(
+        "IBM Architecture Pattern Traceability",
+        x, y, w, 44,
+        fill="#EDF5FF",
+        stroke=COLOR["network"],
+        font_size=15,
+        font_style=1,
+        align="left",
+    )
+
+    row_y = y + 64
+    for index, pattern in enumerate(top_patterns):
+        label = f"{index + 1}. {pattern['name']} - {pattern['score']}/100"
+        matched = ", ".join(str(item).replace("✓ ", "").replace("○ ", "").replace("⚠ ", "") for item in pattern.get("matched", [])[:3])
+        missing = ", ".join(str(item).replace("✓ ", "").replace("○ ", "").replace("⚠ ", "") for item in pattern.get("missing", [])[:2])
+        body = f"{label}\nMatched: {matched or 'None yet'}\nReview: {missing or 'No material gaps'}"
+        builder.box(
+            body,
+            x + index * 490, row_y, 460, 120,
+            fill="#FFFFFF",
+            stroke=COLOR["grey"],
+            font_size=11,
+            align="left",
+            vertical_align="top",
+        )
+
+    builder.box(
+        "Assumptions, Decisions, And Seller Follow-Up",
+        x, row_y + 160, w, 44,
+        fill="#F4F4F4",
+        stroke=COLOR["grey"],
+        font_size=15,
+        font_style=1,
+        align="left",
+    )
+
+    table_y = row_y + 224
+    col_w = [260, 520, 620]
+    headers = ["Area", "Current Design Position", "Seller Validation"]
+    cursor_x = x
+    for idx, header in enumerate(headers):
+        builder.box(header, cursor_x, table_y, col_w[idx], 36, fill="#E0E0E0", stroke=COLOR["grey"], font_size=12, font_style=1)
+        cursor_x += col_w[idx]
+
+    for row_index, row in enumerate(_decision_rows(architecture)):
+        cursor_x = x
+        row_top = table_y + 36 + row_index * 58
+        for col_index, value in enumerate(row):
+            builder.box(
+                value,
+                cursor_x, row_top, col_w[col_index], 58,
+                fill="#FFFFFF",
+                stroke="#C6C6C6",
+                font_size=10,
+                align="left",
+                vertical_align="top",
+            )
+            cursor_x += col_w[col_index]
+
+    service_count = sum(len(value) for value in ibm_cloud.values() if isinstance(value, list))
+    footer = (
+        f"Traceability source: IBM Think Architecture Patterns ({PATTERN_SOURCE_URL}). "
+        f"Architecture model contains {service_count} IBM Cloud component entries. "
+        "Treat analyzer-added components as recommendations until customer-confirmed."
+    )
+    builder.box(
+        footer,
+        x, table_y + 36 + len(_decision_rows(architecture)) * 58 + 28, w, 58,
+        fill="#FFF1F1",
+        stroke=COLOR["security"],
+        font_size=11,
+        align="left",
+        vertical_align="middle",
+    )
+
+
+PATTERN_SOURCE_URL = "https://www.ibm.com/think/architectures/patterns"
+
+
 def render_drawio(architecture: dict, *, diagram_type: str) -> str:
     """Return Draw.io XML for *architecture* using IBM Cloud stencil shapes.
 
@@ -2133,7 +2278,8 @@ def render_drawio(architecture: dict, *, diagram_type: str) -> str:
       - 02-logical-architecture.md → logical diagram layout
       - 03-deployment-architecture.md → deployment diagram layout
 
-    Supported diagram_type values: "executive", "context", "logical", "deployment".
+    Supported diagram_type values: "executive", "context", "logical",
+    "deployment", "decisions".
     """
     project = architecture.get("project", {})
     ibm_cloud = architecture.get("ibm_cloud", {})
@@ -2146,6 +2292,8 @@ def render_drawio(architecture: dict, *, diagram_type: str) -> str:
         _render_deployment(builder, project, ibm_cloud, render_plan=render_plan)
     elif diagram_type == "logical":
         _render_logical(builder, project, ibm_cloud)
+    elif diagram_type == "decisions":
+        _render_assumptions_decisions(builder, project, architecture)
     else:
         _render_context(builder, project, ibm_cloud)
 
@@ -2355,6 +2503,7 @@ def render_all_diagrams(architecture: dict) -> dict[str, str]:
         "context":    render_drawio(architecture, diagram_type="context"),
         "logical":    render_drawio(architecture, diagram_type="logical"),
         "deployment": render_drawio(architecture, diagram_type="deployment"),
+        "decisions":  render_drawio(architecture, diagram_type="decisions"),
     }
 
 
@@ -2370,6 +2519,7 @@ def render_multipage_drawio(architecture: dict) -> str:
         "context":    "Context",
         "logical":    "Logical Architecture",
         "deployment": "Deployment",
+        "decisions":  "Assumptions & Decisions",
     }
     diagrams_xml: list[str] = []
     for dtype, page_name in page_names.items():
@@ -2381,7 +2531,7 @@ def render_multipage_drawio(architecture: dict) -> str:
         root_content = root_match.group(1) if root_match else inner_xml
         # Escape for CDATA embedding
         diagrams_xml.append(
-            f'  <diagram name="{page_name}">'
+            f'  <diagram name="{escape(page_name)}">'
             f"<mxGraphModel><root>{root_content}</root></mxGraphModel>"
             f"</diagram>"
         )

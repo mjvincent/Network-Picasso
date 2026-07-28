@@ -152,7 +152,7 @@ assumptions were made, and what must be validated before implementation.
 
 ![Generate diagrams](images/user-guide/07-generate-diagrams.png)
 
-Network Picasso can generate four pages:
+Network Picasso can generate five pages:
 
 | Page | Audience | Purpose |
 |---|---|---|
@@ -160,11 +160,12 @@ Network Picasso can generate four pages:
 | Context | Sellers and architects | Actors, cloud boundary, major platform services |
 | Logical Architecture | Architects | Relationships, dependencies, shared services, data flows |
 | Deployment | Architects and implementation teams | Regions, VPCs, zones, subnets, services, connectivity |
+| Assumptions & Decisions | Sellers and architects | IBM pattern traceability, inferred choices, validation items, and quality status |
 
 Recommended flow:
 
 1. Click **Generate all diagram types**.
-2. Confirm diagrams.net opens one file with four pages.
+2. Confirm diagrams.net opens one file with five pages.
 3. Review the Deployment page for topology and labels.
 4. Save the `.drawio` file if you made manual edits.
 
@@ -286,7 +287,7 @@ On the Logical Architecture page, make private service access clearer and preser
 ```
 
 ```text
-Review all four pages for customer-readiness. Fix visible overlaps, cramped labels, ambiguous connector labels, and inconsistent naming.
+Review all five pages for customer-readiness. Fix visible overlaps, cramped labels, ambiguous connector labels, inconsistent naming, and unresolved assumptions.
 ```
 
 ## 12. Troubleshooting
@@ -313,7 +314,7 @@ Use this short script for a live walkthrough:
 4. Review extracted architecture components.
 5. Answer two or three design-gap questions.
 6. Show the advisor pattern recommendation and logical design.
-7. Generate all four Draw.io pages.
+7. Generate all five Draw.io pages.
 8. Run quality analyzer and explain the remediation loop.
 9. Open the diagram in MCP editor and copy a Bob prompt.
 10. Show Project Activity, restore timeline, and export package.

@@ -84,8 +84,11 @@ def test_apply_quality_remediations_adds_missing_pattern_components():
     }
     review = {
         "pattern": "vsi-vpc",
+        "ibmPatternSource": "https://www.ibm.com/think/architectures/patterns",
         "ibmPatternChecks": {
+            "name": "VSI on VPC landing zone - Standard",
             "checks": [
+                {"name": "VPC landing zone", "present": True},
                 {"name": "Private endpoints", "present": False},
                 {"name": "Observability services", "present": False},
             ],
@@ -102,3 +105,8 @@ def test_apply_quality_remediations_adds_missing_pattern_components():
     assert result["applied"]
     assert result["deferred"]
     assert architecture["quality"]["lastRemediation"]["source"] == "quality-analyzer"
+    traceability = architecture["decisions"]["ibmPatternTraceability"]
+    assert traceability["name"] == "VSI on VPC landing zone - Standard"
+    assert "VPC landing zone" in traceability["present"]
+    assert "Private endpoints" in traceability["missing"]
+    assert architecture["decisions"]["presentationReview"]["required"] is True

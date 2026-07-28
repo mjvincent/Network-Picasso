@@ -2980,7 +2980,7 @@ export default function App() {
                       titleText=""
                       label="Select diagram type"
                       selectedItem={diagramType}
-                      items={['executive', 'context', 'logical', 'deployment']}
+                      items={['executive', 'context', 'logical', 'deployment', 'decisions']}
                       onChange={({ selectedItem }) => selectedItem && setDiagramType(String(selectedItem))}
                     />
                   </div>
@@ -3238,12 +3238,12 @@ export default function App() {
                     <div className="diagram-action-card">
                       <div className="diagram-action-header">
                         <strong>Generate all diagram types</strong>
-                        <InfoTip text="Generates executive, context, logical, and deployment diagrams in one step. Opens them as pages in one diagrams.net file and also saves the multi-page .drawio file to outputs/." />
+                        <InfoTip text="Generates executive, context, logical, deployment, and assumptions/decisions pages in one step. Opens them as pages in one diagrams.net file and also saves the multi-page .drawio file to outputs/." />
                       </div>
                       <p className="panel-copy">
                         {mcpRunning
-                          ? 'Opens all four diagram pages in the MCP editor.'
-                          : 'Saves and opens a four-page .drawio file: executive, context, logical, and deployment.'}
+                          ? 'Opens all five diagram pages in the MCP editor.'
+                          : 'Saves and opens a five-page .drawio file: executive, context, logical, deployment, and assumptions/decisions.'}
                       </p>
                       <Button renderIcon={Layers} onClick={generateAllPages}
                         disabled={busy || !architecture}>

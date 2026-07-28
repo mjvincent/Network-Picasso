@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.5.7 - 2026-07-28
+
+### Added
+
+- Five-page Draw.io output with a new Assumptions & Decisions page covering IBM pattern traceability, seller validation items, question status, and diagram quality status.
+- MCP all-pages push now includes the Assumptions & Decisions page.
+- Diagram quality remediations now persist IBM pattern traceability and presentation-review actions into the architecture model.
+
+### Changed
+
+- Updated app and documentation copy from four-page to five-page diagram output.
+
 ## 0.5.6 - 2026-07-28
 
 ### Added

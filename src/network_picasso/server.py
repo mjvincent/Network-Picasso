@@ -404,7 +404,7 @@ def _export_readme_markdown(summary: dict, customer: str, project: str) -> str:
         "## Contents",
         "",
         "- `architecture.json`: saved architecture model",
-        "- `diagrams/network-picasso-all.drawio`: four-page Draw.io architecture",
+        "- `diagrams/network-picasso-all.drawio`: five-page Draw.io architecture with assumptions and decisions traceability",
         "- `reports/architecture-summary.md`: seller-readable architecture summary",
         "- `reports/ibm-pattern-alignment.md`: IBM Think pattern alignment report",
         "- `reports/diagram-quality.md`: quality findings and remediation notes",
@@ -415,7 +415,7 @@ def _export_readme_markdown(summary: dict, customer: str, project: str) -> str:
 
 
 class NetworkPicassoHandler(BaseHTTPRequestHandler):
-    server_version = "NetworkPicasso/0.5.6"
+    server_version = "NetworkPicasso/0.5.7"
 
     def do_OPTIONS(self) -> None:
         self.send_response(204)

@@ -135,7 +135,7 @@ Network Picasso can generate:
 | Logical Architecture | Component relationships and dependencies |
 | Deployment | Regions, VPCs, zones, subnets, PowerVS, services, and connectivity |
 
-Use **Generate all diagram types** for a four-page Draw.io file. Use **Open in MCP editor**
+Use **Generate all diagram types** for a five-page Draw.io file. Use **Open in MCP editor**
 when you want Bob to edit the diagram conversationally.
 
 ### 7. Analyze and refine diagram quality
@@ -169,7 +169,7 @@ In **Project Activity**, click **Export package** after the diagram has been gen
 and polished. The ZIP includes:
 
 - `architecture.json`.
-- A four-page Draw.io file.
+- A five-page Draw.io file with executive, context, logical, deployment, and assumptions/decisions pages.
 - Architecture summary.
 - IBM pattern alignment report.
 - Diagram quality report.

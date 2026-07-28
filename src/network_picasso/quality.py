@@ -137,11 +137,30 @@ def apply_quality_remediations(architecture: dict, review: dict[str, Any]) -> di
     deferred: list[dict[str, str]] = []
     ibm_cloud = architecture.setdefault("ibm_cloud", {})
     render_plan = architecture.setdefault("render_plan", {})
+    decisions = architecture.setdefault("decisions", {})
 
     pattern = str(review.get("pattern") or "").strip()
     if pattern and pattern != "unclassified":
         render_plan.setdefault("pattern", pattern)
         render_plan.setdefault("pattern_source", "quality-analyzer")
+        pattern_checks = review.get("ibmPatternChecks") or {}
+        decisions["ibmPatternTraceability"] = {
+            "id": pattern,
+            "name": str(pattern_checks.get("name") or pattern),
+            "source": str(review.get("ibmPatternSource") or IBM_PATTERN_URL),
+            "status": "review-required",
+            "present": [
+                check.get("name")
+                for check in pattern_checks.get("checks", [])
+                if isinstance(check, dict) and check.get("present")
+            ],
+            "missing": [
+                check.get("name")
+                for check in pattern_checks.get("checks", [])
+                if isinstance(check, dict) and not check.get("present")
+            ],
+            "sellerAction": "Confirm analyzer-added foundation services with the customer before final design approval.",
+        }
         applied.append({
             "area": "IBM pattern foundation",
             "change": f"Recorded IBM pattern foundation '{pattern}' in the render plan.",
@@ -173,6 +192,12 @@ def apply_quality_remediations(architecture: dict, review: dict[str, Any]) -> di
 
     if deferred:
         render_plan["presentation_review_required"] = True
+        decisions["presentationReview"] = {
+            "required": True,
+            "source": "quality-analyzer",
+            "items": deferred,
+            "sellerAction": "Open the diagram in the MCP editor, use the copied Bob prompt, then re-run quality analysis.",
+        }
     if applied or deferred:
         architecture.setdefault("quality", {})["lastRemediation"] = {
             "applied": applied,

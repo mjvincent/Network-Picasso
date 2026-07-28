@@ -378,7 +378,7 @@ def test_ibm_location_snippet_has_border_strip():
 
 def test_render_all_diagrams_keys():
     result = render_all_diagrams(SAMPLE_ARCH)
-    assert set(result.keys()) == {"executive", "context", "logical", "deployment"}
+    assert set(result.keys()) == {"executive", "context", "logical", "deployment", "decisions"}
 
 
 def test_render_all_diagrams_all_valid_xml():
@@ -403,11 +403,11 @@ def test_multipage_drawio_has_mxfile_root():
     assert root.tag == "mxfile"
 
 
-def test_multipage_drawio_has_four_pages():
+def test_multipage_drawio_has_five_pages():
     xml = render_multipage_drawio(SAMPLE_ARCH)
     root = ElementTree.fromstring(xml)
     diagrams = root.findall("diagram")
-    assert len(diagrams) == 4
+    assert len(diagrams) == 5
 
 
 def test_multipage_drawio_page_names():
@@ -418,3 +418,11 @@ def test_multipage_drawio_page_names():
     assert "Context" in names
     assert "Logical Architecture" in names
     assert "Deployment" in names
+    assert "Assumptions & Decisions" in names
+
+
+def test_decisions_page_contains_pattern_traceability():
+    xml = render_drawio(SAMPLE_ARCH, diagram_type="decisions")
+    assert "IBM Architecture Pattern Traceability" in xml
+    assert "Assumptions, Decisions, And Seller Follow-Up" in xml
+    assert "IBM Think Architecture Patterns" in xml

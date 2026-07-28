@@ -12,7 +12,7 @@ The app is designed for sellers who may not be deep network designers. It provid
 question prompts, IBM-pattern traceability, and Bob/Draw.io MCP hand-holding so the user can move
 from rough discovery notes to a customer-ready architecture conversation.
 
-Current version: **0.5.6**
+Current version: **0.5.7**
 
 ---
 
@@ -70,7 +70,7 @@ It produces four architecture pages:
 
 - **Professional Draw.io generation**
   - Uses IBM Cloud stencil names and IBM-style node/container patterns.
-  - Generates Executive, Context, Logical, and Deployment pages.
+  - Generates Executive, Context, Logical, Deployment, and Assumptions & Decisions pages.
   - Opens all pages as a real multipage diagrams.net file.
 
 - **Diagram quality analyzer**
@@ -104,7 +104,7 @@ It produces four architecture pages:
   - Docker Compose starts Postgres automatically with a named volume so project data survives restarts.
 
 - **Customer-ready export package**
-  - Downloads a ZIP containing the saved architecture model, four-page Draw.io file, architecture summary, IBM pattern alignment report, diagram quality report, assumptions/open questions, and project activity metadata.
+  - Downloads a ZIP containing the saved architecture model, five-page Draw.io file, architecture summary, IBM pattern alignment report, diagram quality report, assumptions/open questions, and project activity metadata.
   - Gives technical sellers a single handoff artifact after quality analysis and Bob/MCP polish.
 
 ---
@@ -183,7 +183,7 @@ See [docs/containerization.md](docs/containerization.md).
 5. **Generate diagrams**
    - Save selected diagram type.
    - Open selected diagram in diagrams.net.
-   - Generate all four pages.
+   - Generate all five pages.
    - Push selected or all pages to the Draw.io MCP editor.
 
 6. **Use Bob for targeted editing**
@@ -322,14 +322,14 @@ server-side collaboration.
 2. **Richer project metadata search**
    - Extend the new Projects search/filter controls to include industry, selected IBM pattern, quality score, region, and service family.
 
-3. **Assumptions and decisions page**
-   - Add a fifth generated page summarizing assumptions, unanswered questions, inferred choices, and customer decisions.
-
-4. **Restore retention admin action**
+3. **Restore retention admin action**
    - Add an admin action to prune existing history on demand after changing the retention setting.
 
-5. **Pattern traceability improvements**
-   - Show which IBM pattern elements are explicit, inferred, missing, or recommended.
+4. **Pattern traceability improvements**
+   - Make the diagram quality analyzer distinguish explicit, inferred, missing, and recommended IBM pattern elements in the UI.
+
+5. **Guided Bob/MCP remediation**
+   - Turn remaining visual quality findings into one-click Bob prompt presets for spacing, label placement, connector routing, and customer-ready polish.
 
 ---
 
