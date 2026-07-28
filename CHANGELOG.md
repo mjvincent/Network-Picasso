@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.5.9 - 2026-07-28
+
+### Changed
+
+- Consolidated Bob diagram editing into one primary Bob/MCP remediation area to remove overlap between guided presets and the older editing prompt library.
+- Guided remediation cards now offer **Copy prompt** and **Copy + open MCP** actions.
+- Clarified that Network Picasso can open the Draw.io MCP editor and copy the prompt, but cannot submit a prompt directly into IBM Bob without a Bob-provided API or deep link.
+- Updated documentation to explain the simplified Bob/MCP handoff.
+
 ## 0.5.8 - 2026-07-28
 
 ### Added

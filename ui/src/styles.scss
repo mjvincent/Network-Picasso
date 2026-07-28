@@ -191,12 +191,6 @@ body {
   padding: 1rem;
 }
 
-.bob-prompt-grid {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-}
-
 .guided-preset-grid {
   display: grid;
   gap: 0.5rem;
@@ -207,22 +201,11 @@ body {
   background: #f4f4f4;
   border: 1px solid #c6c6c6;
   color: #161616;
-  cursor: pointer;
   display: grid;
   gap: 0.25rem;
-  min-height: 86px;
+  min-height: 128px;
   padding: 0.75rem;
   text-align: left;
-}
-
-.guided-preset-card:hover {
-  background: #e8e8e8;
-  border-color: #8d8d8d;
-}
-
-.guided-preset-card:disabled {
-  cursor: not-allowed;
-  opacity: 0.55;
 }
 
 .guided-preset-card.is-copied {
@@ -241,28 +224,12 @@ body {
   line-height: 1.35;
 }
 
-.bob-prompt-sections {
-  display: grid;
-  gap: 0.875rem;
-}
-
-.bob-prompt-section {
-  display: grid;
-  gap: 0.5rem;
-}
-
-.bob-prompt-section-header {
+.guided-preset-actions {
   align-items: center;
   display: flex;
-  gap: 0.25rem;
-}
-
-.bob-prompt-section-header > span {
-  color: #525252;
-  font-size: 0.75rem;
-  font-weight: 600;
-  letter-spacing: 0;
-  text-transform: uppercase;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
 }
 
 /* ── Diagram quality analyzer ────────────────────────────────────────────── */

@@ -187,14 +187,15 @@ Use the remediation loop:
 2. Click **Apply analyzer fixes** for model-safe IBM pattern-foundation recommendations.
 3. Regenerate the diagram.
 4. Open the diagram in MCP editor when visual polish is needed.
-5. Copy a guided Bob/MCP remediation preset for the exact issue.
-6. Ask Bob to fix labels, connectors, spacing, IBM pattern alignment, or customer-readiness issues.
+5. Use **Copy prompt** or **Copy + open MCP** for the guided remediation preset that matches the issue.
+6. Paste the copied prompt into Bob to begin the edit.
 7. Re-run the analyzer.
 
 The analyzer is most useful when paired with action. It identifies model fixes that Network
 Picasso can apply and presentation fixes that Bob/MCP should handle. The guided presets include
 current analyzer findings and five-page guardrails so sellers do not need to write Draw.io
-editing prompts from scratch.
+editing prompts from scratch. **Copy + open MCP** opens the Draw.io MCP editor and copies the
+prompt, but it does not submit the prompt into Bob automatically.
 
 ## 9. Use Project Activity And Restore Points
 
@@ -271,13 +272,6 @@ Expected Bob setup:
 > Screenshot slot: `docs/images/user-guide/13-drawio-mcp-editor.png`
 > Capture the Draw.io MCP editor at `http://127.0.0.1:4000` with the generated diagram loaded.
 
-Recommended first Bob prompt:
-
-```text
-Use the ibm-drawio-editing skill. Inspect the open Draw.io MCP document before making changes.
-Use IBM Cloud stencil patterns, keep labels non-overlapping, and preserve the existing architecture pages.
-```
-
 Useful guided remediation presets:
 
 - **Fix labels and spacing**
@@ -287,19 +281,8 @@ Useful guided remediation presets:
 - **Improve IBM pattern alignment**
 - **Prepare customer-ready version**
 
-Useful focused editing prompts:
-
-```text
-On the Deployment page, improve label placement and connector routing without changing the architecture.
-```
-
-```text
-On the Logical Architecture page, make private service access clearer and preserve IBM Cloud container boundaries.
-```
-
-```text
-Review all five pages for customer-readiness. Fix visible overlaps, cramped labels, ambiguous connector labels, inconsistent naming, and unresolved assumptions.
-```
+Use **Copy prompt** when Bob is already in front of you. Use **Copy + open MCP** when you also
+need to bring the Draw.io MCP editor tab forward. Then paste the copied prompt into Bob.
 
 ## 12. Troubleshooting
 

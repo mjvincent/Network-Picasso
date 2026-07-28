@@ -105,10 +105,11 @@ Step 4 includes an MCP checklist under **Option E - Open in MCP editor**:
 - Prompt Bob for targeted editing
 
 Use **Check** first, then **Open MCP editor tab**, then **Open in MCP editor** or
-**Open all pages in MCP editor**. After the diagram is loaded, use **Guided Bob/MCP remediation
-presets** first. They copy page-aware prompts for labels, connector routing, Deployment-page
-polish, all-five-page review, IBM pattern alignment, or customer-ready preparation. Use the
-smaller **Bob editing prompts** when you need a narrower manual edit.
+**Open all pages in MCP editor**. After the diagram is loaded, use **Bob/MCP remediation**.
+The preset cards copy page-aware prompts for labels, connector routing, Deployment-page polish,
+all-five-page review, IBM pattern alignment, or customer-ready preparation. **Copy + open MCP**
+opens the Draw.io MCP editor and places the prompt on the clipboard; paste it into Bob to start
+the edit.
 
 ## What You Should See
 
