@@ -324,7 +324,17 @@ type GuidedRemediationPreset = {
   id: string;
   label: string;
   description: string;
+  targetPage: string;
   prompt: string;
+};
+
+type RemediationSession = {
+  presetLabel: string;
+  targetPage: string;
+  copiedAt: string;
+  mcpWasRunning: boolean;
+  mcpOpened: boolean;
+  reanalyzedAt?: string;
 };
 
 function qualityFindingSummary(review: DiagramQualityReview | null): string {
@@ -370,6 +380,7 @@ function guidedRemediationPresets(diagramType: string, review: DiagramQualityRev
       id: 'labels-spacing',
       label: 'Fix labels and spacing',
       description: 'Best first visual cleanup when labels overlap or text is cramped.',
+      targetPage: pageName,
       prompt: `Use the ibm-drawio-editing skill. Inspect the ${pageName} page in the Draw.io MCP editor. Fix label placement, label box sizing, text wrapping, whitespace, and local alignment issues.
 
 ${context}
@@ -380,6 +391,7 @@ ${guardrails} Keep edits presentation-focused and summarize changed labels or mo
       id: 'connector-routing',
       label: 'Clean connector routing',
       description: 'Use when connector labels cross shapes or traffic flow is hard to follow.',
+      targetPage: pageName,
       prompt: `Use the ibm-drawio-editing skill. Inspect the ${pageName} page in the Draw.io MCP editor. Clean connector routing with orthogonal paths, move connector labels away from shapes and lines, reduce crossings, and keep directional flow clear.
 
 ${context}
@@ -390,6 +402,7 @@ ${guardrails} Preserve all existing source-to-target relationships and summarize
       id: 'deployment-polish',
       label: 'Polish Deployment page',
       description: 'Targets the most technical page for professional customer presentation.',
+      targetPage: 'Deployment',
       prompt: `Use the ibm-drawio-editing skill. Inspect the Deployment page in the Draw.io MCP editor. Tighten the IBM Cloud account, region, VPC, zone, subnet, shared services, PowerVS, and connectivity layout so the design reads professionally.
 
 ${context}
@@ -400,6 +413,7 @@ ${guardrails} Prioritize visible hierarchy, non-overlapping service labels, read
       id: 'all-five-pages',
       label: 'Review all five pages',
       description: 'Runs a full customer-readiness pass across the whole multipage file.',
+      targetPage: 'All five pages',
       prompt: `Use the ibm-drawio-editing skill. Inspect all five pages in the open Draw.io MCP document: ${allPages}. Make targeted professional-grade cleanup on each page.
 
 ${context}
@@ -410,6 +424,7 @@ ${guardrails} Fix overlaps, cramped labels, ambiguous connector labels, inconsis
       id: 'pattern-alignment',
       label: 'Improve IBM pattern alignment',
       description: 'Use when the analyzer reports missing IBM pattern elements.',
+      targetPage: `${pageName} + Assumptions & Decisions`,
       prompt: `Use the ibm-drawio-editing skill. Inspect the ${pageName} page and the Assumptions & Decisions page. Improve visible IBM Think Architecture pattern alignment without changing the customer intent.
 
 ${context}
@@ -420,6 +435,7 @@ ${guardrails} Make explicit only supported pattern evidence: VPC landing zone st
       id: 'customer-ready',
       label: 'Prepare customer-ready version',
       description: 'Final pass before sharing with a technical or executive audience.',
+      targetPage: 'All five pages',
       prompt: `Use the ibm-drawio-editing skill. Prepare the open five-page Draw.io architecture for customer sharing. Inspect ${allPages}.
 
 ${context}
@@ -637,6 +653,7 @@ export default function App() {
   const [mcpEditorOpened, setMcpEditorOpened] = useState(false);
   const [mcpDiagramPushed, setMcpDiagramPushed] = useState(false);
   const [copiedPrompt, setCopiedPrompt] = useState('');
+  const [remediationSession, setRemediationSession] = useState<RemediationSession | null>(null);
 
   // Project state
   const [projectTree, setProjectTree]     = useState<ProjectNode[]>([]);
@@ -693,6 +710,7 @@ export default function App() {
     setPreviewXml(null);
     setPreviewReady(false);
     setDiagramQuality(null);
+    setRemediationSession(null);
   }, [diagramType]);
 
   useEffect(() => {
@@ -1509,6 +1527,10 @@ export default function App() {
       });
       setDiagramQuality(review);
       setQualityFixResult(null);
+      setRemediationSession((current) => current ? {
+        ...current,
+        reanalyzedAt: new Date().toISOString(),
+      } : current);
       setArchitecture((current) => current ? {
         ...current,
         quality: {
@@ -1736,24 +1758,35 @@ export default function App() {
   function openMcpEditorTab() {
     window.open(BROWSER_MCP_EDITOR_URL, 'drawio-mcp-editor');
     setMcpEditorOpened(true);
+    setRemediationSession((current) => current ? {
+      ...current,
+      mcpOpened: true,
+    } : current);
     setStatus(`MCP editor opened at ${BROWSER_MCP_EDITOR_URL}`);
   }
 
-  async function copyBobPrompt(label: string, prompt: string) {
+  async function copyBobPrompt(preset: GuidedRemediationPreset) {
     try {
-      await navigator.clipboard.writeText(prompt);
-      setCopiedPrompt(label);
-      setStatus(`Bob prompt copied: ${label}`);
+      await navigator.clipboard.writeText(preset.prompt);
+      setCopiedPrompt(preset.label);
+      setRemediationSession({
+        presetLabel: preset.label,
+        targetPage: preset.targetPage,
+        copiedAt: new Date().toISOString(),
+        mcpWasRunning: mcpRunning,
+        mcpOpened: false,
+      });
+      setStatus(`Bob prompt copied: ${preset.label}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Prompt copy failed');
     }
   }
 
-  async function copyBobPromptAndOpenMcp(label: string, prompt: string) {
-    await copyBobPrompt(label, prompt);
+  async function copyBobPromptAndOpenMcp(preset: GuidedRemediationPreset) {
+    await copyBobPrompt(preset);
     if (mcpRunning) {
       openMcpEditorTab();
-      setStatus(`Bob prompt copied: ${label}. Paste it into Bob to start the edit.`);
+      setStatus(`Bob prompt copied: ${preset.label}. Paste it into Bob to start the edit.`);
       return;
     }
     setMcpStatus('Prompt copied. Start or refresh the drawio MCP server in Bob, then open the MCP editor.');
@@ -3063,7 +3096,13 @@ export default function App() {
                               kind="tertiary"
                               size="sm"
                               renderIcon={Copy}
-                              onClick={() => copyBobPrompt('Quality Fix', qualityRemediationPrompt(diagramType, diagramQuality))}
+                              onClick={() => copyBobPrompt({
+                                id: 'quality-fix',
+                                label: 'Quality Fix',
+                                description: 'Analyzer-generated remediation prompt.',
+                                targetPage: diagramType,
+                                prompt: qualityRemediationPrompt(diagramType, diagramQuality),
+                              })}
                               disabled={busy}
                             >
                               {copiedPrompt === 'Quality Fix' ? 'Quality fix copied' : 'Copy quality fix prompt'}
@@ -3290,6 +3329,32 @@ export default function App() {
                       lowContrast
                       hideCloseButton
                     />
+                    {remediationSession && (
+                      <div className="remediation-session">
+                        <div>
+                          <span className="remediation-session-label">Current remediation session</span>
+                          <strong>{remediationSession.presetLabel}</strong>
+                          <p>
+                            Target: {remediationSession.targetPage} · Copied {formatActivityDate(remediationSession.copiedAt)}
+                          </p>
+                        </div>
+                        <div className="remediation-session-steps">
+                          <Tag type="green">Prompt copied</Tag>
+                          <Tag type={remediationSession.mcpWasRunning ? 'green' : 'gray'}>
+                            {remediationSession.mcpWasRunning ? 'MCP was running' : 'MCP not detected at copy'}
+                          </Tag>
+                          <Tag type={remediationSession.mcpOpened ? 'green' : 'gray'}>
+                            {remediationSession.mcpOpened ? 'MCP opened' : 'Open MCP next'}
+                          </Tag>
+                          <Tag type={remediationSession.reanalyzedAt ? 'green' : 'purple'}>
+                            {remediationSession.reanalyzedAt ? 'Re-analyzed' : 'Awaiting re-analysis'}
+                          </Tag>
+                        </div>
+                        <p className="panel-copy">
+                          Paste the copied prompt into Bob, let Bob edit the Draw.io MCP document, save the diagram, then click <strong>Re-analyze</strong>.
+                        </p>
+                      </div>
+                    )}
                     <div className="guided-preset-grid">
                       {guidedPresets.map((preset) => (
                         <div
@@ -3303,7 +3368,7 @@ export default function App() {
                               kind={copiedPrompt === preset.label ? 'primary' : 'tertiary'}
                               size="sm"
                               renderIcon={copiedPrompt === preset.label ? Checkmark : Copy}
-                              onClick={() => copyBobPrompt(preset.label, preset.prompt)}
+                              onClick={() => copyBobPrompt(preset)}
                               disabled={busy}
                             >
                               Copy prompt
@@ -3312,7 +3377,7 @@ export default function App() {
                               kind="ghost"
                               size="sm"
                               renderIcon={Launch}
-                              onClick={() => copyBobPromptAndOpenMcp(preset.label, preset.prompt)}
+                              onClick={() => copyBobPromptAndOpenMcp(preset)}
                               disabled={busy}
                             >
                               Copy + open MCP

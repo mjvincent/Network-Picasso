@@ -12,7 +12,7 @@ The app is designed for sellers who may not be deep network designers. It provid
 question prompts, IBM-pattern traceability, and Bob/Draw.io MCP hand-holding so the user can move
 from rough discovery notes to a customer-ready architecture conversation.
 
-Current version: **0.5.9**
+Current version: **0.6.0**
 
 ---
 
@@ -87,6 +87,7 @@ It produces five architecture pages:
   - Provides an in-app MCP checklist.
   - Provides guided Bob/MCP remediation presets for fixing labels and spacing, cleaning connector routing, polishing the Deployment page, reviewing all five pages, improving IBM pattern alignment, and preparing a customer-ready version.
   - Provides a **Copy + open MCP** action that opens the Draw.io MCP editor and places the selected prompt on the clipboard for Bob.
+  - Shows a remediation session status after prompt copy so sellers know the copied preset, target page, MCP handoff state, and whether re-analysis is still needed.
   - Explains that Bob still needs the pasted prompt unless IBM Bob exposes a direct prompt-submission API.
   - Adds help bubbles and a recommended-next-prompt cue so sellers know which remediation preset fits the current diagram need.
 
@@ -331,8 +332,8 @@ server-side collaboration.
 4. **Pattern traceability improvements**
    - Make the diagram quality analyzer distinguish explicit, inferred, missing, and recommended IBM pattern elements in the UI.
 
-5. **Bob/MCP prompt execution feedback**
-   - Track which guided remediation preset was copied, which page it targeted, and whether the user re-analyzed after Bob edits.
+5. **Bob/MCP prompt execution history**
+   - Persist remediation sessions in Project Activity so teams can see which Bob handoff prompts were used over time.
 
 ---
 

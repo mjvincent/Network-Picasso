@@ -189,13 +189,15 @@ Use the remediation loop:
 4. Open the diagram in MCP editor when visual polish is needed.
 5. Use **Copy prompt** or **Copy + open MCP** for the guided remediation preset that matches the issue.
 6. Paste the copied prompt into Bob to begin the edit.
-7. Re-run the analyzer.
+7. Watch the **Current remediation session** status for the copied preset, target page, MCP handoff state, and re-analysis reminder.
+8. Re-run the analyzer.
 
 The analyzer is most useful when paired with action. It identifies model fixes that Network
 Picasso can apply and presentation fixes that Bob/MCP should handle. The guided presets include
 current analyzer findings and five-page guardrails so sellers do not need to write Draw.io
 editing prompts from scratch. **Copy + open MCP** opens the Draw.io MCP editor and copies the
-prompt, but it does not submit the prompt into Bob automatically.
+prompt, but it does not submit the prompt into Bob automatically. After a preset is copied, the
+session status remains visible until the next analyzer run confirms the loop has been checked.
 
 ## 9. Use Project Activity And Restore Points
 

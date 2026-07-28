@@ -232,6 +232,36 @@ body {
   margin-top: 0.5rem;
 }
 
+.remediation-session {
+  background: #f4f4f4;
+  border-left: 4px solid #0f62fe;
+  display: grid;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+}
+
+.remediation-session-label {
+  color: #525252;
+  display: block;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0;
+  margin-bottom: 0.25rem;
+  text-transform: uppercase;
+}
+
+.remediation-session p {
+  color: #525252;
+  font-size: 0.875rem;
+  margin: 0.25rem 0 0;
+}
+
+.remediation-session-steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+}
+
 /* ── Diagram quality analyzer ────────────────────────────────────────────── */
 
 .quality-panel {

@@ -415,7 +415,7 @@ def _export_readme_markdown(summary: dict, customer: str, project: str) -> str:
 
 
 class NetworkPicassoHandler(BaseHTTPRequestHandler):
-    server_version = "NetworkPicasso/0.5.9"
+    server_version = "NetworkPicasso/0.6.0"
 
     def do_OPTIONS(self) -> None:
         self.send_response(204)

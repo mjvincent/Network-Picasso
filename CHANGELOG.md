@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.6.0 - 2026-07-28
+
+### Added
+
+- Remediation session feedback in the diagram step after a Bob/MCP preset is copied.
+- Session status now shows copied preset, target page, MCP state at copy time, whether MCP was opened, and whether the diagram has been re-analyzed afterward.
+
+### Changed
+
+- Bob/MCP preset metadata now records target-page intent for clearer seller handoff.
+
 ## 0.5.9 - 2026-07-28
 
 ### Changed
