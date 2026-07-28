@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.5.6 - 2026-07-28
+
+### Added
+
+- Embedded sanitized Network Picasso app screenshots in the user guide for Projects, upload, review, questions, advisor, diagram generation, quality analyzer, Project Activity, restore preview, and export package.
+- Local Chrome capture script for refreshing user guide screenshots from the Docker Compose app.
+
 ## 0.5.5 - 2026-07-28
 
 ### Added

@@ -12,7 +12,7 @@ The app is designed for sellers who may not be deep network designers. It provid
 question prompts, IBM-pattern traceability, and Bob/Draw.io MCP hand-holding so the user can move
 from rough discovery notes to a customer-ready architecture conversation.
 
-Current version: **0.5.5**
+Current version: **0.5.6**
 
 ---
 
@@ -262,6 +262,10 @@ docs/
 | [docs/solutioning-workbook-format.md](docs/solutioning-workbook-format.md) | Expected workbook/input structure |
 | [docs/agentic-process.md](docs/agentic-process.md) | Agentic process and design intent notes |
 | [CHANGELOG.md](CHANGELOG.md) | Version history |
+
+Utility scripts:
+
+- [scripts/capture_user_guide_screenshots.mjs](scripts/capture_user_guide_screenshots.mjs) captures sanitized app screenshots for the user guide when local Chrome is running with remote debugging on port `9223`.
 
 ---
 

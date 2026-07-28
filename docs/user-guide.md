@@ -54,8 +54,7 @@ curl http://127.0.0.1:8788/api/persistence/status
 
 ## 2. Use Projects First
 
-> Screenshot slot: `docs/images/user-guide/02-projects-workspace.png`
-> Capture the Projects tab showing customer folder actions, search, filters, and sort controls.
+![Projects workspace](images/user-guide/02-projects-workspace.png)
 
 Open **Projects** before uploading files. Projects give each customer/opportunity its own
 workspace, autosave history, restore points, uploads, and exports.
@@ -83,8 +82,7 @@ Use the Projects search and filters to find work quickly:
 
 ## 3. Upload Customer Inputs
 
-> Screenshot slot: `docs/images/user-guide/03-upload-source-files.png`
-> Capture the Upload step with accepted file types and project name visible.
+![Upload source files](images/user-guide/03-upload-source-files.png)
 
 Good source files include:
 
@@ -101,8 +99,7 @@ services and creates or updates the active project architecture model.
 
 ## 4. Review The Architecture Model
 
-> Screenshot slot: `docs/images/user-guide/04-review-model.png`
-> Capture the Review model step showing extracted regions, VPCs, connectivity, compute, storage, security, observability, and backup/DR services.
+![Review extracted model](images/user-guide/04-review-model.png)
 
 Use this step to confirm that the intake process understood the customer evidence. Check:
 
@@ -119,8 +116,7 @@ the architecture.
 
 ## 5. Answer Design Questions
 
-> Screenshot slot: `docs/images/user-guide/05-design-questions.png`
-> Capture the Questions step showing grouped design-gap questions and answer fields.
+![Design questions](images/user-guide/05-design-questions.png)
 
 Questions are meant to help sellers who are not deep network designers. They call out important
 missing decisions before a diagram is generated:
@@ -138,8 +134,7 @@ conversation. Answers autosave into the active project.
 
 ## 6. Review The Architecture Advisor
 
-> Screenshot slot: `docs/images/user-guide/06-architecture-advisor.png`
-> Capture the Architecture Advisor section showing recommended IBM pattern, rationale, Well-Architected-style review, logical design, and seller next actions.
+![Architecture Advisor](images/user-guide/06-architecture-advisor.png)
 
 Use the advisor before generating diagrams. It explains:
 
@@ -155,8 +150,7 @@ assumptions were made, and what must be validated before implementation.
 
 ## 7. Generate Draw.io Diagrams
 
-> Screenshot slot: `docs/images/user-guide/07-generate-diagrams.png`
-> Capture the Diagram step showing selected diagram type, Generate all diagram types, Open in diagrams.net, MCP editor actions, and Bob prompt controls.
+![Generate diagrams](images/user-guide/07-generate-diagrams.png)
 
 Network Picasso can generate four pages:
 
@@ -176,8 +170,7 @@ Recommended flow:
 
 ## 8. Analyze Diagram Quality
 
-> Screenshot slot: `docs/images/user-guide/08-quality-analyzer.png`
-> Capture the Diagram quality analyzer with score, findings, IBM pattern checks, Apply analyzer fixes, and Bob remediation prompt.
+![Diagram quality analyzer](images/user-guide/08-quality-analyzer.png)
 
 Run the analyzer after generating diagrams. It checks:
 
@@ -202,8 +195,7 @@ Picasso can apply and presentation fixes that Bob/MCP should handle.
 
 ## 9. Use Project Activity And Restore Points
 
-> Screenshot slot: `docs/images/user-guide/09-project-activity.png`
-> Capture the Project Activity panel showing autosave, Postgres status, quality score, events, restore timeline, and filters.
+![Project Activity](images/user-guide/09-project-activity.png)
 
 Project Activity confirms the project is being saved and gives you recovery options.
 
@@ -226,16 +218,14 @@ Timeline filters:
 - Quality checks.
 - Restores and syncs.
 
-> Screenshot slot: `docs/images/user-guide/10-restore-preview.png`
-> Capture the restore preview modal comparing current architecture with the selected restore point.
+![Restore preview](images/user-guide/10-restore-preview.png)
 
 Before restoring, review the comparison. Restore only when the target state is clearly the one
 you want to recover.
 
 ## 10. Export The Customer Package
 
-> Screenshot slot: `docs/images/user-guide/11-export-package.png`
-> Capture the Project Activity action area with Export package available.
+![Export package](images/user-guide/11-export-package.png)
 
 Use **Export package** after the architecture has been reviewed, diagrams generated, quality
 checked, and optionally polished with Bob/MCP.
