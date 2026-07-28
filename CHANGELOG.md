@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.3 - 2026-07-28
+
+### Added
+
+- GitHub Actions CI workflow for backend tests, Python dependency audit, UI tests, TypeScript build, npm audit, and Docker Compose image builds.
+
 ## 0.5.2 - 2026-07-28
 
 ### Added
