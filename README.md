@@ -12,7 +12,7 @@ The app is designed for sellers who may not be deep network designers. It provid
 question prompts, IBM-pattern traceability, and Bob/Draw.io MCP hand-holding so the user can move
 from rough discovery notes to a customer-ready architecture conversation.
 
-Current version: **0.5.1**
+Current version: **0.5.2**
 
 ---
 
@@ -102,6 +102,10 @@ It produces four architecture pages:
   - Retains milestone restore points while pruning excess routine autosaves per project; the autosave cap is configurable in Settings.
   - Adds optional Postgres persistence for customer/project metadata, architecture JSON restore points, and project events.
   - Docker Compose starts Postgres automatically with a named volume so project data survives restarts.
+
+- **Customer-ready export package**
+  - Downloads a ZIP containing the saved architecture model, four-page Draw.io file, architecture summary, IBM pattern alignment report, diagram quality report, assumptions/open questions, and project activity metadata.
+  - Gives technical sellers a single handoff artifact after quality analysis and Bob/MCP polish.
 
 ---
 
@@ -313,10 +317,7 @@ server-side collaboration.
 4. **Restore retention admin action**
    - Add an admin action to prune existing history on demand after changing the retention setting.
 
-5. **Export package**
-   - Generate a customer-ready package with `.drawio`, architecture summary, assumptions, open questions, and implementation notes.
-
-6. **Pattern traceability improvements**
+5. **Pattern traceability improvements**
    - Show which IBM pattern elements are explicit, inferred, missing, or recommended.
 
 ---

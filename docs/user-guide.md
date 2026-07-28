@@ -205,7 +205,21 @@ Routine autosave restore points are capped per project so the database does not 
 Milestone restore points such as intake, design decisions, quality checks, imports, and manual
 restores are retained. The default autosave limit is `25`; change it in **Settings > Restore retention**.
 
-## 10. Edit With Bob And MCP
+## 10. Export The Customer Package
+
+Use **Project Activity > Export package** when the project is ready for handoff.
+
+The ZIP includes:
+
+- Saved `architecture.json`.
+- Four-page Draw.io architecture file.
+- Architecture summary report.
+- IBM pattern alignment report.
+- Diagram quality report.
+- Assumptions, open questions, and answered questions.
+- Project activity and restore-point metadata.
+
+## 11. Edit With Bob And MCP
 
 Use Bob/MCP when deterministic generation gets you close but the diagram needs professional
 polish.
@@ -239,9 +253,9 @@ On the Logical Architecture page, make the private service access path clearer a
 Review the four pages for customer-readiness and list any page that still needs manual cleanup.
 ```
 
-## 11. Export Customer Artifacts
+## 12. Other Export Options
 
-Current export options:
+Additional export options:
 
 - Save selected `.drawio` file.
 - Open generated diagrams in diagrams.net.
@@ -253,7 +267,7 @@ Recommended working practice:
 1. Generate all pages.
 2. Use Diagram Quality Analyzer.
 3. Use Bob/MCP for final cleanup if needed.
-4. Save the Draw.io file from diagrams.net.
+4. Export the customer package from Project Activity.
 5. Keep customer deliverables outside Git unless intentionally versioned.
 
 ## Troubleshooting Quick Reference

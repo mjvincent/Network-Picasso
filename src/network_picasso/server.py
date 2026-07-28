@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import json
+import io
 import os
 import re
+import zipfile
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -258,8 +260,162 @@ def _quality_label(quality: dict) -> str:
     return f"{score}/100 {status}".strip()
 
 
+def build_project_export_package(project_path: Path, settings: dict) -> tuple[bytes, str]:
+    arch_path = project_architecture_path(project_path)
+    if not arch_path.exists():
+        raise FileNotFoundError(arch_path)
+    architecture = read_json_file(arch_path)
+    apply_saved_requirements(architecture)
+    summary = architecture_summary(architecture)
+    reviews = _diagram_quality_reviews(architecture)
+    activity = project_activity_payload(project_path, settings)
+    customer, project = persistence.project_identity(project_path, resolve_projects_root(settings))
+    package_slug = safe_filename(f"{customer}-{project}-network-picasso").replace(" ", "-")
+
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        root = package_slug
+        archive.writestr(f"{root}/architecture.json", json.dumps(architecture, indent=2))
+        archive.writestr(f"{root}/diagrams/network-picasso-all.drawio", render_multipage_drawio(architecture))
+        archive.writestr(f"{root}/reports/architecture-summary.md", _architecture_summary_markdown(summary, architecture))
+        archive.writestr(f"{root}/reports/ibm-pattern-alignment.md", _pattern_report_markdown(reviews))
+        archive.writestr(f"{root}/reports/diagram-quality.md", _quality_report_markdown(reviews, architecture))
+        archive.writestr(f"{root}/reports/assumptions-and-open-questions.md", _assumptions_markdown(architecture))
+        archive.writestr(f"{root}/reports/project-activity.json", json.dumps(activity, indent=2))
+        archive.writestr(f"{root}/README.md", _export_readme_markdown(summary, customer, project))
+    return buffer.getvalue(), f"{package_slug}.zip"
+
+
+def _diagram_quality_reviews(architecture: dict) -> list[dict]:
+    reviews = []
+    for diagram_type in ("executive", "context", "logical", "deployment"):
+        xml = render_drawio(architecture, diagram_type=diagram_type)
+        reviews.append(analyze_diagram_quality(architecture, diagram_type=diagram_type, xml=xml))
+    return reviews
+
+
+def _architecture_summary_markdown(summary: dict, architecture: dict) -> str:
+    render_plan = architecture.get("render_plan", {})
+    lines = [
+        f"# {summary.get('projectName') or 'Architecture'}",
+        "",
+        f"- Environment: {summary.get('environment') or 'Not specified'}",
+        f"- IBM pattern: {summary.get('pattern') or render_plan.get('pattern_name') or render_plan.get('pattern') or 'Not selected'}",
+        f"- Regions: {', '.join(summary.get('regions') or []) or 'Not specified'}",
+        f"- VPCs: {', '.join(summary.get('vpcs') or []) or 'Not specified'}",
+        f"- Connectivity: {', '.join(summary.get('connectivity') or []) or 'Not specified'}",
+        f"- Compute: {', '.join(summary.get('compute') or []) or 'Not specified'}",
+        f"- Storage and data: {', '.join(summary.get('storage') or []) or 'Not specified'}",
+        f"- Security: {', '.join(summary.get('security') or []) or 'Not specified'}",
+        f"- Observability: {', '.join(summary.get('observability') or []) or 'Not specified'}",
+        f"- Latest quality: {summary.get('quality') or 'Not analyzed'}",
+        "",
+        "## Source Files",
+    ]
+    sources = architecture.get("sources") or []
+    if not sources:
+        lines.append("- No source files recorded.")
+    for source in sources:
+        if isinstance(source, dict):
+            lines.append(f"- {source.get('file') or 'source'} ({source.get('role') or source.get('type') or 'input'})")
+    return "\n".join(lines) + "\n"
+
+
+def _pattern_report_markdown(reviews: list[dict]) -> str:
+    lines = ["# IBM Pattern Alignment", ""]
+    for review in reviews:
+        checks = review.get("ibmPatternChecks", {})
+        lines.extend([
+            f"## {review.get('diagramType', '').title()}",
+            "",
+            f"- Pattern foundation: {checks.get('name') or 'Unclassified'}",
+            f"- Source: {review.get('ibmPatternSource')}",
+            "",
+        ])
+        for check in checks.get("checks") or []:
+            mark = "Present" if check.get("present") else "Review"
+            lines.append(f"- {mark}: {check.get('name')}")
+        lines.append("")
+    return "\n".join(lines)
+
+
+def _quality_report_markdown(reviews: list[dict], architecture: dict) -> str:
+    remediation = architecture.get("quality", {}).get("lastRemediation", {})
+    lines = ["# Diagram Quality Report", ""]
+    for review in reviews:
+        lines.extend([
+            f"## {review.get('diagramType', '').title()}",
+            "",
+            f"- Score: {review.get('score')}/100",
+            f"- Status: {review.get('status')}",
+            f"- Summary: {review.get('summary')}",
+            "",
+        ])
+        findings = review.get("findings") or []
+        if not findings:
+            lines.append("- No findings.")
+        for finding in findings:
+            lines.append(f"- {finding.get('severity')}: {finding.get('area')} - {finding.get('message')} Recommendation: {finding.get('recommendation')}")
+        lines.append("")
+    if remediation:
+        lines.extend(["## Applied Analyzer Fixes", ""])
+        for item in remediation.get("applied") or []:
+            lines.append(f"- {item.get('area')}: {item.get('change')}")
+        lines.extend(["", "## Deferred Bob/MCP Layout Work", ""])
+        for item in remediation.get("deferred") or []:
+            lines.append(f"- {item.get('area')}: {item.get('change')}")
+    return "\n".join(lines) + "\n"
+
+
+def _assumptions_markdown(architecture: dict) -> str:
+    lines = ["# Assumptions And Open Questions", "", "## Assumptions"]
+    assumptions = architecture.get("assumptions") or []
+    if not assumptions:
+        lines.append("- No assumptions recorded.")
+    for assumption in assumptions:
+        lines.append(f"- {assumption}")
+    lines.extend(["", "## Open Questions"])
+    open_questions = architecture.get("questions", {}).get("open") or []
+    if not open_questions:
+        lines.append("- No open questions recorded.")
+    for question in open_questions:
+        if isinstance(question, dict):
+            lines.append(f"- {question.get('question') or question}")
+        else:
+            lines.append(f"- {question}")
+    lines.extend(["", "## Answered Questions"])
+    answered = architecture.get("questions", {}).get("answered") or []
+    if not answered:
+        lines.append("- No answered questions recorded.")
+    for item in answered:
+        if isinstance(item, dict):
+            lines.append(f"- {item.get('question')}: {item.get('answer')}")
+    return "\n".join(lines) + "\n"
+
+
+def _export_readme_markdown(summary: dict, customer: str, project: str) -> str:
+    return "\n".join([
+        f"# Network Picasso Export - {summary.get('projectName') or project}",
+        "",
+        f"- Customer folder: {customer}",
+        f"- Project folder: {project}",
+        f"- Exported: {datetime.now(timezone.utc).isoformat()}",
+        "",
+        "## Contents",
+        "",
+        "- `architecture.json`: saved architecture model",
+        "- `diagrams/network-picasso-all.drawio`: four-page Draw.io architecture",
+        "- `reports/architecture-summary.md`: seller-readable architecture summary",
+        "- `reports/ibm-pattern-alignment.md`: IBM Think pattern alignment report",
+        "- `reports/diagram-quality.md`: quality findings and remediation notes",
+        "- `reports/assumptions-and-open-questions.md`: assumptions, unanswered questions, and captured answers",
+        "- `reports/project-activity.json`: project activity, persistence, restore-point, and retention metadata",
+        "",
+    ])
+
+
 class NetworkPicassoHandler(BaseHTTPRequestHandler):
-    server_version = "NetworkPicasso/0.5.1"
+    server_version = "NetworkPicasso/0.5.2"
 
     def do_OPTIONS(self) -> None:
         self.send_response(204)
@@ -343,6 +499,27 @@ class NetworkPicassoHandler(BaseHTTPRequestHandler):
             self.send_cors_headers()
             self.send_header("Content-Type", "application/json; charset=utf-8")
             self.send_header("Content-Disposition", 'attachment; filename="architecture.json"')
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+        if parsed.path == "/api/project-export-package":
+            qs = parse_qs(parsed.query or "")
+            settings = load_settings()
+            try:
+                project_path = managed_project_path((qs.get("path") or [""])[0], settings)
+            except ValueError as exc:
+                self.send_error_json(400, str(exc))
+                return
+            try:
+                body, filename = build_project_export_package(project_path, settings)
+            except FileNotFoundError:
+                self.send_error_json(404, "No architecture.json found for this project")
+                return
+            self.send_response(200)
+            self.send_cors_headers()
+            self.send_header("Content-Type", "application/zip")
+            self.send_header("Content-Disposition", f'attachment; filename="{filename}"')
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
             self.wfile.write(body)

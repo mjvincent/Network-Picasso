@@ -1066,6 +1066,14 @@ export default function App() {
     a.click();
   }
 
+  function exportProjectPackage() {
+    if (!activeProject) return;
+    const a = document.createElement('a');
+    a.href = `/api/project-export-package?path=${encodeURIComponent(activeProject.path)}`;
+    a.download = `${activeProject.customer}-${activeProject.project || 'project'}-network-picasso.zip`;
+    a.click();
+  }
+
   async function openRestorePreview(snapshot: ProjectSnapshot) {
     if (!activeProject) return;
     setRestoreTarget(snapshot);
@@ -2114,13 +2122,22 @@ export default function App() {
                           {projectActivityBusy ? 'Refreshing...' : 'Refresh activity'}
                         </Button>
                         <Button
+                          kind="primary"
+                          size="sm"
+                          renderIcon={Download}
+                          onClick={exportProjectPackage}
+                          disabled={!activeProject.hasArchitecture}
+                        >
+                          Export package
+                        </Button>
+                        <Button
                           kind="ghost"
                           size="sm"
                           renderIcon={Download}
                           onClick={exportArchitecture}
                           disabled={!activeProject.hasArchitecture}
                         >
-                          Export JSON
+                          Export model JSON
                         </Button>
                       </div>
 

@@ -163,6 +163,19 @@ against the selected restore point.
 Milestone restore points are retained. Routine autosaves are capped per project to keep the
 database from growing indefinitely. Change the cap in **Settings > Restore retention**.
 
+### 9. Export the customer package
+
+In **Project Activity**, click **Export package** after the diagram has been generated, analyzed,
+and polished. The ZIP includes:
+
+- `architecture.json`.
+- A four-page Draw.io file.
+- Architecture summary.
+- IBM pattern alignment report.
+- Diagram quality report.
+- Assumptions, open questions, and answered questions.
+- Project activity and restore-point metadata.
+
 ## Full Usage Guide
 
 For a broader walkthrough that can be expanded with screenshots, see:

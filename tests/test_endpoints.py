@@ -7,9 +7,11 @@ urllib.request so dependencies are kept to zero.
 from __future__ import annotations
 
 import json
+import io
 import pathlib
 import threading
 import urllib.request
+import zipfile
 
 import pytest
 
@@ -48,6 +50,15 @@ def _get(base: str, path: str) -> tuple[int, dict]:
             return r.status, json.loads(r.read().decode())
     except urllib.error.HTTPError as exc:
         return exc.code, json.loads(exc.read().decode())
+
+
+def _get_bytes(base: str, path: str) -> tuple[int, bytes, dict[str, str]]:
+    req = urllib.request.Request(f"{base}{path}")
+    try:
+        with urllib.request.urlopen(req, timeout=10) as r:
+            return r.status, r.read(), dict(r.headers)
+    except urllib.error.HTTPError as exc:
+        return exc.code, exc.read(), dict(exc.headers)
 
 
 def _post(base: str, path: str, payload: dict) -> tuple[int, dict]:
@@ -482,6 +493,46 @@ def test_project_activity_endpoint_returns_file_metadata(server, tmp_path):
         assert body["file"]["hasArchitecture"] is True
         assert body["file"]["architectureSize"] > 0
         assert "architecture.json" in body["file"]["architecturePath"]
+    finally:
+        if original is not None:
+            settings_path.write_text(original)
+        elif settings_path.exists():
+            settings_path.unlink()
+
+
+def test_project_export_package_endpoint_returns_zip(server, tmp_path):
+    settings_path = REPO_ROOT / "inputs" / "settings.json"
+    settings_path.parent.mkdir(parents=True, exist_ok=True)
+    original = settings_path.read_text() if settings_path.exists() else None
+    try:
+        root = tmp_path / "projects"
+        settings_path.write_text(json.dumps({"projectsRoot": str(root)}))
+        _post(server, "/api/projects", {"customer": "acme", "project": "q1"})
+        proj_path = root / "acme" / "q1"
+        (proj_path / "architecture.json").write_text(json.dumps({
+            "project": {"name": "Acme Q1", "environment": "Production"},
+            "render_plan": {"pattern": "vsi-vpc"},
+            "ibm_cloud": {
+                "regions": [{"name": "us-south"}],
+                "vpcs": [{"name": "Production VPC"}],
+                "compute": [{"name": "VSI workload"}],
+            },
+            "questions": {"open": ["Confirm RTO?"], "answered": []},
+            "assumptions": ["Customer will confirm final region."],
+        }))
+
+        status, body, headers = _get_bytes(server, f"/api/project-export-package?path={proj_path}")
+
+        assert status == 200
+        assert headers["Content-Type"] == "application/zip"
+        with zipfile.ZipFile(io.BytesIO(body)) as archive:
+            names = archive.namelist()
+            assert any(name.endswith("/architecture.json") for name in names)
+            assert any(name.endswith("/diagrams/network-picasso-all.drawio") for name in names)
+            assert any(name.endswith("/reports/architecture-summary.md") for name in names)
+            assert any(name.endswith("/reports/diagram-quality.md") for name in names)
+            summary_name = next(name for name in names if name.endswith("/reports/architecture-summary.md"))
+            assert "Acme Q1" in archive.read(summary_name).decode()
     finally:
         if original is not None:
             settings_path.write_text(original)

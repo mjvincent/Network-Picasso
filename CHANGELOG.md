@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.2 - 2026-07-28
+
+### Added
+
+- Customer-ready project export package with architecture JSON, four-page Draw.io file, architecture summary, IBM pattern alignment report, diagram quality report, assumptions/open questions, and project activity metadata.
+
 ## 0.5.1 - 2026-07-28
 
 ### Added
