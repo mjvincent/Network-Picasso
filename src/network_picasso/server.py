@@ -30,7 +30,7 @@ from . import ollama as _ollama
 from . import persistence
 from .advisor import review_architecture
 from .patterns import best_pattern, match_patterns
-from .quality import analyze_diagram_quality
+from .quality import analyze_diagram_quality, apply_quality_remediations
 from .projects import (
     create_customer_folder,
     create_project,
@@ -65,6 +65,7 @@ _SETTINGS_DEFAULTS: dict = {
     "ollamaModel": "phi4-mini:latest",
     "confidenceThreshold": 0.8,
     "projectsRoot": "inputs/projects",
+    "autosaveRetentionLimit": persistence.AUTOSAVE_RETENTION_LIMIT,
 }
 
 
@@ -116,12 +117,13 @@ def sync_project_if_managed(
                 path=str(managed),
                 architecture=architecture,
                 event_type=event_type,
+                retention_limit=settings.get("autosaveRetentionLimit"),
             )
         except Exception as exc:
             print(f"[persistence] sync skipped: {exc}")
         return
     try:
-        persistence.sync_project_path(managed, root, event_type=event_type)
+        persistence.sync_project_path(managed, root, event_type=event_type, retention_limit=settings.get("autosaveRetentionLimit"))
     except Exception as exc:
         print(f"[persistence] sync skipped: {exc}")
 
@@ -147,7 +149,7 @@ def project_activity_payload(project_path: Path, settings: dict) -> dict:
         })
     persisted = None
     try:
-        persisted = persistence.project_activity(project_id)
+        persisted = persistence.project_activity(project_id, retention_limit=settings.get("autosaveRetentionLimit"))
     except Exception as exc:
         print(f"[persistence] activity skipped: {exc}")
     return {
@@ -159,7 +161,7 @@ def project_activity_payload(project_path: Path, settings: dict) -> dict:
         "persisted": persisted,
         "events": (persisted or {}).get("events", []),
         "snapshots": (persisted or {}).get("snapshots", []),
-        "retention": (persisted or {}).get("retention", persistence.retention_policy()),
+        "retention": (persisted or {}).get("retention", persistence.retention_policy(settings.get("autosaveRetentionLimit"))),
     }
 
 
@@ -257,7 +259,7 @@ def _quality_label(quality: dict) -> str:
 
 
 class NetworkPicassoHandler(BaseHTTPRequestHandler):
-    server_version = "NetworkPicasso/0.5.0"
+    server_version = "NetworkPicasso/0.5.1"
 
     def do_OPTIONS(self) -> None:
         self.send_response(204)
@@ -376,6 +378,8 @@ class NetworkPicassoHandler(BaseHTTPRequestHandler):
                 self.handle_architecture_review(payload)
             elif parsed.path == "/api/diagram-quality":
                 self.handle_diagram_quality(payload)
+            elif parsed.path == "/api/diagram-quality/apply-fixes":
+                self.handle_apply_quality_fixes(payload)
             elif parsed.path == "/api/set-pattern":
                 self.handle_set_pattern(payload)
             elif parsed.path == "/api/questions":
@@ -969,6 +973,29 @@ class NetworkPicassoHandler(BaseHTTPRequestHandler):
             sync_project_if_managed(arch_path.parent, load_settings(), architecture=architecture, event_type="diagram-quality")
         self.send_json(review)
 
+    def handle_apply_quality_fixes(self, payload: dict) -> None:
+        """Apply deterministic architecture-model fixes from quality findings."""
+        architecture_path = repo_path(payload.get("architecturePath") or DEFAULT_ARCHITECTURE_PATH)
+        diagram_type = str(payload.get("diagramType") or "deployment")
+        architecture = read_json_file(architecture_path)
+        apply_saved_requirements(architecture)
+        review = payload.get("review")
+        if not isinstance(review, dict):
+            xml = render_drawio(architecture, diagram_type=diagram_type)
+            review = analyze_diagram_quality(architecture, diagram_type=diagram_type, xml=xml)
+        result = apply_quality_remediations(architecture, review)
+        architecture = result["architecture"]
+        architecture.setdefault("quality", {})["lastRemediation"]["timestamp"] = datetime.now(timezone.utc).isoformat()
+        atomic_write_json(architecture_path, architecture)
+        sync_project_if_managed(architecture_path.parent, load_settings(), architecture=architecture, event_type="quality-fixes-applied")
+        self.send_json({
+            "ok": True,
+            "architecture": architecture,
+            "applied": result["applied"],
+            "deferred": result["deferred"],
+            "outputPath": relative_to_repo(architecture_path),
+        })
+
     def handle_set_pattern(self, payload: dict) -> None:
         """Persist the architect's chosen IBM Think Architecture pattern.
 
@@ -1007,9 +1034,10 @@ class NetworkPicassoHandler(BaseHTTPRequestHandler):
 
     def handle_save_settings(self, payload: dict) -> None:
         settings = load_settings()
-        for key in ("mode", "ollamaModel", "confidenceThreshold", "projectsRoot"):
+        for key in ("mode", "ollamaModel", "confidenceThreshold", "projectsRoot", "autosaveRetentionLimit"):
             if key in payload:
                 settings[key] = payload[key]
+        settings["autosaveRetentionLimit"] = persistence.autosave_retention_limit(settings.get("autosaveRetentionLimit"))
         settings_path = repo_path(SETTINGS_PATH)
         atomic_write_json(settings_path, settings)
         self.send_json({"ok": True, "settings": settings})
@@ -1302,6 +1330,7 @@ def load_settings() -> dict:
             settings.update(on_disk)
         except Exception:
             pass
+    settings["autosaveRetentionLimit"] = persistence.autosave_retention_limit(settings.get("autosaveRetentionLimit"))
     return settings
 
 

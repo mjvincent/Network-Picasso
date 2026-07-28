@@ -168,7 +168,12 @@ It checks:
 - IBM pattern alignment.
 - Customer-readiness issues.
 
-Use the remediation prompt if Bob/MCP is available. Re-run the analyzer after editing.
+Use **Apply analyzer fixes** when the analyzer identifies missing IBM pattern-foundation
+elements. Network Picasso updates the architecture model with traceable recommendations, then
+you can regenerate the diagram and re-analyze.
+
+Use the remediation prompt if Bob/MCP is available for visual layout issues such as overlapping
+labels, cramped text, connector routing, and final presentation polish. Re-run the analyzer after editing.
 
 ## 9. Use Project Activity And Restore Points
 
@@ -198,7 +203,7 @@ restore point.
 
 Routine autosave restore points are capped per project so the database does not grow forever.
 Milestone restore points such as intake, design decisions, quality checks, imports, and manual
-restores are retained. The default autosave limit is `25`.
+restores are retained. The default autosave limit is `25`; change it in **Settings > Restore retention**.
 
 ## 10. Edit With Bob And MCP
 

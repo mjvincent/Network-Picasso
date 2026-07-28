@@ -140,6 +140,14 @@ type DiagramQualityReview = {
   };
 };
 
+type QualityFixResult = {
+  ok: boolean;
+  architecture: Architecture;
+  outputPath: string;
+  applied: Array<{ area: string; change: string }>;
+  deferred: Array<{ area: string; change: string }>;
+};
+
 type Architecture = {
   project: { name: string; environment?: string };
   ibm_cloud: Record<string, Component[] | string[]>;
@@ -167,6 +175,7 @@ type AppSettings = {
   ollamaModel: string;
   confidenceThreshold: number;
   projectsRoot: string;
+  autosaveRetentionLimit: number;
 };
 
 type ProjectNode = {
@@ -467,6 +476,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   ollamaModel: 'phi4-mini:latest',
   confidenceThreshold: 0.8,
   projectsRoot: 'inputs/projects',
+  autosaveRetentionLimit: 25,
 };
 
 /** Return Carbon Tag props for a file role string, or null if no badge needed. */
@@ -572,6 +582,8 @@ export default function App() {
   const [architectureReviewBusy, setArchitectureReviewBusy] = useState(false);
   const [diagramQuality, setDiagramQuality] = useState<DiagramQualityReview | null>(null);
   const [diagramQualityBusy, setDiagramQualityBusy] = useState(false);
+  const [qualityFixBusy, setQualityFixBusy] = useState(false);
+  const [qualityFixResult, setQualityFixResult] = useState<QualityFixResult | null>(null);
   const [diagramPath, setDiagramPath]     = useState('');
   const [requirementsText, setRequirementsText] = useState('');
   const [requirementsSaved, setRequirementsSaved] = useState(false);
@@ -1434,6 +1446,7 @@ export default function App() {
         diagramType,
       });
       setDiagramQuality(review);
+      setQualityFixResult(null);
       setArchitecture((current) => current ? {
         ...current,
         quality: {
@@ -1454,6 +1467,29 @@ export default function App() {
       setError(err instanceof Error ? err.message : 'Diagram quality analysis failed');
     } finally {
       setDiagramQualityBusy(false);
+    }
+  }
+
+  async function applyDiagramQualityFixes() {
+    if (!architecture || !diagramQuality) return;
+    setQualityFixBusy(true);
+    setError('');
+    try {
+      const result = await postJson<QualityFixResult>('/api/diagram-quality/apply-fixes', {
+        architecturePath,
+        diagramType,
+        review: diagramQuality,
+      });
+      setArchitecture(result.architecture);
+      setArchitecturePath(result.outputPath);
+      setQualityFixResult(result);
+      await runArchitectureReview(result.architecture, requirementsText);
+      await loadProjectActivity();
+      setStatus(`Applied ${result.applied.length} analyzer fix${result.applied.length === 1 ? '' : 'es'}; regenerate and re-analyze the diagram.`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to apply analyzer fixes');
+    } finally {
+      setQualityFixBusy(false);
     }
   }
 
@@ -2877,6 +2913,15 @@ export default function App() {
                           </div>
                           <div className="quality-remediation-actions">
                             <Button
+                              kind="primary"
+                              size="sm"
+                              renderIcon={Checkmark}
+                              onClick={applyDiagramQualityFixes}
+                              disabled={busy || diagramQualityBusy || qualityFixBusy || !architecture || diagramQuality.findings.length === 0}
+                            >
+                              {qualityFixBusy ? 'Applying…' : 'Apply analyzer fixes'}
+                            </Button>
+                            <Button
                               kind="secondary"
                               size="sm"
                               renderIcon={Launch}
@@ -2908,6 +2953,18 @@ export default function App() {
                             <p className="quality-remediation-note">
                               MCP editor is not detected. Use Option E below to check/start Bob MCP before applying fixes.
                             </p>
+                          )}
+                          {qualityFixResult && (
+                            <div className="quality-fix-summary">
+                              <strong>
+                                Applied {qualityFixResult.applied.length} model fix{qualityFixResult.applied.length === 1 ? '' : 'es'}
+                              </strong>
+                              <p>
+                                {qualityFixResult.deferred.length > 0
+                                  ? `${qualityFixResult.deferred.length} visual layout item${qualityFixResult.deferred.length === 1 ? '' : 's'} still need Bob/MCP polish.`
+                                  : 'No visual layout items were deferred.'}
+                              </p>
+                            </div>
                           )}
                         </div>
                         <div className="quality-pattern">
@@ -3210,6 +3267,27 @@ export default function App() {
                       setSettings((s) => ({ ...s, projectsRoot: e.target.value }))
                     }
                   />
+
+                  <div className="step-header" style={{ marginTop: '1rem' }}>
+                    <h2>Restore retention</h2>
+                    <InfoTip text="Caps routine autosave restore points per project. Milestone restore points, such as intake, quality checks, pattern decisions, imports, and restores, are retained." />
+                  </div>
+                  <TextInput
+                    id="autosave-retention-limit"
+                    labelText="Autosave restore points per project"
+                    type="number"
+                    min={1}
+                    value={String(settings.autosaveRetentionLimit)}
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                      setSettings((s) => ({
+                        ...s,
+                        autosaveRetentionLimit: Math.max(1, Number.parseInt(e.target.value || '1', 10) || 1),
+                      }))
+                    }
+                  />
+                  <p className="panel-copy">
+                    Milestones stay available; only routine autosaves beyond this count are pruned.
+                  </p>
 
                   <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
                     <Button renderIcon={Checkmark} onClick={saveSettings}>Save settings</Button>

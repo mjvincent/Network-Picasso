@@ -126,6 +126,62 @@ def analyze_diagram_quality(
     }
 
 
+def apply_quality_remediations(architecture: dict, review: dict[str, Any]) -> dict[str, Any]:
+    """Apply deterministic, model-safe remediations from a quality review.
+
+    The function updates architecture metadata and adds missing IBM pattern
+    foundation components. Visual layout findings are returned as deferred
+    actions because those require Draw.io page edits rather than model changes.
+    """
+    applied: list[dict[str, str]] = []
+    deferred: list[dict[str, str]] = []
+    ibm_cloud = architecture.setdefault("ibm_cloud", {})
+    render_plan = architecture.setdefault("render_plan", {})
+
+    pattern = str(review.get("pattern") or "").strip()
+    if pattern and pattern != "unclassified":
+        render_plan.setdefault("pattern", pattern)
+        render_plan.setdefault("pattern_source", "quality-analyzer")
+        applied.append({
+            "area": "IBM pattern foundation",
+            "change": f"Recorded IBM pattern foundation '{pattern}' in the render plan.",
+        })
+
+    for check in (review.get("ibmPatternChecks") or {}).get("checks", []):
+        if check.get("present"):
+            continue
+        component = _component_for_pattern_check(str(check.get("name") or ""))
+        if not component:
+            deferred.append({
+                "area": "IBM pattern alignment",
+                "change": f"Review missing element manually: {check.get('name')}",
+            })
+            continue
+        if _ensure_component(ibm_cloud, component["category"], component["item"]):
+            applied.append({
+                "area": "IBM pattern alignment",
+                "change": f"Added {component['item']['name']} to {component['category']} as a quality-analyzer recommendation.",
+            })
+
+    for finding in review.get("findings", []):
+        area = str(finding.get("area") or "")
+        if area in {"Label fit", "Overlap risk", "Diagram density"}:
+            deferred.append({
+                "area": area,
+                "change": str(finding.get("recommendation") or "Use Bob/MCP to make presentation-safe layout edits."),
+            })
+
+    if deferred:
+        render_plan["presentation_review_required"] = True
+    if applied or deferred:
+        architecture.setdefault("quality", {})["lastRemediation"] = {
+            "applied": applied,
+            "deferred": deferred,
+            "source": "quality-analyzer",
+        }
+    return {"applied": applied, "deferred": deferred, "architecture": architecture}
+
+
 def _extract_cells(xml: str) -> list[DiagramCell]:
     root = ElementTree.fromstring(xml)
     cells: list[DiagramCell] = []
@@ -284,6 +340,60 @@ def _pattern_check_result(pattern_id: str, text_blob: str) -> dict[str, Any]:
             "tokens": list(tokens),
         })
     return {"id": pattern_id, "name": spec["name"], "source": spec["source"], "checks": checks}
+
+
+def _component_for_pattern_check(name: str) -> dict[str, Any] | None:
+    lower = name.lower()
+    if "powervs" in lower or "power virtual server" in lower:
+        return _component("compute", "PowerVS workspace", "IBM Power Virtual Server workspace for dependent workloads.")
+    if "edge vpc" in lower:
+        return _component("vpcs", "Edge VPC", "Ingress, egress, and hybrid connectivity boundary.")
+    if "workload vpc" in lower:
+        return _component("vpcs", "Workload VPC", "Private application and data tiers.")
+    if "vpc" in lower or "landing zone" in lower:
+        return _component("vpcs", "VPC landing zone", "IBM Cloud VPC landing zone foundation.")
+    if "dr" in lower or "recovery" in lower or "disaster" in lower:
+        return _component("backup_dr", "DR recovery tier", "Disaster recovery target and runbook evidence.")
+    if "direct link" in lower or "private connectivity" in lower or "connectivity" in lower:
+        return _component("connectivity", "Direct Link 2.0", "Private hybrid connectivity between enterprise sites and IBM Cloud.")
+    if "transit gateway" in lower:
+        return _component("connectivity", "Transit Gateway", "Hub connectivity between VPCs and attached networks.")
+    if "private endpoint" in lower or "vpe" in lower:
+        return _component("private_endpoints", "Virtual Private Endpoints for IBM Cloud services", "Private service access without public internet traversal.")
+    if "security" in lower or "key" in lower or "audit" in lower:
+        return _component("security", "Security and Compliance Center", "Compliance posture, evidence collection, and security governance.")
+    if "observability" in lower or "operations" in lower or "flow logs" in lower:
+        return _component("observability", "Activity Tracker and VPC Flow Logs", "Audit events, network flow evidence, monitoring, and logging.")
+    if "multizone" in lower or "zone" in lower:
+        return _component("zones", "Zone 1 / Zone 2 / Zone 3", "Multizone placement target for resilient workloads.")
+    return None
+
+
+def _component(category: str, name: str, purpose: str) -> dict[str, Any]:
+    return {
+        "category": category,
+        "item": {
+            "name": name,
+            "type": category,
+            "purpose": purpose,
+            "source": "quality-analyzer",
+            "notes": "Added by Apply analyzer fixes; confirm with the customer before final design approval.",
+        },
+    }
+
+
+def _ensure_component(ibm_cloud: dict, category: str, item: dict[str, Any]) -> bool:
+    items = ibm_cloud.setdefault(category, [])
+    if not isinstance(items, list):
+        ibm_cloud[category] = items = []
+    new_name = str(item.get("name") or "").lower()
+    for existing in items:
+        if isinstance(existing, dict) and str(existing.get("name") or "").lower() == new_name:
+            return False
+        if isinstance(existing, str) and existing.lower() == new_name:
+            return False
+    items.append(item)
+    return True
 
 
 def _pattern_id(architecture: dict, text_blob: str) -> str:

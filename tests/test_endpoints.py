@@ -85,6 +85,25 @@ def test_get_settings(server):
     assert status == 200
     assert "mode" in body
     assert "ollamaModel" in body
+    assert body["autosaveRetentionLimit"] >= 1
+
+
+def test_save_settings_accepts_autosave_retention_limit(server):
+    settings_path = REPO_ROOT / "inputs" / "settings.json"
+    settings_path.parent.mkdir(parents=True, exist_ok=True)
+    original = settings_path.read_text() if settings_path.exists() else None
+    try:
+        status, body = _post(server, "/api/settings", {"autosaveRetentionLimit": "7"})
+
+        assert status == 200
+        assert body["settings"]["autosaveRetentionLimit"] == 7
+        saved = json.loads(settings_path.read_text())
+        assert saved["autosaveRetentionLimit"] == 7
+    finally:
+        if original is not None:
+            settings_path.write_text(original)
+        elif settings_path.exists():
+            settings_path.unlink()
 
 
 def test_persistence_status_endpoint(server, monkeypatch):
@@ -145,6 +164,40 @@ def test_diagram_quality_endpoint(server):
     assert "score" in body
     assert "findings" in body
     assert body["ibmPatternChecks"]["name"] == "VSI on VPC landing zone - Standard"
+
+
+def test_apply_diagram_quality_fixes_endpoint(server, tmp_path):
+    arch_path = tmp_path / "architecture.json"
+    arch_path.write_text(json.dumps({
+        "project": {"name": "Apply quality"},
+        "render_plan": {"pattern": "vsi-vpc"},
+        "ibm_cloud": {
+            "vpcs": [{"name": "Production VPC"}],
+            "compute": [{"name": "VSI workload"}],
+        },
+    }))
+    status, body = _post(server, "/api/diagram-quality/apply-fixes", {
+        "architecturePath": str(arch_path),
+        "diagramType": "deployment",
+        "review": {
+            "pattern": "vsi-vpc",
+            "ibmPatternChecks": {
+                "checks": [
+                    {"name": "Private endpoints", "present": False},
+                    {"name": "Observability services", "present": False},
+                ],
+            },
+            "findings": [{"area": "Label fit", "recommendation": "Increase shape width."}],
+        },
+    })
+
+    assert status == 200
+    assert body["ok"] is True
+    assert body["applied"]
+    assert body["deferred"]
+    saved = json.loads(arch_path.read_text())
+    assert "private_endpoints" in saved["ibm_cloud"]
+    assert saved["quality"]["lastRemediation"]["source"] == "quality-analyzer"
 
 
 # ---------------------------------------------------------------------------

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from network_picasso.drawio import render_drawio
-from network_picasso.quality import analyze_diagram_quality
+from network_picasso.quality import analyze_diagram_quality, apply_quality_remediations
 
 
 HYBRID_ARCH = {
@@ -71,3 +71,34 @@ def test_quality_analyzer_flags_tight_label_box():
     result = analyze_diagram_quality({"project": {}, "ibm_cloud": {}}, diagram_type="deployment", xml=xml)
 
     assert any(finding["area"] == "Label fit" for finding in result["findings"])
+
+
+def test_apply_quality_remediations_adds_missing_pattern_components():
+    architecture = {
+        "project": {"name": "Quality fixes"},
+        "render_plan": {"pattern": "vsi-vpc"},
+        "ibm_cloud": {
+            "vpcs": [{"name": "Production VPC"}],
+            "compute": [{"name": "VSI workload"}],
+        },
+    }
+    review = {
+        "pattern": "vsi-vpc",
+        "ibmPatternChecks": {
+            "checks": [
+                {"name": "Private endpoints", "present": False},
+                {"name": "Observability services", "present": False},
+            ],
+        },
+        "findings": [
+            {"area": "Label fit", "recommendation": "Increase the shape width."},
+        ],
+    }
+
+    result = apply_quality_remediations(architecture, review)
+
+    assert any(item["name"].startswith("Virtual Private Endpoints") for item in architecture["ibm_cloud"]["private_endpoints"])
+    assert any("Activity Tracker" in item["name"] for item in architecture["ibm_cloud"]["observability"])
+    assert result["applied"]
+    assert result["deferred"]
+    assert architecture["quality"]["lastRemediation"]["source"] == "quality-analyzer"

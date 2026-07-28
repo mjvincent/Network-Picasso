@@ -301,6 +301,20 @@ body {
   font-size: 0.875rem;
 }
 
+.quality-fix-summary {
+  background: #ffffff;
+  border: 1px solid #c6c6c6;
+  display: grid;
+  gap: 0.25rem;
+  padding: 0.75rem;
+}
+
+.quality-fix-summary p {
+  color: #525252;
+  font-size: 0.875rem;
+  margin: 0;
+}
+
 .quality-pattern a {
   font-size: 0.875rem;
 }

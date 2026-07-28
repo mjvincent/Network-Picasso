@@ -20,23 +20,24 @@ SNAPSHOT_EVENT_TYPES = {
     "components-confirmed",
     "pattern-set",
     "diagram-quality",
+    "quality-fixes-applied",
     "project-imported",
     "project-duplicated",
     "manual-sync",
     "restore-point",
 }
-AUTOSAVE_RETENTION_LIMIT = 25
+DEFAULT_AUTOSAVE_RETENTION_LIMIT = 25
 
 
-def _retention_limit_from_env() -> int:
-    raw_limit = os.environ.get("NETWORK_PICASSO_AUTOSAVE_RETENTION", str(AUTOSAVE_RETENTION_LIMIT))
+def autosave_retention_limit(value: Any = None) -> int:
+    raw_limit = value if value is not None else os.environ.get("NETWORK_PICASSO_AUTOSAVE_RETENTION", str(DEFAULT_AUTOSAVE_RETENTION_LIMIT))
     try:
         return max(1, int(raw_limit))
-    except ValueError:
-        return AUTOSAVE_RETENTION_LIMIT
+    except (TypeError, ValueError):
+        return DEFAULT_AUTOSAVE_RETENTION_LIMIT
 
 
-AUTOSAVE_RETENTION_LIMIT = _retention_limit_from_env()
+AUTOSAVE_RETENTION_LIMIT = autosave_retention_limit()
 
 
 @dataclass(frozen=True)
@@ -141,6 +142,7 @@ def upsert_project(
     architecture: dict | None,
     event_type: str | None = None,
     detail: dict | None = None,
+    retention_limit: Any = None,
 ) -> None:
     if not is_enabled():
         return
@@ -208,7 +210,7 @@ def upsert_project(
                         json.dumps(architecture),
                     ),
                 )
-                _prune_autosave_snapshots(conn, project_id)
+                _prune_autosave_snapshots(conn, project_id, autosave_retention_limit(retention_limit))
 
 
 def rename_customer(*, old_slug: str, new_slug: str, new_display_name: str, new_path: str) -> None:
@@ -267,7 +269,7 @@ def delete_project_record(project_id: str) -> None:
         conn.execute("delete from np_projects where id = %s", (project_id,))
 
 
-def project_activity(project_id: str, *, limit: int = 12) -> dict[str, Any] | None:
+def project_activity(project_id: str, *, limit: int = 12, retention_limit: Any = None) -> dict[str, Any] | None:
     """Return persisted project metadata and recent events for *project_id*."""
     if not is_enabled():
         return None
@@ -313,16 +315,17 @@ def project_activity(project_id: str, *, limit: int = 12) -> dict[str, Any] | No
             for row in events
         ],
         "snapshots": snapshots,
-        "retention": {**retention_policy(), **retention_counts},
+        "retention": {**retention_policy(retention_limit), **retention_counts},
     }
 
 
-def retention_policy() -> dict[str, Any]:
+def retention_policy(retention_limit: Any = None) -> dict[str, Any]:
+    limit = autosave_retention_limit(retention_limit)
     return {
-        "autosaveLimit": AUTOSAVE_RETENTION_LIMIT,
+        "autosaveLimit": limit,
         "milestonesRetained": True,
         "description": (
-            f"Routine autosave restore points are capped at {AUTOSAVE_RETENTION_LIMIT} per project; "
+            f"Routine autosave restore points are capped at {limit} per project; "
             "milestone restore points are retained."
         ),
     }
@@ -363,7 +366,7 @@ def project_identity(project_path: Path, projects_root: Path) -> tuple[str, str]
     return customer, project
 
 
-def sync_project_path(project_path: Path, projects_root: Path, *, event_type: str | None = None) -> None:
+def sync_project_path(project_path: Path, projects_root: Path, *, event_type: str | None = None, retention_limit: Any = None) -> None:
     if not is_enabled() or not project_path.exists():
         return
     customer, project = project_identity(project_path, projects_root)
@@ -378,6 +381,7 @@ def sync_project_path(project_path: Path, projects_root: Path, *, event_type: st
         architecture=architecture,
         event_type=event_type,
         detail={"syncedAt": datetime.now(timezone.utc).isoformat()},
+        retention_limit=retention_limit,
     )
 
 
@@ -473,9 +477,7 @@ def _coerce_float(value: Any) -> float | None:
         return None
 
 
-def _prune_autosave_snapshots(conn, project_id: str) -> int:
-    if AUTOSAVE_RETENTION_LIMIT < 1:
-        return 0
+def _prune_autosave_snapshots(conn, project_id: str, retention_limit: int) -> int:
     result = conn.execute(
         """
         delete from np_project_snapshots
@@ -487,6 +489,6 @@ def _prune_autosave_snapshots(conn, project_id: str) -> int:
           offset %s
         )
         """,
-        (project_id, AUTOSAVE_RETENTION_LIMIT),
+        (project_id, retention_limit),
     )
     return result.rowcount or 0

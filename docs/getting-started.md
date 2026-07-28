@@ -141,8 +141,9 @@ when you want Bob to edit the diagram conversationally.
 ### 7. Analyze and refine diagram quality
 
 Use the Diagram Quality Analyzer to check label fit, crowding, connector clarity, and IBM
-pattern alignment. If findings appear, use the provided Bob prompt or open the diagram in the
-MCP editor, refine it, and re-analyze.
+pattern alignment. If findings identify missing IBM pattern-foundation elements, use
+**Apply analyzer fixes**, regenerate, and re-analyze. Use the provided Bob prompt or MCP editor
+for visual layout issues such as overlapping labels and connector polish.
 
 ### 8. Use restore points
 
@@ -160,7 +161,7 @@ quality checks, and restores/syncs. Before restoring, the app compares the curre
 against the selected restore point.
 
 Milestone restore points are retained. Routine autosaves are capped per project to keep the
-database from growing indefinitely.
+database from growing indefinitely. Change the cap in **Settings > Restore retention**.
 
 ## Full Usage Guide
 

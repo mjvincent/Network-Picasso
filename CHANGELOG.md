@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.5.1 - 2026-07-28
+
+### Added
+
+- Settings control for autosave restore-point retention, with milestone restore points still retained.
+- Apply analyzer fixes action that adds traceable IBM pattern-foundation model updates from quality findings and records deferred Bob/MCP layout work.
+
 ## 0.5.0 - 2026-07-28
 
 ### Added

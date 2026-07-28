@@ -24,10 +24,16 @@ def test_retention_policy_documents_autosave_limit():
 
 def test_retention_limit_env_override_is_safe(monkeypatch):
     monkeypatch.setenv("NETWORK_PICASSO_AUTOSAVE_RETENTION", "50")
-    assert persistence._retention_limit_from_env() == 50
+    assert persistence.autosave_retention_limit() == 50
 
     monkeypatch.setenv("NETWORK_PICASSO_AUTOSAVE_RETENTION", "0")
-    assert persistence._retention_limit_from_env() == 1
+    assert persistence.autosave_retention_limit() == 1
 
     monkeypatch.setenv("NETWORK_PICASSO_AUTOSAVE_RETENTION", "not-a-number")
-    assert persistence._retention_limit_from_env() == 25
+    assert persistence.autosave_retention_limit() == 25
+
+
+def test_retention_policy_accepts_settings_value():
+    policy = persistence.retention_policy("12")
+
+    assert policy["autosaveLimit"] == 12
