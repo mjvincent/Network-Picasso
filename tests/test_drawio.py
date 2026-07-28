@@ -43,6 +43,22 @@ def test_valid_xml():
         ElementTree.fromstring(xml)
 
 
+def test_single_page_drawio_uses_diagram_specific_page_name():
+    expected = {
+        "executive": "Executive Overview",
+        "context": "Context",
+        "logical": "Logical Architecture",
+        "deployment": "Deployment",
+        "decisions": "Assumptions & Decisions",
+    }
+    for dtype, page_name in expected.items():
+        xml = render_drawio(SAMPLE_ARCH, diagram_type=dtype)
+        root = ElementTree.fromstring(xml)
+        diagram = root.find("diagram")
+        assert diagram is not None
+        assert diagram.attrib.get("name") == page_name
+
+
 def test_unique_cell_ids():
     """All mxCell id values in deployment output are unique."""
     xml = render_drawio(SAMPLE_ARCH, diagram_type="deployment")
@@ -414,11 +430,14 @@ def test_multipage_drawio_page_names():
     xml = render_multipage_drawio(SAMPLE_ARCH)
     root = ElementTree.fromstring(xml)
     names = [d.attrib.get("name") for d in root.findall("diagram")]
-    assert "Executive Overview" in names
-    assert "Context" in names
-    assert "Logical Architecture" in names
-    assert "Deployment" in names
-    assert "Assumptions & Decisions" in names
+    assert names == [
+        "Executive Overview",
+        "Context",
+        "Logical Architecture",
+        "Deployment",
+        "Assumptions & Decisions",
+    ]
+    assert len(names) == len(set(names))
 
 
 def test_decisions_page_contains_pattern_traceability():

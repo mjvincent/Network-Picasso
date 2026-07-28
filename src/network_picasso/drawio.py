@@ -877,12 +877,12 @@ class DrawioBuilder:
         self.edge(node_id, parent_id, dashed=True)
         return node_id
 
-    def render(self) -> str:
+    def render(self, *, diagram_name: str = "IBM Cloud Architecture") -> str:
         body = "\n    ".join(self.cells)
         return (
             '<?xml version="1.0" encoding="UTF-8"?>\n'
             '<mxfile>\n'
-            '  <diagram name="IBM Cloud Architecture">\n'
+            f'  <diagram name="{escape(diagram_name)}">\n'
             '    <mxGraphModel dx="1600" dy="1000" grid="1" gridSize="10" guides="1" '
             'tooltips="1" connect="1" arrows="1" fold="1" page="1" '
             'pageScale="1" pageWidth="2400" pageHeight="1600" math="0" shadow="0">\n'
@@ -2268,6 +2268,14 @@ def _render_assumptions_decisions(builder: DrawioBuilder, project: dict, archite
 
 PATTERN_SOURCE_URL = "https://www.ibm.com/think/architectures/patterns"
 
+DIAGRAM_PAGE_NAMES = {
+    "executive":  "Executive Overview",
+    "context":    "Context",
+    "logical":    "Logical Architecture",
+    "deployment": "Deployment",
+    "decisions":  "Assumptions & Decisions",
+}
+
 
 def render_drawio(architecture: dict, *, diagram_type: str) -> str:
     """Return Draw.io XML for *architecture* using IBM Cloud stencil shapes.
@@ -2297,7 +2305,7 @@ def render_drawio(architecture: dict, *, diagram_type: str) -> str:
     else:
         _render_context(builder, project, ibm_cloud)
 
-    return builder.render()
+    return builder.render(diagram_name=DIAGRAM_PAGE_NAMES.get(diagram_type, "Context"))
 
 
 def render_ibm_node_snippet(
@@ -2514,15 +2522,8 @@ def render_multipage_drawio(architecture: dict) -> str:
     can be saved as a ``.drawio`` file and opened in Draw.io desktop or
     diagrams.net without the MCP server.
     """
-    page_names = {
-        "executive":  "Executive Overview",
-        "context":    "Context",
-        "logical":    "Logical Architecture",
-        "deployment": "Deployment",
-        "decisions":  "Assumptions & Decisions",
-    }
     diagrams_xml: list[str] = []
-    for dtype, page_name in page_names.items():
+    for dtype, page_name in DIAGRAM_PAGE_NAMES.items():
         inner_xml = render_drawio(architecture, diagram_type=dtype)
         # Strip the outer <?xml ...?><mxGraphModel> wrapper — we need just the
         # <root>...</root> content to embed as a named page.

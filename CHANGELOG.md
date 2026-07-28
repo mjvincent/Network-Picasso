@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.6.1 - 2026-07-28
+
+### Fixed
+
+- Single-page Draw.io exports now set diagram-specific page names, so MCP imports no longer reuse a stale Deployment tab name for the Executive Overview page.
+- The MCP all-pages importer now uses the renderer's shared page-name map to keep page labels consistent across saved files and live MCP pushes.
+- Corrected the all-pages UI status message from four-page to five-page output.
+
 ## 0.6.0 - 2026-07-28
 
 ### Added

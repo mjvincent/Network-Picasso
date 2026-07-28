@@ -1696,10 +1696,10 @@ export default function App() {
       const drawioUrl = `https://app.diagrams.net/#R${encodeDrawioUrlPayload(payload.xml)}`;
       window.open(drawioUrl, 'drawio-all-pages');
       setStatus(
-        `Four-page Draw.io file saved to ${payload.outputPath}; opening as a multipage diagrams.net file.`,
+        `Five-page Draw.io file saved to ${payload.outputPath}; opening as a multipage diagrams.net file.`,
       );
     } else {
-      setStatus(`Four-page Draw.io file saved to ${payload.outputPath}`);
+      setStatus(`Five-page Draw.io file saved to ${payload.outputPath}`);
     }
   }
 

@@ -25,6 +25,8 @@ import os
 import urllib.request
 from urllib.error import URLError
 
+from .drawio import DIAGRAM_PAGE_NAMES
+
 MCP_BASE_URL = os.environ.get("NETWORK_PICASSO_MCP_BASE_URL", "http://127.0.0.1:4000")
 _HEALTH_URL   = f"{MCP_BASE_URL}/health"
 _MCP_URL      = f"{MCP_BASE_URL}/mcp"
@@ -190,16 +192,9 @@ def open_all_pages(diagrams: dict[str, str]) -> list[dict]:
     Returns a list of MCP result dicts.
     """
     doc_id = _get_document_id()
-    page_names = {
-        "executive":  "Executive Overview",
-        "context":    "Context",
-        "logical":    "Logical Architecture",
-        "deployment": "Deployment",
-        "decisions":  "Assumptions & Decisions",
-    }
     results: list[dict] = []
     first = True
-    for dtype, page_name in page_names.items():
+    for dtype, page_name in DIAGRAM_PAGE_NAMES.items():
         xml = diagrams.get(dtype, "")
         if not xml:
             continue
