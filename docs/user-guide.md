@@ -1,53 +1,33 @@
 # Network Picasso User Guide
 
-This guide is written for technical sellers and solution architects using Network Picasso to
-create IBM-aligned network architecture diagrams. It is designed to become the screenshot-based
-handbook for the entire tool, not just Bob/MCP.
+This guide is for technical sellers and solution architects who need to turn early customer
+inputs into IBM-aligned architecture guidance and customer-ready Draw.io diagrams. It is written
+as a screenshot-based handbook: each major step includes a screenshot slot, what the user should
+see, and what to do next.
 
-Screenshots should be captured from a clean Docker Compose run at `http://127.0.0.1:5174` so the
-guide matches the end-user experience.
+Recommended entry point: run Network Picasso with Docker Compose and open
+`http://127.0.0.1:5174`.
 
-## Screenshot Checklist
+## Screenshot Assets
 
-Capture these screens when preparing the illustrated guide:
-
-| Section | Screenshot |
-|---|---|
-| Start the app | Terminal running `docker compose up --build` |
-| Home workspace | Browser open at `http://127.0.0.1:5174` |
-| Projects | Empty Projects tab with New customer folder and New project actions |
-| Customer folder | Customer folder selected with project subfolders visible |
-| Upload | Wizard upload page with accepted file types |
-| Model review | Extracted architecture model summary |
-| Questions | Design-gap question list with answer controls |
-| Advisor | Architecture Advisor recommendation and logical design |
-| Diagram generation | Generate diagram options and four-page flow |
-| Quality analyzer | Findings plus remediation actions |
-| Project Activity | Autosave, events, restore points, and timeline filters |
-| Restore preview | Current vs restore-point comparison modal |
-| Bob MCP settings | Bob showing `drawio` connected |
-| MCP editor | Browser open at `http://127.0.0.1:4000` |
-| Bob edit | Bob prompt plus updated Draw.io page |
-
-Store screenshots under:
+Screenshots belong in:
 
 ```text
 docs/images/user-guide/
 ```
 
-Use descriptive names such as:
+Use the filenames referenced in this guide. If a screenshot has not been captured yet, the
+caption tells you exactly what to capture.
 
-```text
-01-docker-compose-start.png
-02-projects-empty.png
-03-create-customer-folder.png
-04-upload-source-files.png
-05-restore-preview.png
-```
+See [docs/images/user-guide/README.md](images/user-guide/README.md) for the full screenshot
+checklist.
 
-## 1. Start Network Picasso
+## 1. Start The App
 
-Recommended end-user startup:
+> Screenshot slot: `docs/images/user-guide/01-docker-compose-start.png`
+> Capture a terminal showing `docker compose up --build` with the UI, API, and Postgres services running.
+
+From the repository root:
 
 ```bash
 docker compose up --build
@@ -59,136 +39,184 @@ Open:
 http://127.0.0.1:5174
 ```
 
-Why this is preferred:
+Expected result:
 
-- One command starts the UI, API, and Postgres.
-- Postgres enables Project Activity, restore points, and event history.
-- No local Python or npm setup is required.
-- Ports avoid the other local RVTools stacks.
+- The Network Picasso UI loads in the browser.
+- The API is reachable at `http://127.0.0.1:8788`.
+- Postgres persistence is available through the Compose database service.
 
-## 2. Create A Customer And Project
+Useful health checks:
 
-Open **Projects** first.
+```bash
+curl http://127.0.0.1:8788/api/health
+curl http://127.0.0.1:8788/api/persistence/status
+```
+
+## 2. Use Projects First
+
+> Screenshot slot: `docs/images/user-guide/02-projects-workspace.png`
+> Capture the Projects tab showing customer folder actions, search, filters, and sort controls.
+
+Open **Projects** before uploading files. Projects give each customer/opportunity its own
+workspace, autosave history, restore points, uploads, and exports.
+
+Create a customer folder:
 
 1. Click **New customer folder**.
 2. Enter the customer name.
-3. Open that folder.
-4. Click **New project in this folder**.
-5. Enter a project name.
+3. Click **Create folder**.
 
-Use customer folders for accounts and project subfolders for opportunities, architecture
-versions, workshops, phases, or named proposals.
+Create a project subfolder:
 
-## 3. Upload Source Files
+1. Open the customer folder.
+2. Click **New project in this folder**.
+3. Enter the project or opportunity name.
+4. Click **Create project**.
 
-Open the wizard and upload customer evidence:
+Use the Projects search and filters to find work quickly:
 
-- IBM Cloud Solutioning/pricing exports.
-- BOM spreadsheets.
-- CSV/TSV inventories.
-- Discovery notes.
-- Architecture descriptions.
-- Existing Network Picasso JSON.
+- Search customer folders by name.
+- Search projects by project name, customer name, path, or architecture status.
+- Filter projects by **Has architecture** or **Needs architecture**.
+- Sort folders by name or most projects.
+- Sort projects by name, ready first, or needs architecture first.
 
-Good inputs describe business context, workload type, compliance requirements, regions,
-connectivity, existing network topology, compute, storage, security, monitoring, backup, and DR.
+## 3. Upload Customer Inputs
 
-## 4. Review Extracted Architecture
+> Screenshot slot: `docs/images/user-guide/03-upload-source-files.png`
+> Capture the Upload step with accepted file types and project name visible.
 
-The model review page summarizes what the app found. Check that major IBM Cloud services are
-classified correctly:
+Good source files include:
 
-- Regions.
-- VPCs.
-- Connectivity.
-- Compute.
-- Storage and data.
-- Security and compliance.
-- Observability.
-- Backup and DR.
+| Input | Use it for |
+|---|---|
+| IBM Cloud Solutioning/pricing workbook | Services, regions, profiles, quantities, and pricing context |
+| BOM spreadsheet or CSV | Customer-provided component inventory |
+| Discovery notes | Business context, constraints, compliance, and topology hints |
+| Existing architecture notes | Current-state network and application architecture |
+| Network Picasso JSON | Importing or restoring a known architecture model |
 
-If AI-assisted intake is enabled, review low-confidence items before they become part of the
-architecture.
+After selecting files, click the upload/intake action. Network Picasso extracts IBM Cloud
+services and creates or updates the active project architecture model.
 
-## 5. Answer Design-Gap Questions
+## 4. Review The Architecture Model
 
-Network Picasso asks questions where the customer input is incomplete. These questions help
-technical sellers avoid common network architecture gaps:
+> Screenshot slot: `docs/images/user-guide/04-review-model.png`
+> Capture the Review model step showing extracted regions, VPCs, connectivity, compute, storage, security, observability, and backup/DR services.
 
-- HA and multi-zone requirements.
-- DR region and recovery objectives.
-- Direct Link or VPN connectivity.
-- Transit Gateway and VPC routing.
+Use this step to confirm that the intake process understood the customer evidence. Check:
+
+- Regions and disaster recovery locations.
+- VPCs, subnets, and network boundaries.
+- Direct Link, VPN, Transit Gateway, and other connectivity.
+- Compute platforms such as VSI, PowerVS, Red Hat OpenShift, or Kubernetes.
+- Data services, object storage, file storage, replication, and archive.
+- Security and compliance services.
+- Observability and logging.
+
+If AI-assisted extraction is enabled, review low-confidence components before accepting them into
+the architecture.
+
+## 5. Answer Design Questions
+
+> Screenshot slot: `docs/images/user-guide/05-design-questions.png`
+> Capture the Questions step showing grouped design-gap questions and answer fields.
+
+Questions are meant to help sellers who are not deep network designers. They call out important
+missing decisions before a diagram is generated:
+
+- Availability and multi-zone posture.
+- Disaster recovery region, RPO, and RTO.
+- Direct Link, VPN, Transit Gateway, routing, and ingress/egress.
 - Private endpoints and service access.
-- Security, keys, secrets, logging, and compliance.
-- Storage durability and replication.
+- DNS, segmentation, and subnet tiering.
+- Encryption, keys, secrets, audit logging, compliance, and monitoring.
+- Backup, replication, and data retention.
 
-Answers are saved into the active project and influence the next architecture review and diagram.
+Answer what is known. Leave unknown items visible as open assumptions for the architecture
+conversation. Answers autosave into the active project.
 
-## 6. Review Architecture Advisor
+## 6. Review The Architecture Advisor
 
-The Architecture Advisor connects customer input to IBM-style architecture guidance:
+> Screenshot slot: `docs/images/user-guide/06-architecture-advisor.png`
+> Capture the Architecture Advisor section showing recommended IBM pattern, rationale, Well-Architected-style review, logical design, and seller next actions.
 
-- Recommended pattern.
-- Alternative patterns.
-- Pattern foundation.
-- Well-Architected-style pillar review.
-- Priority open decisions.
-- Seller next actions.
-- Logical design narrative.
+Use the advisor before generating diagrams. It explains:
 
-Use this section to validate the architecture before creating customer-facing diagrams.
+- Recommended IBM architecture pattern foundation.
+- Alternative patterns and why they may or may not fit.
+- Well-Architected-style strengths and gaps.
+- Open decisions that still matter.
+- Logical design guidance for the proposed network architecture.
+- Seller next actions for customer follow-up.
+
+The advisor should tell a clear story: why this architecture pattern fits the customer, which
+assumptions were made, and what must be validated before implementation.
 
 ## 7. Generate Draw.io Diagrams
 
-Network Picasso generates four diagram pages:
+> Screenshot slot: `docs/images/user-guide/07-generate-diagrams.png`
+> Capture the Diagram step showing selected diagram type, Generate all diagram types, Open in diagrams.net, MCP editor actions, and Bob prompt controls.
 
-| Page | Use it for |
-|---|---|
-| Executive Overview | Customer story, business flow, primary/DR posture |
-| Context | External actors, IBM Cloud boundary, major platform services |
-| Logical Architecture | Component relationships, shared services, dependencies |
-| Deployment | Regions, VPCs, zones, subnets, services, connectivity |
+Network Picasso can generate four pages:
 
-Recommended first action:
+| Page | Audience | Purpose |
+|---|---|---|
+| Executive Overview | Executives and sellers | Simple story, business flow, primary/DR posture |
+| Context | Sellers and architects | Actors, cloud boundary, major platform services |
+| Logical Architecture | Architects | Relationships, dependencies, shared services, data flows |
+| Deployment | Architects and implementation teams | Regions, VPCs, zones, subnets, services, connectivity |
+
+Recommended flow:
 
 1. Click **Generate all diagram types**.
-2. Confirm diagrams.net opens one file with four page tabs.
-3. Review the Deployment page for label clarity and routing.
+2. Confirm diagrams.net opens one file with four pages.
+3. Review the Deployment page for topology and labels.
+4. Save the `.drawio` file if you made manual edits.
 
 ## 8. Analyze Diagram Quality
 
-Run **Diagram quality analyzer** after generation.
+> Screenshot slot: `docs/images/user-guide/08-quality-analyzer.png`
+> Capture the Diagram quality analyzer with score, findings, IBM pattern checks, Apply analyzer fixes, and Bob remediation prompt.
 
-It checks:
+Run the analyzer after generating diagrams. It checks:
 
 - Label fit and overlap risk.
-- Crowded containers or subnet bands.
-- Connector clarity.
+- Crowded containers or subnets.
+- Connector readability.
 - IBM pattern alignment.
 - Customer-readiness issues.
 
-Use **Apply analyzer fixes** when the analyzer identifies missing IBM pattern-foundation
-elements. Network Picasso updates the architecture model with traceable recommendations, then
-you can regenerate the diagram and re-analyze.
+Use the remediation loop:
 
-Use the remediation prompt if Bob/MCP is available for visual layout issues such as overlapping
-labels, cramped text, connector routing, and final presentation polish. Re-run the analyzer after editing.
+1. Run **Diagram quality analyzer**.
+2. Click **Apply analyzer fixes** for model-safe IBM pattern-foundation recommendations.
+3. Regenerate the diagram.
+4. Open the diagram in MCP editor when visual polish is needed.
+5. Copy the Bob quality remediation prompt.
+6. Ask Bob to fix labels, connectors, spacing, or customer-readiness issues.
+7. Re-run the analyzer.
+
+The analyzer is most useful when paired with action. It identifies model fixes that Network
+Picasso can apply and presentation fixes that Bob/MCP should handle.
 
 ## 9. Use Project Activity And Restore Points
 
-Project Activity shows whether the project is saving correctly.
+> Screenshot slot: `docs/images/user-guide/09-project-activity.png`
+> Capture the Project Activity panel showing autosave, Postgres status, quality score, events, restore timeline, and filters.
+
+Project Activity confirms the project is being saved and gives you recovery options.
 
 Use it to:
 
 - Confirm autosave is working.
-- See the architecture JSON path.
-- Confirm Postgres is connected.
-- Check latest quality score.
+- See where `architecture.json` is stored.
+- Confirm Postgres persistence is connected.
+- Check the latest diagram quality score.
 - Review recent events.
 - Restore an earlier architecture state.
 
-Timeline filters help find useful checkpoints:
+Timeline filters:
 
 - Milestones.
 - All restore points.
@@ -198,90 +226,108 @@ Timeline filters help find useful checkpoints:
 - Quality checks.
 - Restores and syncs.
 
-Before restore, Network Picasso shows a comparison between the current model and the selected
-restore point.
+> Screenshot slot: `docs/images/user-guide/10-restore-preview.png`
+> Capture the restore preview modal comparing current architecture with the selected restore point.
 
-Routine autosave restore points are capped per project so the database does not grow forever.
-Milestone restore points such as intake, design decisions, quality checks, imports, and manual
-restores are retained. The default autosave limit is `25`; change it in **Settings > Restore retention**.
+Before restoring, review the comparison. Restore only when the target state is clearly the one
+you want to recover.
 
 ## 10. Export The Customer Package
 
-Use **Project Activity > Export package** when the project is ready for handoff.
+> Screenshot slot: `docs/images/user-guide/11-export-package.png`
+> Capture the Project Activity action area with Export package available.
+
+Use **Export package** after the architecture has been reviewed, diagrams generated, quality
+checked, and optionally polished with Bob/MCP.
 
 The ZIP includes:
 
-- Saved `architecture.json`.
-- Four-page Draw.io architecture file.
-- Architecture summary report.
+- `architecture.json`.
+- Four-page `.drawio` architecture file.
+- Architecture summary.
 - IBM pattern alignment report.
 - Diagram quality report.
 - Assumptions, open questions, and answered questions.
 - Project activity and restore-point metadata.
 
-## 11. Edit With Bob And MCP
+## 11. Configure Bob And Draw.io MCP
 
-Use Bob/MCP when deterministic generation gets you close but the diagram needs professional
+> Screenshot slot: `docs/images/user-guide/12-bob-mcp-settings.png`
+> Capture IBM Bob settings showing MCP server `drawio` connected.
+
+Bob/MCP is optional. Use it when generated diagrams need conversational editing or final visual
 polish.
 
-Setup:
+The repository includes Bob configuration:
 
-1. Open this repo in IBM Bob.
-2. Open Bob settings and find MCP.
-3. Confirm `drawio` is connected.
-4. Open `http://127.0.0.1:4000`.
-5. In Network Picasso, click **Open in MCP editor**.
+```text
+.bob/mcp.json
+.bob/skills/ibm-drawio-editing.md
+```
 
-Recommended prompt:
+Expected Bob setup:
+
+1. Open the `Network Picasso` folder in Bob.
+2. Open Bob settings.
+3. Find MCP.
+4. Confirm `drawio` appears and shows connected.
+5. Open `http://127.0.0.1:4000` in a browser.
+6. In Network Picasso, click **Check** in the MCP card.
+7. Click **Open in MCP editor** or **Open all pages in MCP editor**.
+
+> Screenshot slot: `docs/images/user-guide/13-drawio-mcp-editor.png`
+> Capture the Draw.io MCP editor at `http://127.0.0.1:4000` with the generated diagram loaded.
+
+Recommended first Bob prompt:
 
 ```text
 Use the ibm-drawio-editing skill. Inspect the open Draw.io MCP document before making changes.
 Use IBM Cloud stencil patterns, keep labels non-overlapping, and preserve the existing architecture pages.
 ```
 
-Examples:
+Useful editing prompts:
 
 ```text
 On the Deployment page, improve label placement and connector routing without changing the architecture.
 ```
 
 ```text
-On the Logical Architecture page, make the private service access path clearer and preserve IBM container boundaries.
+On the Logical Architecture page, make private service access clearer and preserve IBM Cloud container boundaries.
 ```
 
 ```text
-Review the four pages for customer-readiness and list any page that still needs manual cleanup.
+Review all four pages for customer-readiness. Fix visible overlaps, cramped labels, ambiguous connector labels, and inconsistent naming.
 ```
 
-## 12. Other Export Options
-
-Additional export options:
-
-- Save selected `.drawio` file.
-- Open generated diagrams in diagrams.net.
-- Generate all four pages.
-- Export project `architecture.json`.
-
-Recommended working practice:
-
-1. Generate all pages.
-2. Use Diagram Quality Analyzer.
-3. Use Bob/MCP for final cleanup if needed.
-4. Export the customer package from Project Activity.
-5. Keep customer deliverables outside Git unless intentionally versioned.
-
-## Troubleshooting Quick Reference
+## 12. Troubleshooting
 
 | Issue | Likely cause | Action |
 |---|---|---|
-| No restore points | Postgres is off or no project event has occurred | Use Docker Compose and trigger an autosave/intake/quality check |
-| Bob cannot edit Draw.io | Bob MCP is disconnected or editor tab is not open | Refresh Bob MCP, open `http://127.0.0.1:4000`, retry Option E |
-| Diagram labels overlap | Generated layout needs polish | Run quality analyzer, copy Bob remediation prompt, re-analyze |
-| Only one Draw.io page | Browser has stale app state or single-page option was used | Use Generate all diagram types and refresh the app |
-| AI questions seem generic | Ollama mode may be off or source files lack detail | Add requirements text or discovery notes and re-run intake |
+| UI does not load | Compose stack is not running or port `5174` is busy | Run `docker ps`; restart with `docker compose up --build` |
+| API health fails | API container is stopped or unhealthy | Check `network-picasso-api` logs and rebuild |
+| Persistence disconnected | Postgres container is unavailable | Confirm `network-picasso-db` is healthy |
+| No restore points | No autosave/intake/event yet, or Postgres is disconnected | Open a project and trigger intake, answer, quality check, or manual sync |
+| Only one Draw.io page opens | Single-page action was used or browser has stale UI | Use **Generate all diagram types** and refresh the app |
+| Bob shows `drawio` disconnected | MCP server has not started or Bob needs refresh | Refresh Bob MCP, reopen the workspace, and open `http://127.0.0.1:4000` |
+| MCP editor is open but app says unavailable | Container cannot reach host MCP endpoint | Confirm `NETWORK_PICASSO_MCP_BASE_URL=http://host.docker.internal:4000` |
+| Diagram labels overlap | Layout needs presentation polish | Run analyzer, copy Bob remediation prompt, edit via MCP, then re-analyze |
+| AI questions are too generic | Source files lack context or Ollama mode is off | Add requirements notes and re-run intake |
 
-## Suggested Expansion
+## Seller Demo Script
 
-The next documentation pass should add real screenshots to each section and a short "seller demo"
-walkthrough using a sample customer project. The guide should show exactly what to click and what
-the user should expect after each click.
+Use this short script for a live walkthrough:
+
+1. Start with Docker Compose and open `http://127.0.0.1:5174`.
+2. Create a customer folder and project.
+3. Upload sample BOM/pricing/discovery notes.
+4. Review extracted architecture components.
+5. Answer two or three design-gap questions.
+6. Show the advisor pattern recommendation and logical design.
+7. Generate all four Draw.io pages.
+8. Run quality analyzer and explain the remediation loop.
+9. Open the diagram in MCP editor and copy a Bob prompt.
+10. Show Project Activity, restore timeline, and export package.
+
+The key message: Network Picasso does not replace architecture judgment. It gives a technical
+seller a structured, IBM-aligned starting point and a recoverable workflow for improving the
+design with an architect or Bob-assisted Draw.io editing.

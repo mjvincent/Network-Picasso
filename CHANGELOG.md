@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.5.5 - 2026-07-28
+
+### Added
+
+- Screenshot-ready end-to-end user guide covering Docker startup, Projects, intake, advisor, questions, diagrams, quality analysis, restore points, exports, Bob/MCP setup, and troubleshooting.
+- User guide screenshot checklist with expected filenames, capture guidance, and sanitization notes.
+
 ## 0.5.4 - 2026-07-28
 
 ### Added

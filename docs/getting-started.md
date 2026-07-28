@@ -178,9 +178,10 @@ and polished. The ZIP includes:
 
 ## Full Usage Guide
 
-For a broader walkthrough that can be expanded with screenshots, see:
+For the broader screenshot-ready walkthrough, see:
 
 - [User Guide](user-guide.md)
+- [User Guide Screenshot Checklist](images/user-guide/README.md)
 - [Draw.io MCP Handbook](drawio-mcp-handbook.md)
 - [Containerization Guide](containerization.md)
 

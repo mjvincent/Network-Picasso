@@ -3,6 +3,10 @@
 This guide explains how Network Picasso, diagrams.net, and the Draw.io MCP server fit together.
 It is written for day-to-day use, not MCP authors.
 
+For the full end-to-end tool walkthrough, including screenshot slots for Projects, intake,
+diagram quality, restore points, exports, Bob settings, and the MCP editor, see
+[the Network Picasso User Guide](user-guide.md).
+
 ## The Short Version
 
 You can use Network Picasso without MCP.
