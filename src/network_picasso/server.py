@@ -36,7 +36,9 @@ from .patterns import best_pattern, match_patterns
 from .quality import analyze_diagram_quality, apply_quality_remediations
 from .style_memory import (
     extract_style_memory,
+    load_global_style_memory,
     load_style_memory,
+    save_global_style_memory,
     save_style_memory,
     style_memory_markdown,
 )
@@ -290,7 +292,7 @@ def build_project_export_package(project_path: Path, settings: dict) -> tuple[by
         archive.writestr(f"{root}/reports/diagram-quality.md", _quality_report_markdown(reviews, architecture))
         archive.writestr(f"{root}/reports/assumptions-and-open-questions.md", _assumptions_markdown(architecture))
         archive.writestr(f"{root}/reports/project-activity.json", json.dumps(activity, indent=2))
-        memory = load_style_memory(project_path) or extract_style_memory(
+        memory = load_style_memory(project_path) or load_global_style_memory(REPO_ROOT) or extract_style_memory(
             drawio_xml,
             name=f"{customer}/{project} generated diagram style",
         )
@@ -431,7 +433,7 @@ def _export_readme_markdown(summary: dict, customer: str, project: str) -> str:
 
 
 class NetworkPicassoHandler(BaseHTTPRequestHandler):
-    server_version = "NetworkPicasso/0.6.6"
+    server_version = "NetworkPicasso/0.6.7"
 
     def do_OPTIONS(self) -> None:
         self.send_response(204)
@@ -553,16 +555,24 @@ class NetworkPicassoHandler(BaseHTTPRequestHandler):
         if parsed.path == "/api/style-memory":
             qs = parse_qs(parsed.query or "")
             settings = load_settings()
-            try:
-                project_path = managed_project_path((qs.get("path") or [""])[0], settings)
-            except ValueError as exc:
-                self.send_error_json(400, str(exc))
-                return
-            memory = load_style_memory(project_path)
+            path = (qs.get("path") or [""])[0]
+            memory = None
+            scope = ""
+            if path:
+                try:
+                    project_path = managed_project_path(path, settings)
+                except ValueError as exc:
+                    self.send_error_json(400, str(exc))
+                    return
+                memory = load_style_memory(project_path)
+                scope = "project" if memory else ""
             if not memory:
-                self.send_json({"ok": True, "memory": None})
+                memory = load_global_style_memory(REPO_ROOT)
+                scope = "global" if memory else ""
+            if not memory:
+                self.send_json({"ok": True, "memory": None, "scope": ""})
                 return
-            self.send_json({"ok": True, "memory": memory})
+            self.send_json({"ok": True, "memory": memory, "scope": scope})
             return
         self.send_error_json(404, "Route not found")
 
@@ -931,11 +941,22 @@ class NetworkPicassoHandler(BaseHTTPRequestHandler):
         memory = extract_style_memory(xml, name=name)
         saved_path = None
         if save:
-            saved_path = save_style_memory(project_path, memory)
-            sync_project_if_managed(project_path, settings, architecture=architecture, event_type="style-memory-saved")
+            scope = str(payload.get("scope") or "project").strip().lower()
+            if scope == "global":
+                memory["scope"] = "global"
+                memory["summary"] = (
+                    "Global Network Picasso Draw.io preferences for label sizing, spacing, "
+                    "connector routing, page order, and IBM Cloud architecture hierarchy."
+                )
+                saved_path = save_global_style_memory(REPO_ROOT, memory)
+            else:
+                memory["scope"] = "project"
+                saved_path = save_style_memory(project_path, memory)
+                sync_project_if_managed(project_path, settings, architecture=architecture, event_type="style-memory-saved")
         return {
             "ok": True,
             "memory": memory,
+            "scope": memory.get("scope", ""),
             "path": relative_to_repo(saved_path) if saved_path else "",
         }
 

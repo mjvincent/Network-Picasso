@@ -583,6 +583,65 @@ def test_style_memory_save_endpoint_persists_project_style(server, tmp_path):
             settings_path.unlink()
 
 
+def test_global_style_memory_is_default_until_project_override(server, tmp_path):
+    settings_path = REPO_ROOT / "inputs" / "settings.json"
+    global_memory_path = REPO_ROOT / "inputs" / "style-memory-default.json"
+    settings_path.parent.mkdir(parents=True, exist_ok=True)
+    original_settings = settings_path.read_text() if settings_path.exists() else None
+    original_global = global_memory_path.read_text() if global_memory_path.exists() else None
+    try:
+        root = tmp_path / "projects"
+        settings_path.write_text(json.dumps({"projectsRoot": str(root)}))
+        _post(server, "/api/projects", {"customer": "acme", "project": "q3"})
+        proj_path = root / "acme" / "q3"
+        (proj_path / "architecture.json").write_text(json.dumps({
+            "project": {"name": "Acme Q3", "environment": "Production"},
+            "render_plan": {"pattern": "vsi-vpc"},
+            "ibm_cloud": {
+                "regions": [{"name": "us-south"}],
+                "vpcs": [{"name": "Production VPC"}],
+                "compute": [{"name": "VSI workload"}],
+            },
+        }))
+
+        status, payload = _post(server, "/api/style-memory/save", {
+            "path": str(proj_path),
+            "name": "Global preferred Draw.io style",
+            "scope": "global",
+        })
+
+        assert status == 200
+        assert payload["scope"] == "global"
+        assert payload["path"].endswith("inputs/style-memory-default.json")
+
+        status, payload = _get(server, f"/api/style-memory?path={proj_path}")
+        assert status == 200
+        assert payload["scope"] == "global"
+        assert payload["memory"]["name"] == "Global preferred Draw.io style"
+
+        status, payload = _post(server, "/api/style-memory/save", {
+            "path": str(proj_path),
+            "name": "Project override Draw.io style",
+            "scope": "project",
+        })
+        assert status == 200
+        assert payload["scope"] == "project"
+
+        status, payload = _get(server, f"/api/style-memory?path={proj_path}")
+        assert status == 200
+        assert payload["scope"] == "project"
+        assert payload["memory"]["name"] == "Project override Draw.io style"
+    finally:
+        if original_settings is not None:
+            settings_path.write_text(original_settings)
+        elif settings_path.exists():
+            settings_path.unlink()
+        if original_global is not None:
+            global_memory_path.write_text(original_global)
+        elif global_memory_path.exists():
+            global_memory_path.unlink()
+
+
 # ---------------------------------------------------------------------------
 # POST /api/answer
 # ---------------------------------------------------------------------------

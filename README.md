@@ -12,7 +12,7 @@ The app is designed for sellers who may not be deep network designers. It provid
 question prompts, IBM-pattern traceability, and Bob/Draw.io MCP hand-holding so the user can move
 from rough discovery notes to a customer-ready architecture conversation.
 
-Current version: **0.6.6**
+Current version: **0.6.7**
 
 ---
 
@@ -92,7 +92,7 @@ It produces five architecture pages:
   - Shows a remediation session status after prompt copy so sellers know the copied preset, target page, MCP handoff state, and whether re-analysis is still needed.
   - Explains that Bob still needs the pasted prompt unless IBM Bob exposes a direct prompt-submission API.
   - Adds help bubbles and a recommended-next-prompt cue so sellers know which remediation preset fits the current diagram need.
-  - Adds project-level **Draw.io style memory** so a preferred customer-ready label, spacing, connector, and page-order style can be saved and reused in future Bob/MCP prompts.
+  - Adds **Draw.io style memory** so preferred customer-ready label, spacing, connector, and page-order guidance can be saved globally for future projects or overridden for a specific customer project.
 
 - **Local-first operation**
   - No cloud API keys required.

@@ -12,6 +12,7 @@ from typing import Any
 
 
 STYLE_MEMORY_FILENAME = "style-memory.json"
+GLOBAL_STYLE_MEMORY_FILENAME = "style-memory-default.json"
 
 
 def _style_value(style: str, key: str) -> str | None:
@@ -139,6 +140,10 @@ def style_memory_path(project_path: Path) -> Path:
     return project_path / STYLE_MEMORY_FILENAME
 
 
+def global_style_memory_path(repo_root: Path) -> Path:
+    return repo_root / "inputs" / GLOBAL_STYLE_MEMORY_FILENAME
+
+
 def save_style_memory(project_path: Path, memory: dict[str, Any]) -> Path:
     path = style_memory_path(project_path)
     path.write_text(json.dumps(memory, indent=2), encoding="utf-8")
@@ -147,6 +152,20 @@ def save_style_memory(project_path: Path, memory: dict[str, Any]) -> Path:
 
 def load_style_memory(project_path: Path) -> dict[str, Any] | None:
     path = style_memory_path(project_path)
+    if not path.exists():
+        return None
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def save_global_style_memory(repo_root: Path, memory: dict[str, Any]) -> Path:
+    path = global_style_memory_path(repo_root)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(memory, indent=2), encoding="utf-8")
+    return path
+
+
+def load_global_style_memory(repo_root: Path) -> dict[str, Any] | None:
+    path = global_style_memory_path(repo_root)
     if not path.exists():
         return None
     return json.loads(path.read_text(encoding="utf-8"))
@@ -186,6 +205,6 @@ def style_memory_markdown(memory: dict[str, Any]) -> str:
         "",
         "## How Network Picasso Uses This",
         "",
-        "When saved, future Bob/MCP remediation prompts include this guidance so repeated diagrams inherit the same label, spacing, and routing expectations.",
+        "When saved globally, future Bob/MCP remediation prompts include this guidance by default. Project-level style memory can still override it for a specific customer project.",
     ])
     return "\n".join(lines) + "\n"

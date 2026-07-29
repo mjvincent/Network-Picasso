@@ -157,6 +157,7 @@ type StyleMemory = {
   schemaVersion: number;
   name: string;
   createdAt: string;
+  scope?: 'project' | 'global' | '';
   summary: string;
   pageOrder: string[];
   metrics: Record<string, unknown>;
@@ -740,6 +741,7 @@ export default function App() {
   const [mcpTabVerification, setMcpTabVerification] = useState<McpTabVerification | null>(null);
   const [mcpTabsBusy, setMcpTabsBusy] = useState(false);
   const [styleMemory, setStyleMemory] = useState<StyleMemory | null>(null);
+  const [styleMemoryScope, setStyleMemoryScope] = useState<'project' | 'global' | ''>('');
   const [styleMemoryBusy, setStyleMemoryBusy] = useState(false);
   const [styleMemoryStatus, setStyleMemoryStatus] = useState('');
   const [showStyleMemoryModal, setShowStyleMemoryModal] = useState(false);
@@ -912,11 +914,18 @@ export default function App() {
       const data = await fetch(`/api/style-memory?path=${encodeURIComponent(node.path)}`).then((r) => r.json()) as {
         ok: boolean;
         memory: StyleMemory | null;
+        scope: 'project' | 'global' | '';
       };
       setStyleMemory(data.memory || null);
-      setStyleMemoryStatus(data.memory ? 'Style memory loaded for this project.' : '');
+      setStyleMemoryScope(data.scope || '');
+      setStyleMemoryStatus(data.memory
+        ? data.scope === 'global'
+          ? 'Global style memory loaded for this project.'
+          : 'Project style memory loaded.'
+        : '');
     } catch {
       setStyleMemory(null);
+      setStyleMemoryScope('');
       setStyleMemoryStatus('');
     }
   }
@@ -1181,6 +1190,7 @@ export default function App() {
     setRequirementsSaved(false);
     setProjectActivity(null);
     setStyleMemory(null);
+    setStyleMemoryScope('');
     setStyleMemoryStatus('');
     setShowStyleMemoryModal(false);
     setStatus('');
@@ -1243,19 +1253,25 @@ export default function App() {
     setStyleMemoryStatus('Export package started. You can now save this diagram look as reusable guidance.');
   }
 
-  async function saveCurrentStyleMemory() {
+  async function saveCurrentStyleMemory(scope: 'project' | 'global' = 'project') {
     if (!activeProject || !architecture) return;
     setStyleMemoryBusy(true);
     setStyleMemoryStatus('');
     setError('');
     try {
-      const result = await postJson<{ ok: boolean; memory: StyleMemory; path: string }>('/api/style-memory/save', {
+      const result = await postJson<{ ok: boolean; memory: StyleMemory; scope: 'project' | 'global'; path: string }>('/api/style-memory/save', {
         path: activeProject.path,
         architecturePath,
-        name: `${activeProject.customer}${activeProject.project ? ` / ${activeProject.project}` : ''} Draw.io style`,
+        scope,
+        name: scope === 'global'
+          ? 'Global Network Picasso Draw.io style'
+          : `${activeProject.customer}${activeProject.project ? ` / ${activeProject.project}` : ''} Draw.io style`,
       });
       setStyleMemory(result.memory);
-      setStyleMemoryStatus(`Style memory saved to ${result.path}`);
+      setStyleMemoryScope(result.scope);
+      setStyleMemoryStatus(scope === 'global'
+        ? `Global style memory saved to ${result.path}`
+        : `Project style memory saved to ${result.path}`);
       setShowStyleMemoryModal(false);
       await loadProjectActivity(activeProject);
     } catch (err) {
@@ -3526,7 +3542,9 @@ export default function App() {
                         Export the current project package, then save the preferred Draw.io look so future remediation prompts do not start cold.
                       </p>
                       <div className="style-memory-summary">
-                        <Tag type={styleMemory ? 'green' : 'gray'}>{styleMemory ? 'Memory saved' : 'No memory yet'}</Tag>
+                        <Tag type={styleMemory ? 'green' : 'gray'}>
+                          {styleMemory ? `${styleMemoryScope === 'global' ? 'Global' : 'Project'} memory active` : 'No memory yet'}
+                        </Tag>
                         {styleMemory && (
                           <span>
                             {styleMemory.preferences.serviceLabelFontSize || 11}px labels · {styleMemory.preferences.connectorRouting || 'orthogonal routing'}
@@ -3537,7 +3555,7 @@ export default function App() {
                         Finished: export package
                       </Button>
                       <Button kind="ghost" size="sm" renderIcon={Settings} onClick={() => setShowStyleMemoryModal(true)} disabled={!activeProject?.hasArchitecture || !architecture}>
-                        Remember style only
+                        Remember spacing preferences
                       </Button>
                       {styleMemoryStatus && <p className="style-memory-status">{styleMemoryStatus}</p>}
                     </div>
@@ -3893,20 +3911,32 @@ export default function App() {
       {/* Style memory */}
       <Modal
         open={showStyleMemoryModal}
-        modalHeading="Remember this Draw.io style?"
-        primaryButtonText={styleMemoryBusy ? 'Saving…' : 'Remember style'}
+        modalHeading="Remember spacing preferences?"
+        primaryButtonText={styleMemoryBusy ? 'Saving…' : 'Remember for this project'}
         secondaryButtonText="Not now"
         primaryButtonDisabled={styleMemoryBusy || !activeProject?.hasArchitecture || !architecture}
-        onRequestSubmit={saveCurrentStyleMemory}
+        onRequestSubmit={() => saveCurrentStyleMemory('project')}
         onRequestClose={() => setShowStyleMemoryModal(false)}
       >
         <p style={{ color: '#525252', lineHeight: 1.6 }}>
           Network Picasso will save reusable guidance for label sizing, spacing, connector routing, page order,
-          and IBM Cloud hierarchy. Future Bob/MCP prompts for this project will include that guidance automatically.
+          and IBM Cloud hierarchy. Save it globally when this reflects how you want future diagrams to look across
+          all customers; save it for this project when it is customer-specific.
         </p>
+        <div style={{ marginTop: '1rem' }}>
+          <Button
+            kind="tertiary"
+            size="sm"
+            renderIcon={Settings}
+            disabled={styleMemoryBusy || !activeProject?.hasArchitecture || !architecture}
+            onClick={() => saveCurrentStyleMemory('global')}
+          >
+            Remember globally for future projects
+          </Button>
+        </div>
         {styleMemory && (
           <div className="style-memory-modal-summary">
-            <span className="advisor-label">Current memory</span>
+            <span className="advisor-label">Current {styleMemoryScope === 'global' ? 'global' : 'project'} memory</span>
             <strong>{styleMemory.name}</strong>
             <p>{styleMemory.summary}</p>
             <div>
@@ -3918,7 +3948,7 @@ export default function App() {
         )}
         {!styleMemory && (
           <p style={{ color: '#6f6f6f', marginTop: '0.75rem', fontSize: '0.875rem' }}>
-            This creates a project-level style memory file and adds style memory files to future export packages.
+            Global memory is stored once in the repo inputs folder. Project memory is stored in the current customer project folder.
           </p>
         )}
       </Modal>

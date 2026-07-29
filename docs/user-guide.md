@@ -296,10 +296,11 @@ diagram workspace. Network Picasso downloads a ZIP with the current architecture
 five-page `.drawio` file, IBM pattern alignment, quality findings, assumptions/open questions,
 project activity, and style memory files.
 
-After starting the export, the app asks whether to remember this Draw.io style. Click
-**Remember style** when the label size, spacing, connector routing, and page order are close to
-how you want future diagrams to look. Saved style memory is project-level and is automatically
-included in later Bob/MCP remediation prompts for that project.
+After starting the export, the app asks whether to remember this Draw.io style. Use
+**Remember globally for future projects** when the label size, spacing, connector routing, and
+page order match how you want Network Picasso diagrams to look by default. Use
+**Remember for this project** when the preference is customer-specific. Future Bob/MCP prompts
+inherit the global memory unless a project-level override exists.
 
 ## 13. Troubleshooting
 
