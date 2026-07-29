@@ -147,6 +147,10 @@ pattern alignment. If findings identify missing IBM pattern-foundation elements,
 for visual layout issues such as overlapping labels, connector polish, Deployment-page polish,
 IBM pattern alignment, and customer-readiness.
 
+If you paste a requirements description for a new environment, use **Design fresh environment**
+in the questions step. Use **Save requirements** only when the text should add detail to the
+current model.
+
 ### 8. Use restore points
 
 Project Activity shows:

@@ -132,6 +132,11 @@ missing decisions before a diagram is generated:
 Answer what is known. Leave unknown items visible as open assumptions for the architecture
 conversation. Answers autosave into the active project.
 
+Use **Save requirements** when the text adds detail to the current architecture model. Use
+**Design fresh environment** when the pasted description is for a new customer, workload, or
+topology and should replace the current model. This prevents a previous project, such as a
+sample healthcare design, from being reused as the basis for a new environment.
+
 ## 6. Review The Architecture Advisor
 
 ![Architecture Advisor](images/user-guide/06-architecture-advisor.png)

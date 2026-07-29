@@ -24,6 +24,7 @@ from .drawio import (
 from .intake import (
     backfill_answer_into_model,
     build_architecture_from_inputs,
+    build_architecture_from_requirements,
     classify_file,
     enrich_architecture_from_requirements,
     SUPPORTED_EXTENSIONS,
@@ -558,7 +559,7 @@ def _export_readme_markdown(
 
 
 class NetworkPicassoHandler(BaseHTTPRequestHandler):
-    server_version = "NetworkPicasso/0.6.10"
+    server_version = "NetworkPicasso/0.6.11"
 
     def do_OPTIONS(self) -> None:
         self.send_response(204)
@@ -1256,24 +1257,56 @@ class NetworkPicassoHandler(BaseHTTPRequestHandler):
         requirements = str(payload.get("requirements") or "").strip()
         source = str(payload.get("source") or "text")  # "text" or "file"
         filename = str(payload.get("filename") or "")
+        replace_architecture = bool(payload.get("replaceArchitecture"))
 
         if not requirements:
             self.send_error_json(400, "requirements text is required")
             return
 
-        architecture = read_json_file(architecture_path)
-        reqs_block = architecture.setdefault("requirements", [])
         entry = {
             "text": requirements,
             "source": source,
             "filename": filename,
             "timestamp": datetime.now(timezone.utc).isoformat(),
         }
-        reqs_block.append(entry)
-        enrich_architecture_from_requirements(architecture, requirements, source=source)
+        if replace_architecture:
+            project_name = str(payload.get("projectName") or "").strip()
+            if not project_name and architecture_path.exists():
+                try:
+                    existing = read_json_file(architecture_path)
+                    project_name = str(existing.get("project", {}).get("name") or "").strip()
+                except Exception:
+                    project_name = ""
+            architecture = build_architecture_from_requirements(
+                requirements,
+                project_name=project_name or architecture_path.parent.name,
+                source=source,
+                filename=filename,
+            )
+            architecture["requirements"][0].update(entry)
+        else:
+            architecture = read_json_file(architecture_path)
+            reqs_block = architecture.setdefault("requirements", [])
+            reqs_block.append(entry)
+            enrich_architecture_from_requirements(architecture, requirements, source=source)
+
+        answered_questions = {
+            item.get("question")
+            for item in architecture.get("questions", {}).get("answered", [])
+            if isinstance(item, dict)
+        }
+        gaps = find_design_gaps(architecture)
+        open_gaps = [gap for gap in gaps if gap.get("question") not in answered_questions]
+        architecture.setdefault("questions", {})["open"] = [gap["question"] for gap in open_gaps]
+
         atomic_write_json(architecture_path, architecture)
-        sync_project_if_managed(architecture_path.parent, load_settings(), architecture=architecture, event_type="requirements-saved")
-        self.send_json({"ok": True, "entry": entry, "architecture": architecture})
+        sync_project_if_managed(
+            architecture_path.parent,
+            load_settings(),
+            architecture=architecture,
+            event_type="requirements-replaced" if replace_architecture else "requirements-saved",
+        )
+        self.send_json({"ok": True, "entry": entry, "architecture": architecture, "questions": open_gaps})
 
     def handle_confirm_components(self, payload: dict) -> None:
         architecture_path = repo_path(payload.get("architecturePath") or DEFAULT_ARCHITECTURE_PATH)

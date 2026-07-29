@@ -809,6 +809,62 @@ def test_requirements_endpoint_enriches_architecture_model(server, tmp_path):
     assert arch["render_plan"]["has_dr"] is True
 
 
+def test_requirements_endpoint_can_replace_stale_architecture(server, tmp_path):
+    arch_path = tmp_path / "architecture.json"
+    arch_path.write_text(json.dumps({
+        "project": {"name": "Old Healthcare", "environment": "Production"},
+        "ibm_cloud": {
+            "compute": [{"name": "Medical imaging processing VSIs"}],
+            "data": [{"name": "Cloud Object Storage for medical imaging archive"}],
+            "security": [{"name": "Security and Compliance Center"}],
+        },
+        "questions": {"answered": [], "open": []},
+    }))
+
+    status, body = _post(server, "/api/requirements", {
+        "architecturePath": str(arch_path),
+        "requirements": "Retail analytics platform in us-south using VSI on VPC, Cloud Object Storage archive, Activity Tracker, and no PowerVS workload.",
+        "replaceArchitecture": True,
+        "projectName": "Retail Analytics",
+    })
+
+    assert status == 200
+    architecture = body["architecture"]
+    assert architecture["project"]["name"] == "Retail Analytics"
+    component_names = json.dumps([
+        item.get("name", "")
+        for values in architecture["ibm_cloud"].values()
+        if isinstance(values, list)
+        for item in values
+        if isinstance(item, dict)
+    ]).lower()
+    names = json.dumps(architecture["ibm_cloud"]).lower()
+    assert "cloud object storage archive" in names
+    assert "powervs" not in component_names
+    assert "medical imaging processing vsis" not in component_names
+    assert "cloud object storage for medical imaging archive" not in component_names
+
+
+def test_requirements_endpoint_uses_generic_cos_label_for_non_healthcare(server, tmp_path):
+    arch_path = tmp_path / "architecture.json"
+    arch_path.write_text(json.dumps({
+        "project": {"name": "Generic Object Storage", "environment": "Production"},
+        "ibm_cloud": {},
+        "questions": {"answered": [], "open": []},
+    }))
+
+    status, body = _post(server, "/api/requirements", {
+        "architecturePath": str(arch_path),
+        "requirements": "Object storage archive for application logs in us-south with Activity Tracker.",
+        "replaceArchitecture": True,
+    })
+
+    assert status == 200
+    names = json.dumps(body["architecture"]["ibm_cloud"]).lower()
+    assert "cloud object storage archive" in names
+    assert "medical imaging" not in names
+
+
 def test_answer_missing_params(server):
     status, body = _post(server, "/api/answer", {"area": "Subnet design"})
     assert status == 400

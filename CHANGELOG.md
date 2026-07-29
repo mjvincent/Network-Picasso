@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.6.11 - 2026-07-29
+
+### Added
+
+- Added **Design fresh environment** in the requirements step so a pasted customer description can replace the current architecture model instead of merging into stale project state.
+- Added backend support for rebuilding a fresh architecture directly from requirements text.
+
+### Fixed
+
+- Prevented new non-healthcare requirements from inheriting prior healthcare/medical-imaging components when the user intends a new environment.
+- Generic object storage and DR requirement enrichment now uses neutral labels unless the requirements explicitly mention medical imaging or WDC/us-east.
+- Narrative requirements now map common IBM Cloud signals to diagram-ready labels such as Workload VPC, VPC VSI workload tier, Public Load Balancer, Activity Tracker, and VPC Flow Logs instead of sentence fragments.
+- Requirements saves now refresh open design questions after enrichment.
+
 ## 0.6.10 - 2026-07-29
 
 ### Added

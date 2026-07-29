@@ -12,6 +12,7 @@ from network_picasso.intake import (
     _semantic_key,
     add_detected_facts,
     build_architecture_from_inputs,
+    build_architecture_from_requirements,
     classify_file,
     dedupe_components,
     infer_environment,
@@ -61,6 +62,34 @@ def test_json_flat(tmp_path):
     # Should detect compute (ROKS/kubernetes), data (postgres), and possibly regions
     found_keys = set(arch["ibm_cloud"].keys()) - {"assumptions"}
     assert len(found_keys) >= 1
+
+
+def test_requirements_prose_uses_canonical_component_names():
+    """Narrative requirements should produce diagram-ready labels, not sentence fragments."""
+    arch = build_architecture_from_requirements(
+        (
+            "Retail analytics platform in us-south using VSI on VPC, Cloud Object Storage "
+            "archive, Activity Tracker, VPC Flow Logs, public load balancer, and no PowerVS."
+        ),
+        project_name="Retail Analytics",
+    )
+
+    names = {
+        item["name"]
+        for values in arch["ibm_cloud"].values()
+        if isinstance(values, list)
+        for item in values
+        if isinstance(item, dict)
+    }
+
+    assert "Workload VPC" in names
+    assert "VPC VSI workload tier" in names
+    assert "Cloud Object Storage archive" in names
+    assert "Activity Tracker" in names
+    assert "VPC Flow Logs" in names
+    assert "Public Load Balancer" in names
+    assert not any("Retail analytics platform" in name for name in names)
+    assert not any("PowerVS" in name for name in names)
 
 
 def test_xlsx_basic():

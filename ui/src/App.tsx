@@ -1541,18 +1541,43 @@ export default function App() {
     } catch { console.warn('Failed to persist coaching answer'); }
   }
 
-  async function saveRequirements(text: string, source: 'text' | 'file', filename = '') {
+  async function saveRequirements(text: string, source: 'text' | 'file', filename = '', replaceArchitecture = false) {
     if (!text.trim()) return;
     try {
-      const payload = await postJson<{ architecture?: Architecture }>('/api/requirements', {
+      const payload = await postJson<{ architecture?: Architecture; questions?: Question[] }>('/api/requirements', {
         architecturePath,
         requirements: text.trim(),
         source,
         filename,
+        projectName,
+        replaceArchitecture,
       });
       setRequirementsSaved(true);
       if (payload.architecture) {
         setArchitecture(payload.architecture);
+        setQuestions(mergeQuestions([], payload.questions || normalizeSavedQuestions(payload.architecture.questions?.open), payload.architecture.questions?.answered || []));
+        setAnsweredQuestions(payload.architecture.questions?.answered || []);
+        setQuestionAnswers({});
+        setPendingComponents([]);
+        setPendingAssignments({});
+        setDiagramPath('');
+        setPreviewXml(null);
+        setDiagramQuality(null);
+        setQualityFixResult(null);
+        setMcpDiagramPushed(false);
+        if (activeProject && !activeProject.hasArchitecture) {
+          setActiveProject({ ...activeProject, hasArchitecture: true });
+          setProjectTree((current) =>
+            current.map((node) =>
+              node.path === activeProject.path ? { ...node, hasArchitecture: true } : node
+            )
+          );
+        }
+        if (replaceArchitecture) {
+          setChosenPatternState(null);
+          setPatternResults([]);
+          setStatus('Fresh architecture created from requirements');
+        }
         await runArchitectureReview(payload.architecture, text.trim());
       } else if (architecture) {
         await runArchitectureReview(architecture, text.trim());
@@ -3135,6 +3160,15 @@ export default function App() {
                       {requirementsSaved ? 'Saved' : 'Save requirements'}
                     </Button>
                     <Button
+                      kind="secondary"
+                      size="sm"
+                      renderIcon={Renew}
+                      onClick={() => saveRequirements(requirementsText, 'text', '', true)}
+                      disabled={!requirementsText.trim()}
+                    >
+                      Design fresh environment
+                    </Button>
+                    <Button
                       kind="ghost"
                       size="sm"
                       renderIcon={Upload}
@@ -3163,6 +3197,13 @@ export default function App() {
                       hideCloseButton
                     />
                   )}
+                  <InlineNotification
+                    kind="info"
+                    title="When to use fresh design"
+                    subtitle="Use Save requirements to add detail to the current model. Use Design fresh environment when the text describes a new customer, workload, or topology and should replace the current model."
+                    lowContrast
+                    hideCloseButton
+                  />
                 </Stack>
               </Tile>
 

@@ -311,6 +311,47 @@ def build_architecture_from_inputs(input_path: Path, *, project_name: str | None
     return architecture
 
 
+def build_architecture_from_requirements(
+    requirements: str,
+    *,
+    project_name: str | None = None,
+    source: str = "requirements",
+    filename: str = "",
+) -> dict:
+    """Build a fresh architecture model from free-text customer requirements."""
+    architecture = {
+        "project": {
+            "name": project_name or "Customer Architecture",
+            "environment": "TBD",
+            "diagram_goals": [
+                "Generate professional IBM Cloud architecture diagrams",
+                "Identify missing network design decisions before rendering final diagrams",
+            ],
+        },
+        "ibm_cloud": {},
+        "sources": [{
+            "file": filename or source,
+            "type": "requirements",
+            "records": 1,
+            "role": "requirements",
+        }],
+        "requirements": [{
+            "text": requirements,
+            "source": source,
+            "filename": filename,
+        }],
+        "questions": {
+            "answered": [],
+            "open": [],
+        },
+    }
+    enrich_architecture_from_requirements(architecture, requirements, source=source)
+    ibm_cloud = architecture.setdefault("ibm_cloud", {})
+    architecture["project"]["environment"] = infer_environment(ibm_cloud) or "TBD"
+    ibm_cloud["assumptions"] = build_assumptions(ibm_cloud)
+    return architecture
+
+
 def read_input_rows(path: Path) -> Iterable[dict[str, str]]:
     suffix = path.suffix.lower()
     if suffix == ".json":
@@ -938,6 +979,135 @@ def _is_meaningful_name(name: str) -> bool:
     return True
 
 
+def _canonical_fact_names(category: str, normalized: str) -> list[str]:
+    """Return professional component labels for prose-based keyword hits."""
+    if category == "vpcs" and ("vpc" in normalized or "virtual private cloud" in normalized):
+        return ["Workload VPC"]
+    if category == "subnets":
+        names: list[str] = []
+        if "public subnet" in normalized:
+            names.append("Public subnet")
+        if "private subnet" in normalized:
+            names.append("Private subnet")
+        if "data subnet" in normalized:
+            names.append("Data subnet")
+        if "subnet" in normalized and not names:
+            names.append("Application subnet")
+        return names
+    if category == "zones" and ("zone" in normalized or "availability zone" in normalized):
+        return ["zone-1"]
+    if category == "connectivity":
+        names = []
+        if "direct link" in normalized:
+            names.append("IBM Cloud Direct Link")
+        if "transit gateway" in normalized:
+            names.append("Transit Gateway")
+        if "vpn" in normalized:
+            names.append("VPN Gateway")
+        if "hybrid" in normalized and not names:
+            names.append("Hybrid connectivity")
+        if "satellite connector" in normalized or "satellite link" in normalized:
+            names.append("IBM Cloud Satellite Connector")
+        return names
+    if category == "ingress":
+        names = []
+        if "cloud internet services" in normalized or re.search(r"\bcis\b", normalized):
+            names.append("Cloud Internet Services")
+        if "global load balancer" in normalized:
+            names.append("Global Load Balancer")
+        elif "load balancer" in normalized:
+            names.append("Public Load Balancer")
+        elif "ingress" in normalized:
+            names.append("Ingress tier")
+        return names
+    if category == "compute":
+        names = []
+        if "roks" in normalized or "openshift" in normalized:
+            names.append("Red Hat OpenShift on IBM Cloud")
+        if "vsi" in normalized or "virtual server" in normalized:
+            names.append("VPC VSI workload tier")
+        if "bare metal" in normalized:
+            names.append("Bare Metal Servers")
+        if "code engine" in normalized or "serverless" in normalized or "cloud functions" in normalized:
+            names.append("Serverless compute")
+        if "gpu" in normalized:
+            names.append("GPU worker nodes")
+        if ("powervs" in normalized or "power virtual" in normalized or "power vs" in normalized) and not any(
+            phrase in normalized for phrase in ("no powervs", "without powervs", "no power virtual", "without power virtual")
+        ):
+            names.append("PowerVS servers")
+        return names
+    if category == "data":
+        names = []
+        if "object storage" in normalized or "cos" in normalized:
+            names.append("Cloud Object Storage archive")
+        if "postgres" in normalized:
+            names.append("IBM Cloud Databases for PostgreSQL")
+        if "db2" in normalized:
+            names.append("IBM Db2")
+        if "redis" in normalized:
+            names.append("IBM Cloud Databases for Redis")
+        if "cloudant" in normalized:
+            names.append("IBM Cloudant")
+        if "event streams" in normalized or "kafka" in normalized:
+            names.append("IBM Event Streams")
+        if re.search(r"\bibm mq\b|\bmq\b", normalized):
+            names.append("IBM MQ")
+        if "file storage" in normalized or "nfs" in normalized:
+            names.append("NFS File Storage")
+        if "watsonx" in normalized or "watson" in normalized:
+            names.append("watsonx data services")
+        return names
+    if category == "private_endpoints" and (
+        "private endpoint" in normalized or "vpe" in normalized or "virtual private endpoint" in normalized
+    ):
+        return ["Virtual Private Endpoints for IBM Cloud services"]
+    if category == "dns" and any(term in normalized for term in ("dns", "resolver", "domain", "hostname")):
+        return ["DNS and custom resolver"]
+    if category == "security":
+        names = []
+        if "security group" in normalized:
+            names.append("Security Groups")
+        if "nacl" in normalized:
+            names.append("Network ACLs")
+        if "key protect" in normalized:
+            names.append("Key Protect")
+        if "hpcs" in normalized:
+            names.append("Hyper Protect Crypto Services")
+        if "secrets" in normalized:
+            names.append("Secrets Manager")
+        if "scc" in normalized or "compliance" in normalized:
+            names.append("Security and Compliance Center")
+        if "certificate" in normalized:
+            names.append("Certificate Manager")
+        if "iam" in normalized:
+            names.append("IBM Cloud IAM")
+        return names
+    if category == "observability":
+        names = []
+        if "activity tracker" in normalized or "audit" in normalized:
+            names.append("Activity Tracker")
+        if "flow log" in normalized:
+            names.append("VPC Flow Logs")
+        if "monitoring" in normalized or "metrics" in normalized:
+            names.append("IBM Cloud Monitoring")
+        if "logging" in normalized or "logs" in normalized:
+            names.append("IBM Cloud Logs")
+        if "instana" in normalized:
+            names.append("Instana Observability")
+        return names
+    if category == "backup_dr":
+        names = []
+        if "replication" in normalized:
+            names.append("Cross-region replication")
+        if "backup" in normalized or "restore" in normalized or "snapshot" in normalized:
+            names.append("Backup and restore")
+        if "disaster recovery" in normalized or "dr site" in normalized or " rpo" in normalized or " rto" in normalized:
+            names.append("Regional disaster recovery site")
+        return names
+    return []
+
+
 def add_detected_facts(facts: dict[str, list[dict[str, str]]], text: str, *, source: str) -> None:
     normalized = text.lower()
 
@@ -956,18 +1126,19 @@ def add_detected_facts(facts: dict[str, list[dict[str, str]]], text: str, *, sou
         if category == "regions":
             continue
         if any(keyword in normalized for keyword in keywords):
-            name = concise_name(text)
-            if not _is_meaningful_name(name):
-                continue
-            facts[category].append(
-                {
-                    "name": name,
-                    "type": category,
-                    "purpose": "",
-                    "source": source,
-                    "notes": text[:500],
-                }
-            )
+            names = _canonical_fact_names(category, normalized) or [concise_name(text)]
+            for name in names:
+                if not _is_meaningful_name(name):
+                    continue
+                facts[category].append(
+                    {
+                        "name": name,
+                        "type": category,
+                        "purpose": "",
+                        "source": source,
+                        "notes": text[:500],
+                    }
+                )
 
 
 def _append_fact(
@@ -1011,14 +1182,17 @@ def enrich_architecture_from_requirements(
         for key in KEYWORDS
     }
     source_label = f"{source}:requirements"
-    mentions_powervs = "power virtual" in text or "powervs" in text or "power vs" in text
-    mentions_direct_link = "direct link" in text
+    negates_powervs = any(phrase in text for phrase in ("no powervs", "without powervs", "no power virtual", "without power virtual"))
+    negates_direct_link = any(phrase in text for phrase in ("no direct link", "without direct link"))
+    negates_dr = any(phrase in text for phrase in ("no dr", "without dr", "no disaster recovery", "without disaster recovery"))
+    mentions_powervs = ("power virtual" in text or "powervs" in text or "power vs" in text) and not negates_powervs
+    mentions_direct_link = "direct link" in text and not negates_direct_link
     mentions_dr = (
         "dr site" in text
         or "disaster recovery" in text
         or " rto" in text
         or " rpo" in text
-    )
+    ) and not negates_dr
     mentions_healthcare = (
         "hipaa" in text
         or "hippa" in text
@@ -1047,9 +1221,10 @@ def enrich_architecture_from_requirements(
         architecture.setdefault("render_plan", {})["connectivity_label"] = "HA Direct Link 1 Gbps"
 
     if mentions_dr:
+        dr_name = "WDC disaster recovery site" if "wdc" in text or "us-east" in text else "Regional disaster recovery site"
         _append_fact(
-            facts, "backup_dr", "WDC disaster recovery site",
-            purpose="Regional disaster recovery target for the Dallas primary VPC",
+            facts, "backup_dr", dr_name,
+            purpose="Regional disaster recovery target for the primary workload",
             source=source_label, notes=requirements,
             region="us-east" if "wdc" in text or "us-east" in text else "",
         )
@@ -1079,9 +1254,14 @@ def enrich_architecture_from_requirements(
         )
 
     if "cos" in text or "object storage" in text:
+        cos_name = (
+            "Cloud Object Storage for medical imaging archive"
+            if "medical imaging" in text
+            else "Cloud Object Storage archive"
+        )
         _append_fact(
-            facts, "data", "Cloud Object Storage for medical imaging archive",
-            purpose="Large-scale object archive for medical imaging intake, processing, and retrieval",
+            facts, "data", cos_name,
+            purpose="Large-scale object archive for application data",
             source=source_label, notes=requirements,
         )
     if "nfs" in text or "file storage" in text:
