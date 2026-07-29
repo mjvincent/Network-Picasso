@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.6.9 - 2026-07-29
+
+### Added
+
+- Live MCP finished exports now include rendered PNG and SVG files for all five Draw.io tabs.
+- Finished export packages now include `pdf/network-picasso-diagram-packet.pdf`, assembled from the live Draw.io MCP renders.
+- Export packages include `images/manifest.json` and README source notes so sellers can tell whether the package came from the live MCP editor or the generated model.
+- The finished package panel now shows the active export source before download.
+
+### Changed
+
+- Live MCP page rendering reuses the connected Draw.io document ID across page exports for a faster package build.
+
 ## 0.6.4 - 2026-07-29
 
 ### Fixed

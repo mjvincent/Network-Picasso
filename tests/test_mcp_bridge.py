@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import base64
 
 from network_picasso import mcp_bridge
 
@@ -188,3 +189,61 @@ def test_export_diagram_xml_exports_full_live_document(monkeypatch):
     assert calls[1][1]["size"] == "diagram"
     assert calls[1][1]["target_page"] == {"index": 0}
     assert calls[1][1]["target_document"] == {"id": "doc-1"}
+
+
+def test_export_page_asset_decodes_png_image_content(monkeypatch):
+    calls: list[tuple[str, dict]] = []
+    png_bytes = b"\x89PNG\r\n\x1a\nfake"
+
+    def fake_call_tool(name: str, args: dict, *, timeout: int = 30) -> dict:
+        calls.append((name, args))
+        if name == "list-documents":
+            return _tool_text([{"id": "doc-1"}])
+        if name == "export-diagram":
+            return {"content": [{"type": "image", "data": base64.b64encode(png_bytes).decode()}]}
+        return _tool_text({"ok": True})
+
+    monkeypatch.setattr(mcp_bridge, "call_tool", fake_call_tool)
+
+    result = mcp_bridge.export_page_asset(2, fmt="png", page_name="Logical Architecture")
+
+    assert result["pageIndex"] == 2
+    assert result["pageName"] == "Logical Architecture"
+    assert result["format"] == "png"
+    assert result["data"] == png_bytes
+    assert calls[1][1]["format"] == "png"
+    assert calls[1][1]["size"] == "page"
+    assert calls[1][1]["target_page"] == {"index": 2}
+
+
+def test_export_rendered_pages_exports_png_and_svg_for_expected_tabs(monkeypatch):
+    calls: list[tuple[str, dict]] = []
+
+    def fake_call_tool(name: str, args: dict, *, timeout: int = 30) -> dict:
+        calls.append((name, args))
+        if name == "list-documents":
+            return _tool_text([{"id": "doc-1"}])
+        if name == "list-pages":
+            return _tool_text([
+                {"index": 0, "id": "page-0", "name": "Executive Overview"},
+                {"index": 1, "id": "page-1", "name": "Context"},
+            ])
+        if name == "export-diagram" and args["format"] == "png":
+            return {"content": [{"type": "image", "data": base64.b64encode(b"png").decode()}]}
+        if name == "export-diagram" and args["format"] == "svg":
+            return {"content": [{"type": "text", "text": "<svg />"}]}
+        return _tool_text({"ok": True})
+
+    monkeypatch.setattr(mcp_bridge, "call_tool", fake_call_tool)
+
+    result = mcp_bridge.export_rendered_pages()
+
+    assert [asset["format"] for asset in result["assets"]] == ["png", "svg", "png", "svg"]
+    assert [asset["pageName"] for asset in result["assets"]] == [
+        "Executive Overview",
+        "Executive Overview",
+        "Context",
+        "Context",
+    ]
+    exports = [args for name, args in calls if name == "export-diagram"]
+    assert [args["target_page"] for args in exports] == [{"index": 0}, {"index": 0}, {"index": 1}, {"index": 1}]

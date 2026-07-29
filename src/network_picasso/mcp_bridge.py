@@ -20,6 +20,7 @@ Reference: Model Context Protocol Streamable HTTP transport spec.
 """
 from __future__ import annotations
 
+import base64
 import json
 import os
 import urllib.request
@@ -226,6 +227,60 @@ def export_diagram_xml() -> str:
     if not xml or "<mxfile" not in xml:
         raise RuntimeError("MCP export did not return Draw.io XML")
     return xml
+
+
+def export_page_asset(page_index: int, *, fmt: str, page_name: str | None = None, doc_id: str | None = None) -> dict:
+    """Export one page from the live MCP document as PNG, SVG, or XML."""
+    doc_id = doc_id or _get_document_id()
+    resp = call_tool("export-diagram", {
+        "target_page":     {"index": page_index},
+        "format":          fmt,
+        "size":            "page",
+        "scale":           1,
+        "border":          20,
+        "background":      "#ffffff",
+        "transparent":     False,
+        "embed_xml":       fmt in {"png", "svg"},
+        "target_document": {"id": doc_id},
+    }, timeout=45)
+    content = resp.get("content", [])
+    if not content:
+        raise RuntimeError(f"MCP export returned no {fmt} content for page {page_index}")
+    item = content[0]
+    if fmt == "png":
+        data = str(item.get("data") or "").strip()
+        if not data:
+            raise RuntimeError(f"MCP PNG export returned no base64 data for page {page_index}")
+        return {
+            "pageIndex": page_index,
+            "pageName": page_name or f"Page {page_index + 1}",
+            "format": "png",
+            "data": base64.b64decode(data),
+        }
+    text = str(item.get("text") or "").strip()
+    if not text:
+        raise RuntimeError(f"MCP {fmt} export returned no text content for page {page_index}")
+    return {
+        "pageIndex": page_index,
+        "pageName": page_name or f"Page {page_index + 1}",
+        "format": fmt,
+        "data": text.encode("utf-8"),
+    }
+
+
+def export_rendered_pages() -> dict:
+    """Export edited live MCP pages as PNG and SVG assets."""
+    doc_id = _get_document_id()
+    pages = _list_pages(doc_id)
+    expected_names = list(DIAGRAM_PAGE_NAMES.values())
+    selected = pages[:len(expected_names)] or [{"index": i, "name": name} for i, name in enumerate(expected_names)]
+    assets: list[dict] = []
+    for fallback_index, page in enumerate(selected):
+        index = int(page.get("index", fallback_index))
+        name = str(page.get("name") or expected_names[fallback_index] or f"Page {index + 1}")
+        assets.append(export_page_asset(index, fmt="png", page_name=name, doc_id=doc_id))
+        assets.append(export_page_asset(index, fmt="svg", page_name=name, doc_id=doc_id))
+    return {"pages": selected, "assets": assets}
 
 def open_diagram_in_editor(
     xml: str,

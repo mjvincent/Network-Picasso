@@ -3545,8 +3545,18 @@ export default function App() {
                         <InfoTip text="Downloads the project export package. When MCP is running, the package uses the live edited Draw.io document instead of regenerating the diagram from the architecture model." />
                       </div>
                       <p className="panel-copy">
-                        Export the project package. If MCP is running, the ZIP includes the edited live Draw.io document; otherwise it uses the generated model.
+                        Export the project package. If MCP is running, the ZIP includes the edited live Draw.io document plus PNG, SVG, and PDF renders; otherwise it uses the generated model.
                       </p>
+                      <div className="style-memory-summary">
+                        <Tag type={mcpRunning ? 'green' : 'gray'}>
+                          {mcpRunning ? 'Export source: live MCP editor' : 'Export source: generated model'}
+                        </Tag>
+                        <span>
+                          {mcpRunning
+                            ? 'Uses the browser-edited Draw.io tabs.'
+                            : 'Start/open MCP to package browser-edited diagrams.'}
+                        </span>
+                      </div>
                       <div className="style-memory-summary">
                         <Tag type={styleMemory ? 'green' : 'gray'}>
                           {styleMemory ? `${styleMemoryScope === 'global' ? 'Global' : 'Project'} memory active` : 'No memory yet'}

@@ -33,6 +33,7 @@ from . import ollama as _ollama
 from . import persistence
 from .advisor import review_architecture
 from .patterns import best_pattern, match_patterns
+from .pdf_packet import PdfImage, build_pdf_packet
 from .quality import analyze_diagram_quality, apply_quality_remediations
 from .style_memory import (
     extract_style_memory,
@@ -275,6 +276,7 @@ def build_project_export_package(
     *,
     drawio_xml: str | None = None,
     diagram_source: str = "generated",
+    rendered_assets: dict | None = None,
 ) -> tuple[bytes, str]:
     arch_path = project_architecture_path(project_path)
     if not arch_path.exists():
@@ -298,14 +300,69 @@ def build_project_export_package(
         archive.writestr(f"{root}/reports/diagram-quality.md", _quality_report_markdown(reviews, architecture))
         archive.writestr(f"{root}/reports/assumptions-and-open-questions.md", _assumptions_markdown(architecture))
         archive.writestr(f"{root}/reports/project-activity.json", json.dumps(activity, indent=2))
+        image_entries = _write_rendered_assets(archive, root, rendered_assets)
         memory = load_style_memory(project_path) or load_global_style_memory(REPO_ROOT) or extract_style_memory(
             packaged_drawio_xml,
             name=f"{customer}/{project} generated diagram style",
         )
         archive.writestr(f"{root}/style/style-memory.json", json.dumps(memory, indent=2))
         archive.writestr(f"{root}/style/style-memory.md", style_memory_markdown(memory))
-        archive.writestr(f"{root}/README.md", _export_readme_markdown(summary, customer, project, diagram_source=diagram_source))
+        archive.writestr(
+            f"{root}/README.md",
+            _export_readme_markdown(
+                summary,
+                customer,
+                project,
+                diagram_source=diagram_source,
+                rendered_asset_count=len(image_entries),
+            ),
+        )
     return buffer.getvalue(), f"{package_slug}.zip"
+
+
+def _asset_slug(page_name: str, page_index: int) -> str:
+    slug = re.sub(r"[^a-z0-9]+", "-", page_name.lower()).strip("-")
+    return f"{page_index + 1:02d}-{slug or 'page'}"
+
+
+def _write_rendered_assets(archive: zipfile.ZipFile, root: str, rendered_assets: dict | None) -> list[dict]:
+    assets = rendered_assets.get("assets", []) if isinstance(rendered_assets, dict) else []
+    entries: list[dict] = []
+    png_images: list[PdfImage] = []
+    seen: dict[str, int] = {}
+    for asset in assets:
+        if not isinstance(asset, dict):
+            continue
+        fmt = str(asset.get("format") or "").lower()
+        if fmt not in {"png", "svg"}:
+            continue
+        data = asset.get("data")
+        if not isinstance(data, bytes) or not data:
+            continue
+        page_index = int(asset.get("pageIndex") or 0)
+        page_name = str(asset.get("pageName") or f"Page {page_index + 1}")
+        base = _asset_slug(page_name, page_index)
+        collision_key = f"{base}.{fmt}"
+        seen[collision_key] = seen.get(collision_key, 0) + 1
+        suffix = f"-{seen[collision_key]}" if seen[collision_key] > 1 else ""
+        path = f"images/{base}{suffix}.{fmt}"
+        archive.writestr(f"{root}/{path}", data)
+        entries.append({
+            "pageIndex": page_index,
+            "pageName": page_name,
+            "format": fmt,
+            "path": path,
+        })
+        if fmt == "png":
+            png_images.append(PdfImage(name=page_name, png=data))
+    if entries:
+        archive.writestr(f"{root}/images/manifest.json", json.dumps({"assets": entries}, indent=2))
+    if png_images:
+        archive.writestr(
+            f"{root}/pdf/network-picasso-diagram-packet.pdf",
+            build_pdf_packet(png_images),
+        )
+    return entries
 
 
 def _diagram_quality_reviews(architecture: dict) -> list[dict]:
@@ -415,8 +472,22 @@ def _assumptions_markdown(architecture: dict) -> str:
     return "\n".join(lines) + "\n"
 
 
-def _export_readme_markdown(summary: dict, customer: str, project: str, *, diagram_source: str = "generated") -> str:
+def _export_readme_markdown(
+    summary: dict,
+    customer: str,
+    project: str,
+    *,
+    diagram_source: str = "generated",
+    rendered_asset_count: int = 0,
+) -> str:
     source_label = "live Draw.io MCP editor" if diagram_source == "mcp" else "Network Picasso generated model"
+    rendered_note = (
+        "- `images/*.png` and `images/*.svg`: rendered page exports from the live MCP editor",
+        "- `pdf/network-picasso-diagram-packet.pdf`: printable packet assembled from the live MCP page renders",
+        "- `images/manifest.json`: rendered asset index",
+    ) if rendered_asset_count else (
+        "- Rendered PNG/SVG/PDF assets were not included because this package was exported from the generated model. Open the MCP editor and export again to include live renders.",
+    )
     return "\n".join([
         f"# Network Picasso Export - {summary.get('projectName') or project}",
         "",
@@ -436,12 +507,13 @@ def _export_readme_markdown(summary: dict, customer: str, project: str, *, diagr
         "- `reports/project-activity.json`: project activity, persistence, restore-point, and retention metadata",
         "- `style/style-memory.json`: reusable Draw.io label, spacing, connector, and page-order preferences",
         "- `style/style-memory.md`: seller-readable style memory notes for Bob/MCP remediation",
+        *rendered_note,
         "",
     ])
 
 
 class NetworkPicassoHandler(BaseHTTPRequestHandler):
-    server_version = "NetworkPicasso/0.6.8"
+    server_version = "NetworkPicasso/0.6.9"
 
     def do_OPTIONS(self) -> None:
         self.send_response(204)
@@ -539,12 +611,14 @@ class NetworkPicassoHandler(BaseHTTPRequestHandler):
                 return
             source = (qs.get("source") or ["generated"])[0]
             drawio_xml = None
+            rendered_assets = None
             if source == "mcp":
                 if not _mcp.is_running():
                     self.send_error_json(503, "Draw.io MCP editor is not running. Open the MCP editor before exporting live edits.")
                     return
                 try:
                     drawio_xml = _mcp.export_diagram_xml()
+                    rendered_assets = _mcp.export_rendered_pages()
                 except (ConnectionError, RuntimeError) as exc:
                     self.send_error_json(503, f"Could not export live Draw.io MCP document: {exc}")
                     return
@@ -554,6 +628,7 @@ class NetworkPicassoHandler(BaseHTTPRequestHandler):
                     settings,
                     drawio_xml=drawio_xml,
                     diagram_source="mcp" if drawio_xml else "generated",
+                    rendered_assets=rendered_assets,
                 )
             except FileNotFoundError:
                 self.send_error_json(404, "No architecture.json found for this project")

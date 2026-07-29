@@ -9,15 +9,22 @@ from __future__ import annotations
 import json
 import io
 import pathlib
+import struct
 import threading
 import urllib.request
 import zipfile
+import zlib
 
 import pytest
 
 # The server's REPO_ROOT is computed from the package location, so we need to
 # make sure PYTHONPATH is set correctly when running pytest (PYTHONPATH=src).
-from network_picasso.server import NetworkPicassoHandler, ThreadingHTTPServer, restore_preview_payload
+from network_picasso.server import (
+    NetworkPicassoHandler,
+    ThreadingHTTPServer,
+    build_project_export_package,
+    restore_preview_payload,
+)
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[1]
 
@@ -74,6 +81,20 @@ def _post(base: str, path: str, payload: dict) -> tuple[int, dict]:
             return r.status, json.loads(r.read().decode())
     except urllib.error.HTTPError as exc:
         return exc.code, json.loads(exc.read().decode())
+
+
+def _tiny_png() -> bytes:
+    def chunk(kind: bytes, data: bytes) -> bytes:
+        return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data) & 0xFFFFFFFF)
+
+    width, height = 2, 2
+    rows = b"".join([b"\x00" + b"\xff\xff\xff" * width for _ in range(height)])
+    return (
+        b"\x89PNG\r\n\x1a\n"
+        + chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0))
+        + chunk(b"IDAT", zlib.compress(rows))
+        + chunk(b"IEND", b"")
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -540,6 +561,46 @@ def test_project_export_package_endpoint_returns_zip(server, tmp_path):
             settings_path.write_text(original)
         elif settings_path.exists():
             settings_path.unlink()
+
+
+def test_project_export_package_includes_rendered_mcp_assets(tmp_path):
+    root = tmp_path / "projects"
+    proj_path = root / "acme" / "q1"
+    proj_path.mkdir(parents=True)
+    (proj_path / "architecture.json").write_text(json.dumps({
+        "project": {"name": "Acme Q1", "environment": "Production"},
+        "render_plan": {"pattern": "vsi-vpc"},
+        "ibm_cloud": {
+            "regions": [{"name": "us-south"}],
+            "vpcs": [{"name": "Production VPC"}],
+            "compute": [{"name": "VSI workload"}],
+        },
+    }))
+
+    body, filename = build_project_export_package(
+        proj_path,
+        {"projectsRoot": str(root)},
+        drawio_xml="<mxfile><diagram name=\"Deployment\" /></mxfile>",
+        diagram_source="mcp",
+        rendered_assets={
+            "assets": [
+                {"pageIndex": 0, "pageName": "Executive Overview", "format": "png", "data": _tiny_png()},
+                {"pageIndex": 0, "pageName": "Executive Overview", "format": "svg", "data": b"<svg />"},
+            ],
+        },
+    )
+
+    assert filename == "acme-q1-network-picasso.zip"
+    with zipfile.ZipFile(io.BytesIO(body)) as archive:
+        names = archive.namelist()
+        assert any(name.endswith("/images/01-executive-overview.png") for name in names)
+        assert any(name.endswith("/images/01-executive-overview.svg") for name in names)
+        assert any(name.endswith("/images/manifest.json") for name in names)
+        assert any(name.endswith("/pdf/network-picasso-diagram-packet.pdf") for name in names)
+        readme_name = next(name for name in names if name.endswith("/README.md"))
+        readme = archive.read(readme_name).decode()
+        assert "live Draw.io MCP editor" in readme
+        assert "pdf/network-picasso-diagram-packet.pdf" in readme
 
 
 def test_style_memory_save_endpoint_persists_project_style(server, tmp_path):
