@@ -191,6 +191,20 @@ body {
   padding: 1rem;
 }
 
+.remediation-controls {
+  align-items: end;
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: minmax(220px, 340px) 1fr;
+}
+
+.mcp-tab-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
 .guided-preset-grid {
   display: grid;
   gap: 0.5rem;
@@ -971,4 +985,10 @@ body {
   &--ok      { background: #defbe6; color: #0e6027; }
   &--warn    { background: #fdf6dd; color: #7d5500; }
   &--missing { background: #f4f4f4; color: #6f6f6f; }
+}
+
+@media (max-width: 671px) {
+  .remediation-controls {
+    grid-template-columns: 1fr;
+  }
 }

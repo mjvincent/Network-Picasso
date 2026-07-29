@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.6.3 - 2026-07-29
+
+### Added
+
+- Remediation target selector for Bob/MCP prompts so sellers can choose Current, a specific Draw.io page, or all five pages before copying a prompt.
+- MCP tab verification and rebuild actions in the Bob/MCP remediation panel.
+- Bob prompt text now explicitly tells Bob whether to edit only the selected page or all five pages.
+
 ## 0.6.2 - 2026-07-28
 
 ### Fixed

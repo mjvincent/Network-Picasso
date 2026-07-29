@@ -283,8 +283,11 @@ Useful guided remediation presets:
 - **Improve IBM pattern alignment**
 - **Prepare customer-ready version**
 
-Use **Copy prompt** when Bob is already in front of you. Use **Copy + open MCP** when you also
-need to bring the Draw.io MCP editor tab forward. Then paste the copied prompt into Bob.
+Choose the **Remediation target** before copying a Bob prompt: current diagram type, a specific
+Draw.io page, or all five pages. Use **Verify MCP tabs** to confirm the live editor has the
+expected five tabs, and **Rebuild MCP pages** if stale or duplicate tabs appear. Use **Copy prompt**
+when Bob is already in front of you. Use **Copy + open MCP** when you also need to bring the
+Draw.io MCP editor tab forward. Then paste the copied prompt into Bob.
 
 ## 12. Troubleshooting
 

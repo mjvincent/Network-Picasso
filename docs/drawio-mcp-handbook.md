@@ -106,11 +106,14 @@ Step 4 includes an MCP checklist under **Option E - Open in MCP editor**:
 
 Use **Check** first, then **Open MCP editor tab**, then **Open in MCP editor** or
 **Open all pages in MCP editor**. After the diagram is loaded, use **Bob/MCP remediation**.
-The preset cards copy page-aware prompts for labels, connector routing, Deployment-page polish,
-all-five-page review, IBM pattern alignment, or customer-ready preparation. **Copy + open MCP**
-opens the Draw.io MCP editor and places the prompt on the clipboard; paste it into Bob to start
-the edit. The app then shows a remediation session status with the copied preset, target page,
-MCP handoff state, and re-analysis reminder.
+Choose a **Remediation target** before copying a prompt: current diagram type, one specific
+Draw.io page, or all five pages. Use **Verify MCP tabs** to confirm the live editor page names
+are correct, and **Rebuild MCP pages** if duplicate or stale tabs appear. The preset cards copy
+page-aware prompts for labels, connector routing, Deployment-page polish, all-five-page review,
+IBM pattern alignment, or customer-ready preparation. **Copy + open MCP** opens the Draw.io MCP
+editor and places the prompt on the clipboard; paste it into Bob to start the edit. The app then
+shows a remediation session status with the copied preset, target page, MCP handoff state, and
+re-analysis reminder.
 
 ## What You Should See
 

@@ -179,6 +179,33 @@ def _ensure_page_count(doc_id: str, count: int) -> None:
         pages = _list_pages(doc_id)
 
 
+def verify_page_tabs() -> dict:
+    """Inspect the live MCP document and report whether expected tabs are present.
+
+    The MCP server can rename and create pages but does not expose page deletion,
+    so this check reports extra or duplicate tabs and lets the UI guide the user
+    toward rebuilding the first five Network Picasso page slots.
+    """
+    doc_id = _get_document_id()
+    pages = _list_pages(doc_id)
+    expected = list(DIAGRAM_PAGE_NAMES.values())
+    actual = [str(page.get("name") or "") for page in pages]
+    first_five = actual[:len(expected)]
+    missing = [name for name in expected if name not in actual]
+    duplicate_names = sorted({name for name in actual if name and actual.count(name) > 1})
+    extra = actual[len(expected):]
+    ok = first_five == expected and not duplicate_names and not extra
+    return {
+        "ok": ok,
+        "expected": expected,
+        "actual": actual,
+        "missing": missing,
+        "duplicates": duplicate_names,
+        "extra": extra,
+        "pages": pages,
+    }
+
+
 # ---------------------------------------------------------------------------
 # High-level helpers used by server.py
 # ---------------------------------------------------------------------------

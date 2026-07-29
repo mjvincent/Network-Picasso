@@ -328,6 +328,13 @@ type GuidedRemediationPreset = {
   prompt: string;
 };
 
+type RemediationTargetId = 'current' | 'executive' | 'context' | 'logical' | 'deployment' | 'decisions' | 'all';
+
+type RemediationTarget = {
+  id: RemediationTargetId;
+  label: string;
+};
+
 type RemediationSession = {
   presetLabel: string;
   targetPage: string;
@@ -336,6 +343,51 @@ type RemediationSession = {
   mcpOpened: boolean;
   reanalyzedAt?: string;
 };
+
+type McpTabVerification = {
+  ok: boolean;
+  expected: string[];
+  actual: string[];
+  missing: string[];
+  duplicates: string[];
+  extra: string[];
+};
+
+const DIAGRAM_PAGE_LABELS: Record<string, string> = {
+  executive: 'Executive Overview',
+  context: 'Context',
+  logical: 'Logical Architecture',
+  deployment: 'Deployment',
+  decisions: 'Assumptions & Decisions',
+};
+
+const REMEDIATION_TARGETS: RemediationTarget[] = [
+  { id: 'current', label: 'Current selected diagram type' },
+  { id: 'executive', label: 'Executive Overview' },
+  { id: 'context', label: 'Context' },
+  { id: 'logical', label: 'Logical Architecture' },
+  { id: 'deployment', label: 'Deployment' },
+  { id: 'decisions', label: 'Assumptions & Decisions' },
+  { id: 'all', label: 'All five pages' },
+];
+
+function pageNameForDiagramType(diagramType: string): string {
+  return DIAGRAM_PAGE_LABELS[diagramType] || 'Deployment';
+}
+
+function resolveRemediationTarget(targetId: RemediationTargetId, diagramType: string): RemediationTarget {
+  if (targetId === 'current') {
+    return { id: targetId, label: pageNameForDiagramType(diagramType) };
+  }
+  return REMEDIATION_TARGETS.find((target) => target.id === targetId) || REMEDIATION_TARGETS[0];
+}
+
+function targetInstruction(target: RemediationTarget): string {
+  if (target.id === 'all') {
+    return 'Inspect all five pages in this order: Executive Overview, Context, Logical Architecture, Deployment, and Assumptions & Decisions. Apply targeted cleanup across the full document and summarize changes separately by page.';
+  }
+  return `Inspect only the ${target.label} page in the open Draw.io MCP document. Do not modify the other pages unless the user explicitly asks.`;
+}
 
 function qualityFindingSummary(review: DiagramQualityReview | null): string {
   if (!review) {
@@ -361,16 +413,9 @@ IBM pattern checks needing review:
 ${missing}`;
 }
 
-function guidedRemediationPresets(diagramType: string, review: DiagramQualityReview | null): GuidedRemediationPreset[] {
-  const pageName = diagramType === 'executive'
-    ? 'Executive Overview'
-    : diagramType === 'logical'
-      ? 'Logical Architecture'
-      : diagramType === 'context'
-        ? 'Context'
-        : diagramType === 'decisions'
-          ? 'Assumptions & Decisions'
-          : 'Deployment';
+function guidedRemediationPresets(diagramType: string, review: DiagramQualityReview | null, remediationTarget: RemediationTarget): GuidedRemediationPreset[] {
+  const pageName = remediationTarget.label;
+  const instruction = targetInstruction(remediationTarget);
   const context = qualityFindingSummary(review);
   const allPages = 'Executive Overview, Context, Logical Architecture, Deployment, and Assumptions & Decisions';
   const guardrails = 'Preserve IBM Cloud stencil shapes, page names, customer-specific architecture facts, network topology, and IBM container hierarchy. Do not invent services or connectivity that are not already present or clearly implied by the model.';
@@ -381,7 +426,7 @@ function guidedRemediationPresets(diagramType: string, review: DiagramQualityRev
       label: 'Fix labels and spacing',
       description: 'Best first visual cleanup when labels overlap or text is cramped.',
       targetPage: pageName,
-      prompt: `Use the ibm-drawio-editing skill. Inspect the ${pageName} page in the Draw.io MCP editor. Fix label placement, label box sizing, text wrapping, whitespace, and local alignment issues.
+      prompt: `Use the ibm-drawio-editing skill. ${instruction} Fix label placement, label box sizing, text wrapping, whitespace, and local alignment issues.
 
 ${context}
 
@@ -392,7 +437,7 @@ ${guardrails} Keep edits presentation-focused and summarize changed labels or mo
       label: 'Clean connector routing',
       description: 'Use when connector labels cross shapes or traffic flow is hard to follow.',
       targetPage: pageName,
-      prompt: `Use the ibm-drawio-editing skill. Inspect the ${pageName} page in the Draw.io MCP editor. Clean connector routing with orthogonal paths, move connector labels away from shapes and lines, reduce crossings, and keep directional flow clear.
+      prompt: `Use the ibm-drawio-editing skill. ${instruction} Clean connector routing with orthogonal paths, move connector labels away from shapes and lines, reduce crossings, and keep directional flow clear.
 
 ${context}
 
@@ -401,9 +446,9 @@ ${guardrails} Preserve all existing source-to-target relationships and summarize
     {
       id: 'deployment-polish',
       label: 'Polish Deployment page',
-      description: 'Targets the most technical page for professional customer presentation.',
-      targetPage: 'Deployment',
-      prompt: `Use the ibm-drawio-editing skill. Inspect the Deployment page in the Draw.io MCP editor. Tighten the IBM Cloud account, region, VPC, zone, subnet, shared services, PowerVS, and connectivity layout so the design reads professionally.
+      description: 'Targets implementation detail for professional customer presentation.',
+      targetPage: pageName,
+      prompt: `Use the ibm-drawio-editing skill. ${instruction} Tighten implementation detail, IBM Cloud account, region, VPC, zone, subnet, shared services, PowerVS, and connectivity layout so the design reads professionally.
 
 ${context}
 
@@ -424,8 +469,8 @@ ${guardrails} Fix overlaps, cramped labels, ambiguous connector labels, inconsis
       id: 'pattern-alignment',
       label: 'Improve IBM pattern alignment',
       description: 'Use when the analyzer reports missing IBM pattern elements.',
-      targetPage: `${pageName} + Assumptions & Decisions`,
-      prompt: `Use the ibm-drawio-editing skill. Inspect the ${pageName} page and the Assumptions & Decisions page. Improve visible IBM Think Architecture pattern alignment without changing the customer intent.
+      targetPage: remediationTarget.id === 'all' ? 'All five pages' : `${pageName} + Assumptions & Decisions`,
+      prompt: `Use the ibm-drawio-editing skill. ${instruction} Also review the Assumptions & Decisions page for traceability when relevant. Improve visible IBM Think Architecture pattern alignment without changing the customer intent.
 
 ${context}
 
@@ -445,7 +490,7 @@ ${guardrails} Ensure each page has clear audience fit: executive page is simple,
   ];
 }
 
-function qualityRemediationPrompt(diagramType: string, review: DiagramQualityReview): string {
+function qualityRemediationPrompt(targetPage: string, review: DiagramQualityReview): string {
   const findings = review.findings.slice(0, 8);
   const findingText = findings.length
     ? findings.map((finding, index) =>
@@ -457,7 +502,11 @@ function qualityRemediationPrompt(diagramType: string, review: DiagramQualityRev
     .map((check) => `- ${check.name}`)
     .join('\n') || '- No missing IBM pattern checks reported.';
 
-  return `Use the ibm-drawio-editing skill. Inspect the currently open ${diagramType} Draw.io page in the MCP editor and remediate the Network Picasso quality analyzer findings below.
+  const scope = targetPage === 'All five pages'
+    ? 'Inspect all five pages in the open Draw.io MCP document and remediate the Network Picasso quality analyzer findings below. Summarize changes separately by page.'
+    : `Inspect only the ${targetPage} page in the open Draw.io MCP document and remediate the Network Picasso quality analyzer findings below. Do not modify the other pages unless the user explicitly asks.`;
+
+  return `Use the ibm-drawio-editing skill. ${scope}
 
 Quality score: ${review.score}/100 (${review.status})
 IBM pattern foundation: ${review.ibmPatternChecks.name}
@@ -654,6 +703,9 @@ export default function App() {
   const [mcpDiagramPushed, setMcpDiagramPushed] = useState(false);
   const [copiedPrompt, setCopiedPrompt] = useState('');
   const [remediationSession, setRemediationSession] = useState<RemediationSession | null>(null);
+  const [remediationTargetId, setRemediationTargetId] = useState<RemediationTargetId>('current');
+  const [mcpTabVerification, setMcpTabVerification] = useState<McpTabVerification | null>(null);
+  const [mcpTabsBusy, setMcpTabsBusy] = useState(false);
 
   // Project state
   const [projectTree, setProjectTree]     = useState<ProjectNode[]>([]);
@@ -1755,6 +1807,53 @@ export default function App() {
     }
   }
 
+  async function verifyMcpTabs() {
+    setMcpTabsBusy(true);
+    setError('');
+    try {
+      const result = await postJson<McpTabVerification>('/api/drawio-mcp/verify-tabs', {});
+      setMcpTabVerification(result);
+      setMcpRunning(true);
+      setMcpStatus(result.ok
+        ? 'MCP tabs verified: five Network Picasso pages are present in order.'
+        : 'MCP tabs need attention. Rebuild MCP pages to normalize the first five tabs.');
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'MCP tab verification failed';
+      setMcpRunning(false);
+      setMcpStatus(msg);
+      setError(msg);
+    } finally {
+      setMcpTabsBusy(false);
+    }
+  }
+
+  async function rebuildAndVerifyMcpPages() {
+    if (!architecture) return;
+    setMcpTabsBusy(true);
+    setError('');
+    try {
+      const result = await postJson<{ ok: boolean; editorUrl: string; pages: number }>(
+        '/api/drawio-mcp-all-pages',
+        { architecturePath },
+      );
+      window.open(BROWSER_MCP_EDITOR_URL, 'drawio-mcp-editor');
+      setMcpRunning(true);
+      setMcpEditorOpened(true);
+      setMcpDiagramPushed(true);
+      const verification = await postJson<McpTabVerification>('/api/drawio-mcp/verify-tabs', {});
+      setMcpTabVerification(verification);
+      setMcpStatus(verification.ok
+        ? `Rebuilt and verified ${result.pages} MCP page tabs.`
+        : `Rebuilt ${result.pages} MCP pages; tab verification still needs review.`);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'MCP rebuild failed';
+      setMcpStatus(msg);
+      setError(msg);
+    } finally {
+      setMcpTabsBusy(false);
+    }
+  }
+
   function openMcpEditorTab() {
     window.open(BROWSER_MCP_EDITOR_URL, 'drawio-mcp-editor');
     setMcpEditorOpened(true);
@@ -1879,7 +1978,8 @@ export default function App() {
 
   // ── Render ───────────────────────────────────────────────────────────────────
   const bobPromptRecommendation = recommendedGuidedPreset(diagramQuality);
-  const guidedPresets = guidedRemediationPresets(diagramType, diagramQuality);
+  const remediationTarget = resolveRemediationTarget(remediationTargetId, diagramType);
+  const guidedPresets = guidedRemediationPresets(diagramType, diagramQuality, remediationTarget);
 
   return (
     <>
@@ -3100,8 +3200,8 @@ export default function App() {
                                 id: 'quality-fix',
                                 label: 'Quality Fix',
                                 description: 'Analyzer-generated remediation prompt.',
-                                targetPage: diagramType,
-                                prompt: qualityRemediationPrompt(diagramType, diagramQuality),
+                                targetPage: remediationTarget.label,
+                                prompt: qualityRemediationPrompt(remediationTarget.label, diagramQuality),
                               })}
                               disabled={busy}
                             >
@@ -3315,6 +3415,56 @@ export default function App() {
                       <strong>Bob/MCP remediation</strong>
                       <InfoTip text="These buttons copy complete, analyzer-aware Bob prompts. Network Picasso can open the Draw.io MCP editor, but Bob still needs you to paste the copied prompt unless Bob provides a direct prompt-submission API." />
                     </div>
+                    <div className="remediation-controls">
+                      <Select
+                        id="remediation-target"
+                        labelText="Remediation target"
+                        value={remediationTargetId}
+                        onChange={(event) => {
+                          setRemediationTargetId(event.target.value as RemediationTargetId);
+                          setCopiedPrompt('');
+                          setRemediationSession(null);
+                        }}
+                      >
+                        {REMEDIATION_TARGETS.map((target) => (
+                          <SelectItem key={target.id} value={target.id} text={target.label} />
+                        ))}
+                      </Select>
+                      <div className="mcp-tab-actions">
+                        <Button
+                          kind="tertiary"
+                          size="sm"
+                          renderIcon={ListChecked}
+                          onClick={verifyMcpTabs}
+                          disabled={mcpTabsBusy}
+                        >
+                          Verify MCP tabs
+                        </Button>
+                        <Button
+                          kind="ghost"
+                          size="sm"
+                          renderIcon={Renew}
+                          onClick={rebuildAndVerifyMcpPages}
+                          disabled={mcpTabsBusy || !architecture}
+                        >
+                          Rebuild MCP pages
+                        </Button>
+                      </div>
+                    </div>
+                    <p className="panel-copy">
+                      Targeting: <strong>{remediationTarget.label}</strong>. Bob prompts will tell Bob whether to edit only that page or all five pages.
+                    </p>
+                    {mcpTabVerification && (
+                      <InlineNotification
+                        kind={mcpTabVerification.ok ? 'success' : 'warning'}
+                        title={mcpTabVerification.ok ? 'MCP tabs verified' : 'MCP tabs need cleanup'}
+                        subtitle={mcpTabVerification.ok
+                          ? `Found: ${mcpTabVerification.actual.slice(0, 5).join(', ')}`
+                          : `Found: ${mcpTabVerification.actual.join(', ') || 'No tabs reported'}. Missing: ${mcpTabVerification.missing.join(', ') || 'none'}. Duplicates: ${mcpTabVerification.duplicates.join(', ') || 'none'}.`}
+                        lowContrast
+                        hideCloseButton
+                      />
+                    )}
                     <InlineNotification
                       kind="info"
                       title={`Recommended next prompt: ${bobPromptRecommendation.label}`}

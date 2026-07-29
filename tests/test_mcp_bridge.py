@@ -111,3 +111,57 @@ def test_open_all_pages_creates_missing_page_slots(monkeypatch):
     create_calls = [args for name, args in calls if name == "create-page"]
     assert len(create_calls) == 4
     assert create_calls[-1]["name"] == "Network Picasso Page 5"
+
+
+def test_verify_page_tabs_reports_clean_expected_order(monkeypatch):
+    def fake_call_tool(name: str, args: dict, *, timeout: int = 30) -> dict:
+        if name == "list-documents":
+            return _tool_text([{"id": "doc-1"}])
+        if name == "list-pages":
+            return _tool_text([
+                {"index": 0, "id": "page-0", "name": "Executive Overview"},
+                {"index": 1, "id": "page-1", "name": "Context"},
+                {"index": 2, "id": "page-2", "name": "Logical Architecture"},
+                {"index": 3, "id": "page-3", "name": "Deployment"},
+                {"index": 4, "id": "page-4", "name": "Assumptions & Decisions"},
+            ])
+        return _tool_text({"ok": True})
+
+    monkeypatch.setattr(mcp_bridge, "call_tool", fake_call_tool)
+
+    result = mcp_bridge.verify_page_tabs()
+
+    assert result["ok"] is True
+    assert result["duplicates"] == []
+    assert result["extra"] == []
+    assert result["missing"] == []
+
+
+def test_verify_page_tabs_reports_duplicate_deployment(monkeypatch):
+    def fake_call_tool(name: str, args: dict, *, timeout: int = 30) -> dict:
+        if name == "list-documents":
+            return _tool_text([{"id": "doc-1"}])
+        if name == "list-pages":
+            return _tool_text([
+                {"index": 0, "id": "page-0", "name": "Deployment"},
+                {"index": 1, "id": "page-1", "name": "Context"},
+                {"index": 2, "id": "page-2", "name": "Logical Architecture"},
+                {"index": 3, "id": "page-3", "name": "Deployment"},
+                {"index": 4, "id": "page-4", "name": "Assumptions & Decisions"},
+            ])
+        return _tool_text({"ok": True})
+
+    monkeypatch.setattr(mcp_bridge, "call_tool", fake_call_tool)
+
+    result = mcp_bridge.verify_page_tabs()
+
+    assert result["ok"] is False
+    assert result["missing"] == ["Executive Overview"]
+    assert result["duplicates"] == ["Deployment"]
+    assert result["actual"][:5] == [
+        "Deployment",
+        "Context",
+        "Logical Architecture",
+        "Deployment",
+        "Assumptions & Decisions",
+    ]
