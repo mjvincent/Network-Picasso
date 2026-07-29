@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.6.10 - 2026-07-29
+
+### Added
+
+- The finished PDF packet now includes a cover page with customer, project, source, export timestamp, and architecture summary fields.
+- Added a table of contents, page numbering, one diagram per page, and report appendices for architecture summary, IBM pattern alignment, diagram quality, and assumptions/open questions.
+
+### Changed
+
+- The PDF packet now uses the same Markdown reports that are included in the ZIP, keeping the printable packet aligned with the export package.
+- Simplified the PDF cover styling after visual QA so it renders cleanly in macOS Quick Look.
+
 ## 0.6.9 - 2026-07-29
 
 ### Added

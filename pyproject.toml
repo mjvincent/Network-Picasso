@@ -1,6 +1,6 @@
 [project]
 name = "network-picasso"
-version = "0.6.9"
+version = "0.6.10"
 description = "Local-first IBM Cloud architecture advisor and Draw.io diagram workbench."
 requires-python = ">=3.11"
 dependencies = ["psycopg[binary]>=3.2"]

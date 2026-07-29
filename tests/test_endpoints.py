@@ -597,6 +597,12 @@ def test_project_export_package_includes_rendered_mcp_assets(tmp_path):
         assert any(name.endswith("/images/01-executive-overview.svg") for name in names)
         assert any(name.endswith("/images/manifest.json") for name in names)
         assert any(name.endswith("/pdf/network-picasso-diagram-packet.pdf") for name in names)
+        pdf_name = next(name for name in names if name.endswith("/pdf/network-picasso-diagram-packet.pdf"))
+        pdf = archive.read(pdf_name)
+        assert b"Table of Contents" in pdf
+        assert b"Architecture Summary" in pdf
+        assert b"IBM Pattern Alignment" in pdf
+        assert b"Assumptions And Open Questions" in pdf
         readme_name = next(name for name in names if name.endswith("/README.md"))
         readme = archive.read(readme_name).decode()
         assert "live Draw.io MCP editor" in readme

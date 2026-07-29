@@ -33,7 +33,7 @@ from . import ollama as _ollama
 from . import persistence
 from .advisor import review_architecture
 from .patterns import best_pattern, match_patterns
-from .pdf_packet import PdfImage, build_pdf_packet
+from .pdf_packet import PdfImage, PdfPacketMetadata, PdfSection, build_pdf_packet
 from .quality import analyze_diagram_quality, apply_quality_remediations
 from .style_memory import (
     extract_style_memory,
@@ -288,6 +288,10 @@ def build_project_export_package(
     activity = project_activity_payload(project_path, settings)
     customer, project = persistence.project_identity(project_path, resolve_projects_root(settings))
     package_slug = safe_filename(f"{customer}-{project}-network-picasso").replace(" ", "-")
+    architecture_summary_md = _architecture_summary_markdown(summary, architecture)
+    pattern_report_md = _pattern_report_markdown(reviews)
+    quality_report_md = _quality_report_markdown(reviews, architecture)
+    assumptions_md = _assumptions_markdown(architecture)
 
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, "w", compression=zipfile.ZIP_DEFLATED) as archive:
@@ -295,12 +299,23 @@ def build_project_export_package(
         archive.writestr(f"{root}/architecture.json", json.dumps(architecture, indent=2))
         packaged_drawio_xml = drawio_xml or render_multipage_drawio(architecture)
         archive.writestr(f"{root}/diagrams/network-picasso-all.drawio", packaged_drawio_xml)
-        archive.writestr(f"{root}/reports/architecture-summary.md", _architecture_summary_markdown(summary, architecture))
-        archive.writestr(f"{root}/reports/ibm-pattern-alignment.md", _pattern_report_markdown(reviews))
-        archive.writestr(f"{root}/reports/diagram-quality.md", _quality_report_markdown(reviews, architecture))
-        archive.writestr(f"{root}/reports/assumptions-and-open-questions.md", _assumptions_markdown(architecture))
+        archive.writestr(f"{root}/reports/architecture-summary.md", architecture_summary_md)
+        archive.writestr(f"{root}/reports/ibm-pattern-alignment.md", pattern_report_md)
+        archive.writestr(f"{root}/reports/diagram-quality.md", quality_report_md)
+        archive.writestr(f"{root}/reports/assumptions-and-open-questions.md", assumptions_md)
         archive.writestr(f"{root}/reports/project-activity.json", json.dumps(activity, indent=2))
-        image_entries = _write_rendered_assets(archive, root, rendered_assets)
+        image_entries = _write_rendered_assets(
+            archive,
+            root,
+            rendered_assets,
+            metadata=_pdf_packet_metadata(summary, customer, project, diagram_source),
+            sections=[
+                PdfSection("Architecture Summary", architecture_summary_md),
+                PdfSection("IBM Pattern Alignment", pattern_report_md),
+                PdfSection("Diagram Quality", quality_report_md),
+                PdfSection("Assumptions And Open Questions", assumptions_md),
+            ],
+        )
         memory = load_style_memory(project_path) or load_global_style_memory(REPO_ROOT) or extract_style_memory(
             packaged_drawio_xml,
             name=f"{customer}/{project} generated diagram style",
@@ -325,7 +340,37 @@ def _asset_slug(page_name: str, page_index: int) -> str:
     return f"{page_index + 1:02d}-{slug or 'page'}"
 
 
-def _write_rendered_assets(archive: zipfile.ZipFile, root: str, rendered_assets: dict | None) -> list[dict]:
+def _pdf_packet_metadata(summary: dict, customer: str, project: str, diagram_source: str) -> PdfPacketMetadata:
+    source_label = "live Draw.io MCP editor" if diagram_source == "mcp" else "Network Picasso generated model"
+    summary_items = [
+        ("Environment", summary.get("environment") or "Not specified"),
+        ("IBM pattern", summary.get("pattern") or "Not selected"),
+        ("Regions", ", ".join(summary.get("regions") or []) or "Not specified"),
+        ("VPCs", ", ".join(summary.get("vpcs") or []) or "Not specified"),
+        ("Connectivity", ", ".join(summary.get("connectivity") or []) or "Not specified"),
+        ("Compute", ", ".join(summary.get("compute") or []) or "Not specified"),
+        ("Storage and data", ", ".join(summary.get("storage") or []) or "Not specified"),
+        ("Security", ", ".join(summary.get("security") or []) or "Not specified"),
+        ("Latest quality", summary.get("quality") or "Not analyzed"),
+    ]
+    return PdfPacketMetadata(
+        customer=customer,
+        project=project,
+        exported_at=datetime.now(timezone.utc).isoformat(),
+        source=source_label,
+        title=f"{summary.get('projectName') or project} Architecture Packet",
+        summary_items=summary_items,
+    )
+
+
+def _write_rendered_assets(
+    archive: zipfile.ZipFile,
+    root: str,
+    rendered_assets: dict | None,
+    *,
+    metadata: PdfPacketMetadata,
+    sections: list[PdfSection],
+) -> list[dict]:
     assets = rendered_assets.get("assets", []) if isinstance(rendered_assets, dict) else []
     entries: list[dict] = []
     png_images: list[PdfImage] = []
@@ -360,7 +405,7 @@ def _write_rendered_assets(archive: zipfile.ZipFile, root: str, rendered_assets:
     if png_images:
         archive.writestr(
             f"{root}/pdf/network-picasso-diagram-packet.pdf",
-            build_pdf_packet(png_images),
+            build_pdf_packet(png_images, metadata=metadata, sections=sections),
         )
     return entries
 
@@ -513,7 +558,7 @@ def _export_readme_markdown(
 
 
 class NetworkPicassoHandler(BaseHTTPRequestHandler):
-    server_version = "NetworkPicasso/0.6.9"
+    server_version = "NetworkPicasso/0.6.10"
 
     def do_OPTIONS(self) -> None:
         self.send_response(204)
