@@ -590,7 +590,7 @@ def _export_readme_markdown(
 
 
 class NetworkPicassoHandler(BaseHTTPRequestHandler):
-    server_version = "NetworkPicasso/0.6.12"
+    server_version = "NetworkPicasso/0.6.13"
 
     def do_OPTIONS(self) -> None:
         self.send_response(204)

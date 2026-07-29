@@ -3,6 +3,7 @@ from __future__ import annotations
 from html import escape
 from itertools import count
 from pathlib import Path
+import re
 
 from .patterns import best_pattern, match_patterns
 
@@ -1551,6 +1552,133 @@ def _render_vpc_zones(
         z_y += zone_h_each + _SG_M
 
 
+def _find_cidr_for_name(ibm_cloud: dict, name_token: str) -> str:
+    token = name_token.lower()
+    for category in ("vpcs", "subnets"):
+        for item in ibm_cloud.get(category, []):
+            if not isinstance(item, dict):
+                continue
+            haystack = " ".join(str(item.get(key) or "") for key in ("name", "purpose", "notes")).lower()
+            cidr = str(item.get("cidr") or "")
+            if token in haystack and cidr:
+                return cidr
+            match = re.search(r'\b\d{1,3}(?:\.\d{1,3}){3}/\d{1,2}\b', haystack)
+            if token in haystack and match:
+                return match.group(0)
+    return ""
+
+
+def _render_classic_vcf_rovs_deployment(builder: DrawioBuilder, project: dict, ibm_cloud: dict, render_plan: dict) -> None:
+    """Render Classic vSRX to VPC Transit Gateway topologies such as UPS ROVS."""
+    _render_title(builder, project, "deployment")
+
+    left = _BASE_X
+    top = _BASE_Y
+    gap = 28
+
+    enterprise = builder.ibm_location(
+        "UPS Enterprise / On-Premises", left, top, 250, 360,
+        shape="network--enterprise", stroke_color=COLOR["grey"],
+    )
+    users = builder.ibm_actor("UPS users", left + 24, top + 70, "user", d=40)
+    wan = builder.ibm_actor("UPS WAN", left + 24, top + 170, "enterprise", d=40)
+
+    conn_x = left + 250 + gap
+    connectivity = builder.ibm_location(
+        "DirectLink 2.0 Connectivity", conn_x, top, 230, 360,
+        shape="arrows--horizontal", stroke_color=COLOR["network"],
+    )
+    dl = builder.ibm_node("DirectLink 2.0", conn_x + 40, top + 130, "ibm-cloud--direct-link-2--connect", d=44)
+
+    classic_x = conn_x + 230 + gap
+    classic = builder.ibm_location(
+        "IBM Cloud Classic - WDC", classic_x, top, 400, 360,
+        shape="ibm-cloud", stroke_color=COLOR["network"], stroke_width=2,
+    )
+    vsrx = builder.ibm_node("Juniper vSRX\nrouting/firewall", classic_x + 34, top + 70, "ibm-cloud--security-groups-for-vpc", d=44)
+    prod = builder.box(
+        f"VCF ProdNet\nProduction Supernet {_find_cidr_for_name(ibm_cloud, 'VCF ProdNet') or '10.237.0.0/16'}",
+        classic_x + 34, top + 150, 320, 70,
+        fill=COLOR["Private"], stroke=COLOR["az_stroke"], font_size=11,
+    )
+    test = builder.box(
+        f"VCF TestNet\nTestNet Supernet {_find_cidr_for_name(ibm_cloud, 'VCF TestNet') or '10.233.128.0/17'}",
+        classic_x + 34, top + 245, 320, 70,
+        fill="#E8DAFF", stroke=COLOR["az_stroke"], font_size=11,
+    )
+
+    tgw_x = classic_x + 400 + gap
+    tgw_box = builder.box(
+        "Classic routed handoff\nvia Transit Gateway",
+        tgw_x, top + 95, 180, 155,
+        fill="#FFFFFF", stroke=COLOR["network"], font_size=11,
+    )
+    tgw = builder.transit_gateway("Transit Gateway", tgw_x + 64, top + 160)
+
+    account_x = tgw_x + 180 + gap
+    account_w = 790
+    account = builder.ibm_location(
+        "IBM Cloud VPC - WDC / us-east", account_x, top, account_w, 560,
+        shape="ibm-cloud", stroke_color=COLOR["network"], stroke_width=2,
+    )
+    region = builder.child_ibm_location(
+        "us-east\nWDC Region", 24, 56, account_w - 48, 470,
+        "location", COLOR["grey"], account,
+    )
+    vpc = builder.child_ibm_location(
+        f"ROVS POC VPC\n{_find_cidr_for_name(ibm_cloud, 'ROVS POC VPC') or '10.237.240.0/20'}",
+        36, 70, account_w - 72, 380,
+        "ibm-cloud--vpc", COLOR["network"], region,
+    )
+
+    subnets = [
+        item for item in ibm_cloud.get("subnets", [])
+        if isinstance(item, dict) and "rovs" in str(item.get("name", "")).lower()
+    ]
+    if not subnets:
+        subnets = [{"name": "ROVS POC subnet us-east-3", "zone": "us-east-3", "cidr": "10.237.248.0/22"}]
+    subnets = sorted(subnets, key=lambda item: str(item.get("zone") or item.get("name") or ""))
+    zone_y = 62
+    cluster_id = ""
+    for index, subnet in enumerate(subnets[:3]):
+        zone = str(subnet.get("zone") or f"us-east-{index + 1}")
+        cidr = str(subnet.get("cidr") or "")
+        zone_id = builder.child_ibm_location(
+            zone, 18, zone_y, account_w - 108, 74,
+            "data--center", COLOR["grey"], vpc, dashed=True, icon_size=20,
+        )
+        subnet_id = builder.container(
+            f"{subnet.get('name') or 'ROVS POC subnet'}\n{cidr}".strip(),
+            14, 34, account_w - 140, 32,
+            fill=COLOR["Private"], stroke=COLOR["az_stroke"], font_size=10,
+            parent=zone_id,
+        )
+        if zone == "us-east-3" or index == len(subnets[:3]) - 1:
+            cluster_id = builder.child_ibm_node(
+                "ROVS cluster\nVDI testing", 26, 2,
+                "logo--openshift", subnet_id, d=28,
+            )
+        zone_y += 90
+
+    builder.edge(users, dl, "VDI / management traffic")
+    builder.edge(wan, dl, "private WAN")
+    builder.edge(dl, vsrx, "DirectLink terminates")
+    builder.edge(vsrx, prod, "routes ProdNet")
+    builder.edge(vsrx, test, "routes TestNet")
+    builder.edge(vsrx, tgw_box, "Classic routed handoff")
+    builder.edge(tgw_box, tgw, "")
+    builder.edge(tgw, vpc, "TGW attachment to ROVS POC VPC")
+    if cluster_id:
+        builder.edge(vpc, cluster_id, "private VPC routing", dashed=True)
+
+    builder.box(
+        "Seller validation: confirm BGP/route tables, vSRX policy zones, TGW attachment details, and whether us-east-1/us-east-2 CIDRs are reserved or active for the single-zone POC.",
+        account_x, top + 590, account_w, 66,
+        fill="#FFF1F1", stroke=COLOR["security"], font_size=11,
+        align="left", vertical_align="middle",
+    )
+
+
 def _render_multi_region_deployment(
     builder: DrawioBuilder,
     ibm_cloud: dict,
@@ -1808,9 +1936,13 @@ def _render_deployment(builder: DrawioBuilder, project: dict, ibm_cloud: dict, r
     No topology is assumed.  Every structural element (on-prem block, VPC count,
     AZ count, node types) is derived from the ibm_cloud dict.
     """
+    render_plan = render_plan or {}
+    if str(render_plan.get("topology_variant") or "").lower() == "classic-vcf-rovs":
+        _render_classic_vcf_rovs_deployment(builder, project, ibm_cloud, render_plan)
+        return
+
     _render_title(builder, project, "deployment")
 
-    render_plan = render_plan or {}
     regions_data   = ibm_cloud.get("regions")          or [{"name": "Region TBD"}]
     conn_items     = ibm_cloud.get("connectivity")      or []
     vpcs_data      = _vpcs_from_render_plan(render_plan, ibm_cloud)

@@ -110,3 +110,34 @@ def test_apply_quality_remediations_adds_missing_pattern_components():
     assert "VPC landing zone" in traceability["present"]
     assert "Private endpoints" in traceability["missing"]
     assert architecture["decisions"]["presentationReview"]["required"] is True
+
+
+def test_quality_remediations_do_not_add_powervs_without_powervs_evidence():
+    architecture = {
+        "project": {"name": "UPS VCF ROVS"},
+        "render_plan": {
+            "pattern": "hybrid-powervs-dr",
+            "topology_variant": "classic-vcf-rovs",
+            "has_powervs": False,
+        },
+        "ibm_cloud": {
+            "vpcs": [{"name": "ROVS POC VPC"}],
+            "compute": [{"name": "ROVS cluster for VDI testing"}],
+            "connectivity": [{"name": "DirectLink 2.0"}, {"name": "Transit Gateway"}, {"name": "Juniper vSRX"}],
+        },
+    }
+    review = {
+        "pattern": "hybrid-powervs-dr",
+        "ibmPatternChecks": {
+            "name": "Power Virtual Server with VPC landing zone",
+            "checks": [{"name": "PowerVS workspace", "present": False}],
+        },
+        "findings": [],
+    }
+
+    result = apply_quality_remediations(architecture, review)
+    compute_names = [item["name"] for item in architecture["ibm_cloud"]["compute"]]
+
+    assert "PowerVS workspace" not in compute_names
+    assert result["deferred"]
+    assert "Skipped PowerVS" in result["deferred"][0]["change"]

@@ -1161,6 +1161,40 @@ def _append_fact(
     })
 
 
+def _append_fact_item(
+    facts: dict[str, list[dict[str, str]]],
+    key: str,
+    item: dict[str, str],
+    *,
+    source: str,
+    notes: str,
+) -> None:
+    payload = {
+        "type": key,
+        "source": source,
+        "notes": notes[:500],
+        **item,
+    }
+    facts.setdefault(key, []).append(payload)
+
+
+def _extract_zone_cidr_pairs(text: str) -> list[tuple[str, str]]:
+    """Extract CIDR-to-zone pairs from prose such as '10.0.0.0/22 us-east-3'."""
+    pairs: list[tuple[str, str]] = []
+    for cidr, zone in re.findall(r'(\b\d{1,3}(?:\.\d{1,3}){3}/\d{1,2})\W+(us-[a-z]+-\d)\b', text, re.IGNORECASE):
+        pairs.append((cidr, zone.lower()))
+    for zone, cidr in re.findall(r'\b(us-[a-z]+-\d)\W+(\d{1,3}(?:\.\d{1,3}){3}/\d{1,2})\b', text, re.IGNORECASE):
+        pair = (cidr, zone.lower())
+        if pair not in pairs:
+            pairs.append(pair)
+    return pairs
+
+
+def _extract_supernet(text: str, label: str) -> str:
+    match = re.search(rf'{label}\s*supernet\s*:\s*(\d{{1,3}}(?:\.\d{{1,3}}){{3}}/\d{{1,2}})', text, re.IGNORECASE)
+    return match.group(1) if match else ""
+
+
 def enrich_architecture_from_requirements(
     architecture: dict,
     requirements: str,
@@ -1200,8 +1234,100 @@ def enrich_architecture_from_requirements(
         or "patient" in text
         or "medical imaging" in text
     )
+    mentions_classic_vcf_rovs = (
+        ("rovs" in text or "vdi" in text)
+        and ("vcf" in text or "prodnet" in text or "testnet" in text)
+        and ("vsrx" in text or "juniper" in text or "classic" in text)
+    )
 
     add_detected_facts(facts, requirements, source=source_label)
+
+    if mentions_classic_vcf_rovs:
+        prod_supernet = _extract_supernet(requirements, "Production")
+        test_supernet = _extract_supernet(requirements, "TestNet")
+        zone_pairs = _extract_zone_cidr_pairs(requirements)
+        rovs_supernet_match = re.search(
+            r'rovs\s+poc\s+subnet\s*-\s*(\d{1,3}(?:\.\d{1,3}){3}/\d{1,2})',
+            requirements,
+            re.IGNORECASE,
+        )
+        rovs_supernet = rovs_supernet_match.group(1) if rovs_supernet_match else ""
+
+        for name, purpose, cidr in [
+            ("VCF ProdNet", "Existing VMware Cloud Foundation production network routed through Classic vSRX", prod_supernet),
+            ("VCF TestNet", "Existing VMware Cloud Foundation test network routed through Classic vSRX", test_supernet),
+            ("ROVS POC VPC", "New IBM Cloud VPC environment for ROVS VDI proof of concept", rovs_supernet),
+        ]:
+            _append_fact_item(facts, "vpcs", {
+                "name": name,
+                "purpose": purpose,
+                "region": "us-east",
+                "cidr": cidr,
+            }, source=source_label, notes=requirements)
+
+        for name, purpose in [
+            ("DirectLink 2.0", "Existing private connectivity from UPS on-premises to IBM Cloud WDC Classic"),
+            ("Juniper vSRX", "Classic network firewall/router terminating DirectLink and routing VCF ProdNet/TestNet traffic"),
+            ("Transit Gateway", "Connects Classic/vSRX-routed networks to the new ROVS POC VPC"),
+        ]:
+            _append_fact(facts, "connectivity", name, purpose=purpose, source=source_label, notes=requirements, region="us-east")
+
+        _append_fact(
+            facts, "compute", "ROVS cluster for VDI testing",
+            purpose="ROVS proof-of-concept cluster for VDI testing in the new IBM Cloud VPC environment",
+            source=source_label, notes=requirements, region="us-east",
+        )
+
+        for cidr, zone in zone_pairs:
+            tier = "Private"
+            active = "single zone target" if zone == "us-east-3" else "listed ROVS subnet"
+            _append_fact_item(facts, "subnets", {
+                "name": f"ROVS POC subnet {zone} {cidr}",
+                "purpose": f"{active} CIDR {cidr}",
+                "region": "us-east",
+                "zone": zone,
+                "cidr": cidr,
+                "subnet_tier": tier,
+                "vpc": "ROVS POC VPC",
+            }, source=source_label, notes=requirements)
+            _append_fact_item(facts, "zones", {
+                "name": zone,
+                "purpose": "ROVS POC subnet placement",
+                "region": "us-east",
+            }, source=source_label, notes=requirements)
+
+        plan = architecture.setdefault("render_plan", {})
+        plan.update({
+            "pattern": "hybrid-classic-vpc",
+            "pattern_name": "Hybrid Classic to VPC Transit Gateway",
+            "pattern_reason": "UPS connects on-premises to IBM Cloud Classic through DirectLink 2.0 and Juniper vSRX, with Transit Gateway connectivity to a new ROVS POC VPC.",
+            "pattern_source": source,
+            "topology_variant": "classic-vcf-rovs",
+            "has_on_prem": True,
+            "has_tgw": True,
+            "has_powervs": False,
+            "has_dr": False,
+            "az_count": 1,
+            "connectivity_label": "DirectLink 2.0",
+            "vpcs": [
+                {"name": "VCF ProdNet", "purpose": f"Existing Classic VCF production network {prod_supernet}".strip(), "region": "us-east", "tiers": ["Private"]},
+                {"name": "VCF TestNet", "purpose": f"Existing Classic VCF test network {test_supernet}".strip(), "region": "us-east", "tiers": ["Private"]},
+                {"name": "ROVS POC VPC", "purpose": f"New VPC ROVS/VDI POC {rovs_supernet}".strip(), "region": "us-east", "tiers": ["Private"]},
+            ],
+            "shared_services": [],
+        })
+        facts["vpcs"] = [
+            item for item in facts.get("vpcs", [])
+            if str(item.get("name") or "") != "Workload VPC"
+        ]
+        facts["subnets"] = [
+            item for item in facts.get("subnets", [])
+            if str(item.get("name") or "") != "Application subnet"
+        ]
+        facts["zones"] = [
+            item for item in facts.get("zones", [])
+            if str(item.get("name") or "") != "zone-1"
+        ]
 
     if mentions_powervs:
         _append_fact(

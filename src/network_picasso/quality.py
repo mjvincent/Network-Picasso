@@ -170,6 +170,13 @@ def apply_quality_remediations(architecture: dict, review: dict[str, Any]) -> di
         if check.get("present"):
             continue
         component = _component_for_pattern_check(str(check.get("name") or ""))
+        if component and component["category"] == "compute" and component["item"]["name"] == "PowerVS workspace":
+            if not _has_explicit_powervs_evidence(architecture):
+                deferred.append({
+                    "area": "IBM pattern alignment",
+                    "change": "Skipped PowerVS recommendation because the customer requirements do not mention PowerVS or Power Virtual Server.",
+                })
+                continue
         if not component:
             deferred.append({
                 "area": "IBM pattern alignment",
@@ -205,6 +212,25 @@ def apply_quality_remediations(architecture: dict, review: dict[str, Any]) -> di
             "source": "quality-analyzer",
         }
     return {"applied": applied, "deferred": deferred, "architecture": architecture}
+
+
+def _has_explicit_powervs_evidence(architecture: dict[str, Any]) -> bool:
+    evidence_parts: list[str] = []
+    ibm_cloud = architecture.get("ibm_cloud", {})
+    if isinstance(ibm_cloud, dict):
+        for items in ibm_cloud.values():
+            if not isinstance(items, list):
+                continue
+            for item in items:
+                if isinstance(item, dict):
+                    evidence_parts.extend(str(item.get(key) or "") for key in ("name", "purpose", "notes"))
+    for req in architecture.get("requirements", []) or []:
+        if isinstance(req, dict):
+            evidence_parts.append(str(req.get("text") or ""))
+        else:
+            evidence_parts.append(str(req))
+    context = " ".join(evidence_parts).lower()
+    return "powervs" in context or "power virtual" in context or "power virtual server" in context
 
 
 def _extract_cells(xml: str) -> list[DiagramCell]:

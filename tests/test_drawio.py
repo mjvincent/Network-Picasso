@@ -121,6 +121,51 @@ def test_stencil_shape_lookup():
     assert _stencil_shape("unknown random service") == ""  # no match → empty string
 
 
+def test_classic_vcf_rovs_deployment_renders_customer_topology():
+    arch = {
+        "project": {"name": "UPS VCF ROVS"},
+        "render_plan": {
+            "topology_variant": "classic-vcf-rovs",
+            "pattern": "hybrid-classic-vpc",
+            "has_on_prem": True,
+            "has_tgw": True,
+            "has_powervs": False,
+            "connectivity_label": "DirectLink 2.0",
+        },
+        "ibm_cloud": {
+            "regions": [{"name": "us-east"}],
+            "vpcs": [
+                {"name": "VCF ProdNet", "cidr": "10.237.0.0/16"},
+                {"name": "VCF TestNet", "cidr": "10.233.128.0/17"},
+                {"name": "ROVS POC VPC", "cidr": "10.237.240.0/20"},
+            ],
+            "connectivity": [
+                {"name": "DirectLink 2.0"},
+                {"name": "Juniper vSRX"},
+                {"name": "Transit Gateway"},
+            ],
+            "compute": [{"name": "ROVS cluster for VDI testing"}],
+            "subnets": [
+                {"name": "ROVS POC subnet us-east-1", "zone": "us-east-1", "cidr": "10.237.240.0/22"},
+                {"name": "ROVS POC subnet us-east-2", "zone": "us-east-2", "cidr": "10.237.244.0/22"},
+                {"name": "ROVS POC subnet us-east-3", "zone": "us-east-3", "cidr": "10.237.248.0/22"},
+            ],
+        },
+    }
+
+    xml = render_drawio(arch, diagram_type="deployment")
+
+    assert "IBM Cloud Classic - WDC" in xml
+    assert "Juniper vSRX" in xml
+    assert "VCF ProdNet" in xml
+    assert "VCF TestNet" in xml
+    assert "Transit Gateway" in xml
+    assert "ROVS POC VPC" in xml
+    assert "ROVS cluster" in xml
+    assert "10.237.248.0/22" in xml
+    assert "PowerVS" not in xml
+
+
 def test_md_files_loaded():
     """LLM Architecture MD Files are loaded at import time (non-empty when present)."""
     # If the files exist they must contain meaningful content.

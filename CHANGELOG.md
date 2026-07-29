@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.6.13 - 2026-07-29
+
+### Added
+
+- Added deterministic extraction and a dedicated deployment renderer for hybrid IBM Cloud Classic to VPC topologies such as UPS VCF ProdNet/TestNet plus ROVS POC.
+- Requirements mentioning DirectLink 2.0, Juniper vSRX, IBM Cloud Classic, VCF ProdNet/TestNet, ROVS, VDI, Transit Gateway, and zone CIDRs now produce explicit topology components instead of a generic VPC shell.
+
+### Fixed
+
+- Prevented quality analyzer remediation from adding a PowerVS workspace unless customer requirements or model components explicitly mention PowerVS or Power Virtual Server.
+- ROVS POC CIDR/zone subnet details are preserved as diagram-ready subnet facts.
+
 ## 0.6.12 - 2026-07-29
 
 ### Changed

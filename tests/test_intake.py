@@ -92,6 +92,51 @@ def test_requirements_prose_uses_canonical_component_names():
     assert not any("PowerVS" in name for name in names)
 
 
+UPS_REQUIREMENTS = (
+    "We need to create an infrastructure / network diagram for UPS's VCF ProdNet, VCF TestNet "
+    "and ROVS POC environment in IBM Cloud. Today UPS connects to IBM Cloud WDC via a "
+    "DirectLink 2.0 connection into IBM Cloud Classic. The DirectLink terminates on a Juniper "
+    "vSRX which routes traffic between on-prem and IBM Cloud ProdNet and TestNet VCF "
+    "environments. We are adding a third environment in IBM Cloud VPC in WDC. This environment "
+    "will be running a ROVS cluster for VDI testing. It will be in a single zone in us-east-3. "
+    "ROVS POC subnet- 10.237.240.0/20 10.237.240.0/22 us-east-1 10.237.244.0/22 us-east-2 "
+    "10.237.248.0/22 us-east-3 TestNet Supernet: 10.233.128.0/17 Production Supernet: "
+    "10.237.0.0/16 We'll need to show the DirectLink 2.0 connectivity from on-prem to the "
+    "vSRX, and to a transit gateway connection to the ROVS POC environment in IBM Cloud VPC."
+)
+
+
+def test_ups_vcf_rovs_requirements_extract_hybrid_classic_topology():
+    arch = build_architecture_from_requirements(UPS_REQUIREMENTS, project_name="UPS VCF ROVS")
+    ibm = arch["ibm_cloud"]
+
+    names = {
+        item["name"]
+        for values in ibm.values()
+        if isinstance(values, list)
+        for item in values
+        if isinstance(item, dict)
+    }
+    subnet_cidrs = {
+        item.get("cidr")
+        for item in ibm.get("subnets", [])
+        if isinstance(item, dict)
+    }
+
+    assert arch["render_plan"]["topology_variant"] == "classic-vcf-rovs"
+    assert arch["render_plan"]["pattern"] == "hybrid-classic-vpc"
+    assert arch["render_plan"]["has_powervs"] is False
+    assert "VCF ProdNet" in names
+    assert "VCF TestNet" in names
+    assert "ROVS POC VPC" in names
+    assert "DirectLink 2.0" in names
+    assert "Juniper vSRX" in names
+    assert "Transit Gateway" in names
+    assert "ROVS cluster for VDI testing" in names
+    assert {"10.237.240.0/22", "10.237.244.0/22", "10.237.248.0/22"} <= subnet_cidrs
+    assert not any("PowerVS" in name for name in names)
+
+
 def test_xlsx_basic():
     """The committed Solutioning sample XLSX parses and yields ≥ 3 components."""
     if not SOLUTIONING_XLSX.exists():
