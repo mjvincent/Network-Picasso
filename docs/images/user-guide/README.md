@@ -17,7 +17,7 @@ app at `http://127.0.0.1:5174` so screenshots match the end-user path.
 | `08-quality-analyzer.png` | Captured: Diagram quality analyzer score, findings, IBM pattern checks, and remediation buttons |
 | `09-project-activity.png` | Captured: Project Activity showing autosave, Postgres status, events, restore filters, and quality score |
 | `10-restore-preview.png` | Captured: Restore preview modal comparing current and selected restore-point values |
-| `11-export-package.png` | Captured: Project Activity export controls after a generated/analyzed project is active |
+| `11-export-package.png` | Captured: Finished export package card showing export source, style memory state, and package action after a generated/analyzed project is active |
 | `12-bob-mcp-settings.png` | IBM Bob settings showing MCP server `drawio` connected |
 | `13-drawio-mcp-editor.png` | Draw.io MCP editor at `http://127.0.0.1:4000` with a diagram loaded |
 

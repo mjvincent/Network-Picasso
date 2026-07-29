@@ -106,18 +106,17 @@ It produces five architecture pages:
   - Project Activity shows last save metadata, Postgres connection state, latest diagram quality score, recent project events, and restore points so autosave is visible and recoverable.
 
 - **Finished export package**
-  - Downloads a project ZIP containing the saved architecture model, five-page Draw.io file, IBM pattern alignment report, diagram quality report, assumptions/open questions, project activity, and style memory files.
+  - Downloads a customer-ready ZIP containing the saved architecture model, five-page Draw.io file, architecture summary, IBM pattern alignment report, diagram quality report, assumptions/open questions, project activity, and style memory files.
   - Uses the live Draw.io MCP editor as the `.drawio` source when MCP is running, so manual/Bob edits are preserved in the ZIP.
+  - When exported from live MCP, includes rendered PNG and SVG files for all five Draw.io tabs plus `images/manifest.json`.
+  - Includes `pdf/network-picasso-diagram-packet.pdf`, a polished packet with cover page, table of contents, page numbers, one diagram per page, and appendices for architecture summary, IBM pattern alignment, diagram quality, and assumptions/open questions.
+  - Shows the active export source in the UI so sellers know whether they are packaging the live MCP editor or the generated model.
   - After export, the app can ask whether to remember the current diagram look for future refinement prompts.
   - Restore previews compare the current architecture with the selected restore point before replacing the working model.
   - Restore timeline filters separate milestones, autosaves, intake/imports, design decisions, quality checks, and restores/syncs.
   - Retains milestone restore points while pruning excess routine autosaves per project; the autosave cap is configurable in Settings.
   - Adds optional Postgres persistence for customer/project metadata, architecture JSON restore points, and project events.
   - Docker Compose starts Postgres automatically with a named volume so project data survives restarts.
-
-- **Customer-ready export package**
-  - Downloads a ZIP containing the saved architecture model, five-page Draw.io file, architecture summary, IBM pattern alignment report, diagram quality report, assumptions/open questions, and project activity metadata.
-  - Gives technical sellers a single handoff artifact after quality analysis and Bob/MCP polish.
 
 ---
 

@@ -134,6 +134,7 @@ Network Picasso can generate:
 | Context | External actors, cloud boundary, major services |
 | Logical Architecture | Component relationships and dependencies |
 | Deployment | Regions, VPCs, zones, subnets, PowerVS, services, and connectivity |
+| Assumptions & Decisions | IBM pattern traceability, inferred choices, validation items, and quality status |
 
 Use **Generate all diagram types** for a five-page Draw.io file. Use **Open in MCP editor**
 when you want Bob to edit the diagram conversationally.
@@ -176,6 +177,13 @@ and polished. The ZIP includes:
 - Diagram quality report.
 - Assumptions, open questions, and answered questions.
 - Project activity and restore-point metadata.
+- Style memory files.
+- When exported from live MCP, rendered PNG and SVG files for all five Draw.io tabs.
+- `images/manifest.json` when rendered assets are included.
+- `pdf/network-picasso-diagram-packet.pdf`, a polished packet with cover page, table of contents, page numbers, one diagram per page, and report appendices.
+
+If the Draw.io MCP editor is running, the export uses the live edited Draw.io document. If MCP is
+not running, it uses the generated model from the saved architecture.
 
 ## Full Usage Guide
 

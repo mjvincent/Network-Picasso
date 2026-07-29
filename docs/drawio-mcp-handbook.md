@@ -94,6 +94,7 @@ On the Deployment page, add a bastion host to the management subnet and connect 
 | Open in MCP editor | Pushes selected diagram into `localhost:4000` for Bob edits | Yes |
 | Generate all diagram types | Opens one five-page diagrams.net file and saves it to `outputs/network-picasso-all.drawio` | No |
 | Open all pages in MCP editor | Pushes all five pages into the MCP editor | Yes |
+| Finished: export package | Downloads the project ZIP; uses the live MCP document, PNG/SVG renders, and polished PDF packet when MCP is running | No, but MCP is required to preserve live edits and rendered assets |
 
 ## In-App MCP Checklist And Bob Prompts
 
@@ -123,9 +124,15 @@ For **Generate all diagram types**, diagrams.net should show one drawing with fi
 - Context
 - Logical Architecture
 - Deployment
+- Assumptions & Decisions
 
 For **Option E**, `http://127.0.0.1:4000` should show the diagram that Bob can edit. Bob edits that
 live MCP editor tab, not the ordinary `app.diagrams.net` tab opened by the non-MCP workflow.
+
+For **Finished: export package**, confirm the export source tag says **live MCP editor** before
+packaging Bob or manual Draw.io edits. If MCP is running, the ZIP includes the edited multipage
+`.drawio`, five PNG renders, five SVG renders, `images/manifest.json`, and
+`pdf/network-picasso-diagram-packet.pdf`.
 
 ## Troubleshooting
 

@@ -239,12 +239,16 @@ checked, and optionally polished with Bob/MCP.
 The ZIP includes:
 
 - `architecture.json`.
-- Four-page `.drawio` architecture file.
-- Architecture summary.
+- Five-page `.drawio` architecture file.
+- Architecture summary report.
 - IBM pattern alignment report.
 - Diagram quality report.
 - Assumptions, open questions, and answered questions.
 - Project activity and restore-point metadata.
+- Style memory files.
+- When exported from live MCP, rendered PNG and SVG files for all five Draw.io tabs.
+- `images/manifest.json` when rendered assets are included.
+- `pdf/network-picasso-diagram-packet.pdf`, with a cover page, table of contents, page numbers, one diagram per page, and appendices for architecture summary, IBM pattern alignment, diagram quality, and assumptions/open questions.
 
 ## 11. Configure Bob And Draw.io MCP
 
@@ -294,10 +298,13 @@ Draw.io MCP editor tab forward. Then paste the copied prompt into Bob.
 When the diagram is ready for a customer conversation, use **Finished: export package** in the
 diagram workspace. Network Picasso downloads a ZIP with the current architecture model, the
 five-page `.drawio` file, IBM pattern alignment, quality findings, assumptions/open questions,
-project activity, and style memory files.
+project activity, style memory files, rendered images when live MCP is available, and a polished
+PDF packet.
 
 If the Draw.io MCP editor is running, the ZIP uses the live edited Draw.io document. If MCP is
-not running, the ZIP uses the generated diagram from the saved architecture model.
+not running, the ZIP uses the generated diagram from the saved architecture model. The export card
+shows the active source before download, so confirm it says **live MCP editor** before packaging
+manual or Bob-assisted edits.
 
 After starting the export, the app asks whether to remember this Draw.io style. Use
 **Remember globally for future projects** when the label size, spacing, connector routing, and
