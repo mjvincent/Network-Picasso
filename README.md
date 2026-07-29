@@ -12,7 +12,7 @@ The app is designed for sellers who may not be deep network designers. It provid
 question prompts, IBM-pattern traceability, and Bob/Draw.io MCP hand-holding so the user can move
 from rough discovery notes to a customer-ready architecture conversation.
 
-Current version: **0.6.4**
+Current version: **0.6.5**
 
 ---
 
@@ -92,6 +92,7 @@ It produces five architecture pages:
   - Shows a remediation session status after prompt copy so sellers know the copied preset, target page, MCP handoff state, and whether re-analysis is still needed.
   - Explains that Bob still needs the pasted prompt unless IBM Bob exposes a direct prompt-submission API.
   - Adds help bubbles and a recommended-next-prompt cue so sellers know which remediation preset fits the current diagram need.
+  - Adds project-level **Draw.io style memory** so a preferred customer-ready label, spacing, connector, and page-order style can be saved and reused in future Bob/MCP prompts.
 
 - **Local-first operation**
   - No cloud API keys required.
@@ -103,6 +104,10 @@ It produces five architecture pages:
   - Projects are now the first workspace view: create a customer folder, add project subfolders, open saved work, move projects between customer folders, or delete with confirmation.
   - Active projects autosave their architecture model as the seller uploads files, answers questions, confirms patterns, and refines requirements.
   - Project Activity shows last save metadata, Postgres connection state, latest diagram quality score, recent project events, and restore points so autosave is visible and recoverable.
+
+- **Finished export package**
+  - Downloads a project ZIP containing the saved architecture model, five-page Draw.io file, IBM pattern alignment report, diagram quality report, assumptions/open questions, project activity, and style memory files.
+  - After export, the app can ask whether to remember the current diagram look for future refinement prompts.
   - Restore previews compare the current architecture with the selected restore point before replacing the working model.
   - Restore timeline filters separate milestones, autosaves, intake/imports, design decisions, quality checks, and restores/syncs.
   - Retains milestone restore points while pruning excess routine autosaves per project; the autosave cap is configurable in Settings.

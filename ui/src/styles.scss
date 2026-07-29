@@ -183,6 +183,44 @@ body {
   font-size: 0.875rem;
 }
 
+.style-memory-summary {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.style-memory-summary span:last-child,
+.style-memory-status {
+  color: #525252;
+  font-size: 0.8125rem;
+  line-height: 1.4;
+}
+
+.style-memory-status {
+  margin: 0;
+}
+
+.style-memory-modal-summary {
+  background: #f4f4f4;
+  display: grid;
+  gap: 0.5rem;
+  margin-top: 1rem;
+  padding: 1rem;
+}
+
+.style-memory-modal-summary p {
+  color: #525252;
+  font-size: 0.875rem;
+  margin: 0;
+}
+
+.style-memory-modal-summary div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+}
+
 .bob-prompts-panel {
   background: #ffffff;
   border: 1px solid #c6c6c6;

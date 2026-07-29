@@ -289,7 +289,19 @@ expected five tabs, and **Rebuild MCP pages** if stale or duplicate tabs appear.
 when Bob is already in front of you. Use **Copy + open MCP** when you also need to bring the
 Draw.io MCP editor tab forward. Then paste the copied prompt into Bob.
 
-## 12. Troubleshooting
+## 12. Finish, Export, And Remember Style
+
+When the diagram is ready for a customer conversation, use **Finished: export package** in the
+diagram workspace. Network Picasso downloads a ZIP with the current architecture model, the
+five-page `.drawio` file, IBM pattern alignment, quality findings, assumptions/open questions,
+project activity, and style memory files.
+
+After starting the export, the app asks whether to remember this Draw.io style. Click
+**Remember style** when the label size, spacing, connector routing, and page order are close to
+how you want future diagrams to look. Saved style memory is project-level and is automatically
+included in later Bob/MCP remediation prompts for that project.
+
+## 13. Troubleshooting
 
 | Issue | Likely cause | Action |
 |---|---|---|

@@ -34,6 +34,12 @@ from . import persistence
 from .advisor import review_architecture
 from .patterns import best_pattern, match_patterns
 from .quality import analyze_diagram_quality, apply_quality_remediations
+from .style_memory import (
+    extract_style_memory,
+    load_style_memory,
+    save_style_memory,
+    style_memory_markdown,
+)
 from .projects import (
     create_customer_folder,
     create_project,
@@ -277,12 +283,19 @@ def build_project_export_package(project_path: Path, settings: dict) -> tuple[by
     with zipfile.ZipFile(buffer, "w", compression=zipfile.ZIP_DEFLATED) as archive:
         root = package_slug
         archive.writestr(f"{root}/architecture.json", json.dumps(architecture, indent=2))
-        archive.writestr(f"{root}/diagrams/network-picasso-all.drawio", render_multipage_drawio(architecture))
+        drawio_xml = render_multipage_drawio(architecture)
+        archive.writestr(f"{root}/diagrams/network-picasso-all.drawio", drawio_xml)
         archive.writestr(f"{root}/reports/architecture-summary.md", _architecture_summary_markdown(summary, architecture))
         archive.writestr(f"{root}/reports/ibm-pattern-alignment.md", _pattern_report_markdown(reviews))
         archive.writestr(f"{root}/reports/diagram-quality.md", _quality_report_markdown(reviews, architecture))
         archive.writestr(f"{root}/reports/assumptions-and-open-questions.md", _assumptions_markdown(architecture))
         archive.writestr(f"{root}/reports/project-activity.json", json.dumps(activity, indent=2))
+        memory = load_style_memory(project_path) or extract_style_memory(
+            drawio_xml,
+            name=f"{customer}/{project} generated diagram style",
+        )
+        archive.writestr(f"{root}/style/style-memory.json", json.dumps(memory, indent=2))
+        archive.writestr(f"{root}/style/style-memory.md", style_memory_markdown(memory))
         archive.writestr(f"{root}/README.md", _export_readme_markdown(summary, customer, project))
     return buffer.getvalue(), f"{package_slug}.zip"
 
@@ -411,12 +424,14 @@ def _export_readme_markdown(summary: dict, customer: str, project: str) -> str:
         "- `reports/diagram-quality.md`: quality findings and remediation notes",
         "- `reports/assumptions-and-open-questions.md`: assumptions, unanswered questions, and captured answers",
         "- `reports/project-activity.json`: project activity, persistence, restore-point, and retention metadata",
+        "- `style/style-memory.json`: reusable Draw.io label, spacing, connector, and page-order preferences",
+        "- `style/style-memory.md`: seller-readable style memory notes for Bob/MCP remediation",
         "",
     ])
 
 
 class NetworkPicassoHandler(BaseHTTPRequestHandler):
-    server_version = "NetworkPicasso/0.6.4"
+    server_version = "NetworkPicasso/0.6.5"
 
     def do_OPTIONS(self) -> None:
         self.send_response(204)
@@ -535,6 +550,20 @@ class NetworkPicassoHandler(BaseHTTPRequestHandler):
                 return
             self.send_json(project_activity_payload(project_path, settings))
             return
+        if parsed.path == "/api/style-memory":
+            qs = parse_qs(parsed.query or "")
+            settings = load_settings()
+            try:
+                project_path = managed_project_path((qs.get("path") or [""])[0], settings)
+            except ValueError as exc:
+                self.send_error_json(400, str(exc))
+                return
+            memory = load_style_memory(project_path)
+            if not memory:
+                self.send_json({"ok": True, "memory": None})
+                return
+            self.send_json({"ok": True, "memory": memory})
+            return
         self.send_error_json(404, "Route not found")
 
     def do_POST(self) -> None:
@@ -592,6 +621,10 @@ class NetworkPicassoHandler(BaseHTTPRequestHandler):
                 self.handle_move_project(payload)
             elif parsed.path == "/api/projects/autosave":
                 self.handle_project_autosave(payload)
+            elif parsed.path == "/api/style-memory/save":
+                self.handle_style_memory_save(payload)
+            elif parsed.path == "/api/style-memory/preview":
+                self.handle_style_memory_preview(payload)
             elif parsed.path == "/api/projects/restore-preview":
                 self.handle_project_restore_preview(payload)
             elif parsed.path == "/api/projects/restore":
@@ -879,6 +912,38 @@ class NetworkPicassoHandler(BaseHTTPRequestHandler):
         atomic_write_json(arch_path, architecture)
         sync_project_if_managed(project_path, settings, architecture=architecture, event_type="autosave")
         self.send_json({"ok": True, "outputPath": relative_to_repo(arch_path)})
+
+    def _style_memory_from_payload(self, payload: dict, *, save: bool) -> dict:
+        path_str = str(payload.get("path") or "").strip()
+        settings = load_settings()
+        if path_str:
+            project_path = managed_project_path(path_str, settings)
+            arch_path = project_architecture_path(project_path)
+        else:
+            arch_path = repo_path(payload.get("architecturePath") or DEFAULT_ARCHITECTURE_PATH)
+            project_path = arch_path.parent
+        architecture = payload.get("architecture")
+        if not architecture:
+            architecture = read_json_file(arch_path)
+        apply_saved_requirements(architecture)
+        xml = str(payload.get("drawioXml") or render_multipage_drawio(architecture))
+        name = str(payload.get("name") or architecture.get("project", {}).get("name") or "Network Picasso diagram style")
+        memory = extract_style_memory(xml, name=name)
+        saved_path = None
+        if save:
+            saved_path = save_style_memory(project_path, memory)
+            sync_project_if_managed(project_path, settings, architecture=architecture, event_type="style-memory-saved")
+        return {
+            "ok": True,
+            "memory": memory,
+            "path": relative_to_repo(saved_path) if saved_path else "",
+        }
+
+    def handle_style_memory_preview(self, payload: dict) -> None:
+        self.send_json(self._style_memory_from_payload(payload, save=False))
+
+    def handle_style_memory_save(self, payload: dict) -> None:
+        self.send_json(self._style_memory_from_payload(payload, save=True))
 
     def handle_project_restore(self, payload: dict) -> None:
         path_str = str(payload.get("path") or "").strip()

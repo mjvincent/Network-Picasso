@@ -153,6 +153,22 @@ type QualityFixResult = {
   deferred: Array<{ area: string; change: string }>;
 };
 
+type StyleMemory = {
+  schemaVersion: number;
+  name: string;
+  createdAt: string;
+  summary: string;
+  pageOrder: string[];
+  metrics: Record<string, unknown>;
+  preferences: {
+    serviceLabelFontSize?: number;
+    medianLabelBox?: { width: number; height: number };
+    connectorRouting?: string;
+    density?: string;
+  };
+  promptGuidance: string[];
+};
+
 type Architecture = {
   project: { name: string; environment?: string };
   ibm_cloud: Record<string, Component[] | string[]>;
@@ -413,10 +429,21 @@ IBM pattern checks needing review:
 ${missing}`;
 }
 
-function guidedRemediationPresets(diagramType: string, review: DiagramQualityReview | null, remediationTarget: RemediationTarget): GuidedRemediationPreset[] {
+function styleMemoryPromptBlock(styleMemory: StyleMemory | null): string {
+  if (!styleMemory || !styleMemory.promptGuidance.length) return '';
+  return `\nSaved visual style memory to preserve:\n${styleMemory.promptGuidance.map((item) => `- ${item}`).join('\n')}\n`;
+}
+
+function guidedRemediationPresets(
+  diagramType: string,
+  review: DiagramQualityReview | null,
+  remediationTarget: RemediationTarget,
+  styleMemory: StyleMemory | null,
+): GuidedRemediationPreset[] {
   const pageName = remediationTarget.label;
   const instruction = targetInstruction(remediationTarget);
   const context = qualityFindingSummary(review);
+  const memoryBlock = styleMemoryPromptBlock(styleMemory);
   const allPages = 'Executive Overview, Context, Logical Architecture, Deployment, and Assumptions & Decisions';
   const guardrails = 'Preserve IBM Cloud stencil shapes, page names, customer-specific architecture facts, network topology, and IBM container hierarchy. Do not invent services or connectivity that are not already present or clearly implied by the model.';
 
@@ -429,6 +456,7 @@ function guidedRemediationPresets(diagramType: string, review: DiagramQualityRev
       prompt: `Use the ibm-drawio-editing skill. ${instruction} Fix label placement, label box sizing, text wrapping, whitespace, and local alignment issues.
 
 ${context}
+${memoryBlock}
 
 ${guardrails} Keep edits presentation-focused and summarize changed labels or moved objects by area.`,
     },
@@ -440,6 +468,7 @@ ${guardrails} Keep edits presentation-focused and summarize changed labels or mo
       prompt: `Use the ibm-drawio-editing skill. ${instruction} Clean connector routing with orthogonal paths, move connector labels away from shapes and lines, reduce crossings, and keep directional flow clear.
 
 ${context}
+${memoryBlock}
 
 ${guardrails} Preserve all existing source-to-target relationships and summarize each connector change.`,
     },
@@ -451,6 +480,7 @@ ${guardrails} Preserve all existing source-to-target relationships and summarize
       prompt: `Use the ibm-drawio-editing skill. ${instruction} Tighten implementation detail, IBM Cloud account, region, VPC, zone, subnet, shared services, PowerVS, and connectivity layout so the design reads professionally.
 
 ${context}
+${memoryBlock}
 
 ${guardrails} Prioritize visible hierarchy, non-overlapping service labels, readable connector labels, and clear primary/DR or hybrid boundaries. Summarize changes by container.`,
     },
@@ -462,6 +492,7 @@ ${guardrails} Prioritize visible hierarchy, non-overlapping service labels, read
       prompt: `Use the ibm-drawio-editing skill. Inspect all five pages in the open Draw.io MCP document: ${allPages}. Make targeted professional-grade cleanup on each page.
 
 ${context}
+${memoryBlock}
 
 ${guardrails} Fix overlaps, cramped labels, ambiguous connector labels, inconsistent naming, and unclear flow direction. Preserve the meaning of every page. Summarize changes separately for each page.`,
     },
@@ -473,6 +504,7 @@ ${guardrails} Fix overlaps, cramped labels, ambiguous connector labels, inconsis
       prompt: `Use the ibm-drawio-editing skill. ${instruction} Also review the Assumptions & Decisions page for traceability when relevant. Improve visible IBM Think Architecture pattern alignment without changing the customer intent.
 
 ${context}
+${memoryBlock}
 
 ${guardrails} Make explicit only supported pattern evidence: VPC landing zone structure, private endpoints, security/compliance services, observability, hybrid connectivity, resiliency, and workload placement. If something is uncertain, add it as an assumption or validation item rather than as a confirmed component. Summarize explicit, inferred, and still-missing pattern elements.`,
     },
@@ -484,6 +516,7 @@ ${guardrails} Make explicit only supported pattern evidence: VPC landing zone st
       prompt: `Use the ibm-drawio-editing skill. Prepare the open five-page Draw.io architecture for customer sharing. Inspect ${allPages}.
 
 ${context}
+${memoryBlock}
 
 ${guardrails} Ensure each page has clear audience fit: executive page is simple, context page shows boundaries, logical page shows relationships, deployment page shows implementable topology, and assumptions page clearly states validation items. Do not make broad topology changes. Summarize final readiness by page.`,
     },
@@ -706,6 +739,10 @@ export default function App() {
   const [remediationTargetId, setRemediationTargetId] = useState<RemediationTargetId>('current');
   const [mcpTabVerification, setMcpTabVerification] = useState<McpTabVerification | null>(null);
   const [mcpTabsBusy, setMcpTabsBusy] = useState(false);
+  const [styleMemory, setStyleMemory] = useState<StyleMemory | null>(null);
+  const [styleMemoryBusy, setStyleMemoryBusy] = useState(false);
+  const [styleMemoryStatus, setStyleMemoryStatus] = useState('');
+  const [showStyleMemoryModal, setShowStyleMemoryModal] = useState(false);
 
   // Project state
   const [projectTree, setProjectTree]     = useState<ProjectNode[]>([]);
@@ -863,6 +900,24 @@ export default function App() {
       setProjectActivity(null);
     } finally {
       setProjectActivityBusy(false);
+    }
+  }
+
+  async function loadStyleMemory(node = activeProject) {
+    if (!node || node.isLegacy) {
+      setStyleMemory(null);
+      return;
+    }
+    try {
+      const data = await fetch(`/api/style-memory?path=${encodeURIComponent(node.path)}`).then((r) => r.json()) as {
+        ok: boolean;
+        memory: StyleMemory | null;
+      };
+      setStyleMemory(data.memory || null);
+      setStyleMemoryStatus(data.memory ? 'Style memory loaded for this project.' : '');
+    } catch {
+      setStyleMemory(null);
+      setStyleMemoryStatus('');
     }
   }
 
@@ -1125,12 +1180,16 @@ export default function App() {
     setRequirementsText('');
     setRequirementsSaved(false);
     setProjectActivity(null);
+    setStyleMemory(null);
+    setStyleMemoryStatus('');
+    setShowStyleMemoryModal(false);
     setStatus('');
     setError('');
     setActiveNav('wizard');
     setStep('upload');
     setProjectName(node.project || node.customer);
     await loadProjectActivity(node);
+    await loadStyleMemory(node);
     if (!node.hasArchitecture) return;
     try {
       const response = await fetch(`/api/project-export?path=${encodeURIComponent(node.path)}`);
@@ -1176,6 +1235,34 @@ export default function App() {
     a.href = `/api/project-export-package?path=${encodeURIComponent(activeProject.path)}`;
     a.download = `${activeProject.customer}-${activeProject.project || 'project'}-network-picasso.zip`;
     a.click();
+  }
+
+  function finishAndExportProject() {
+    exportProjectPackage();
+    setShowStyleMemoryModal(true);
+    setStyleMemoryStatus('Export package started. You can now save this diagram look as reusable guidance.');
+  }
+
+  async function saveCurrentStyleMemory() {
+    if (!activeProject || !architecture) return;
+    setStyleMemoryBusy(true);
+    setStyleMemoryStatus('');
+    setError('');
+    try {
+      const result = await postJson<{ ok: boolean; memory: StyleMemory; path: string }>('/api/style-memory/save', {
+        path: activeProject.path,
+        architecturePath,
+        name: `${activeProject.customer}${activeProject.project ? ` / ${activeProject.project}` : ''} Draw.io style`,
+      });
+      setStyleMemory(result.memory);
+      setStyleMemoryStatus(`Style memory saved to ${result.path}`);
+      setShowStyleMemoryModal(false);
+      await loadProjectActivity(activeProject);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Style memory save failed');
+    } finally {
+      setStyleMemoryBusy(false);
+    }
   }
 
   async function openRestorePreview(snapshot: ProjectSnapshot) {
@@ -1984,7 +2071,7 @@ export default function App() {
   // ── Render ───────────────────────────────────────────────────────────────────
   const bobPromptRecommendation = recommendedGuidedPreset(diagramQuality);
   const remediationTarget = resolveRemediationTarget(remediationTargetId, diagramType);
-  const guidedPresets = guidedRemediationPresets(diagramType, diagramQuality, remediationTarget);
+  const guidedPresets = guidedRemediationPresets(diagramType, diagramQuality, remediationTarget, styleMemory);
 
   return (
     <>
@@ -3413,6 +3500,31 @@ export default function App() {
                         {mcpRunning ? 'Open all pages in MCP editor' : 'Open all-pages .drawio file'}
                       </Button>
                     </div>
+
+                    <div className="diagram-action-card">
+                      <div className="diagram-action-header">
+                        <strong>Finished package + style memory</strong>
+                        <InfoTip text="Downloads the project export package and then asks whether to remember this project’s preferred label, spacing, connector, and page-order guidance for future Bob/MCP cleanup prompts." />
+                      </div>
+                      <p className="panel-copy">
+                        Export the current project package, then save the preferred Draw.io look so future remediation prompts do not start cold.
+                      </p>
+                      <div className="style-memory-summary">
+                        <Tag type={styleMemory ? 'green' : 'gray'}>{styleMemory ? 'Memory saved' : 'No memory yet'}</Tag>
+                        {styleMemory && (
+                          <span>
+                            {styleMemory.preferences.serviceLabelFontSize || 11}px labels · {styleMemory.preferences.connectorRouting || 'orthogonal routing'}
+                          </span>
+                        )}
+                      </div>
+                      <Button renderIcon={Download} onClick={finishAndExportProject} disabled={!activeProject?.hasArchitecture || !architecture}>
+                        Finished: export package
+                      </Button>
+                      <Button kind="ghost" size="sm" renderIcon={Settings} onClick={() => setShowStyleMemoryModal(true)} disabled={!activeProject?.hasArchitecture || !architecture}>
+                        Remember style only
+                      </Button>
+                      {styleMemoryStatus && <p className="style-memory-status">{styleMemoryStatus}</p>}
+                    </div>
                   </div>
 
                   <div className="bob-prompts-panel">
@@ -3459,6 +3571,15 @@ export default function App() {
                     <p className="panel-copy">
                       Targeting: <strong>{remediationTarget.label}</strong>. Bob prompts will tell Bob whether to edit only that page or all five pages.
                     </p>
+                    {styleMemory && (
+                      <InlineNotification
+                        kind="success"
+                        title="Style memory active"
+                        subtitle="Copied Bob prompts now include your saved label sizing, spacing, connector, and page-order preferences."
+                        lowContrast
+                        hideCloseButton
+                      />
+                    )}
                     {mcpTabVerification && (
                       <InlineNotification
                         kind={mcpTabVerification.ok ? 'success' : 'warning'}
@@ -3751,6 +3872,39 @@ export default function App() {
               <SelectItem key={f.path} value={f.path} text={f.name} />
             ))}
         </Select>
+      </Modal>
+
+      {/* Style memory */}
+      <Modal
+        open={showStyleMemoryModal}
+        modalHeading="Remember this Draw.io style?"
+        primaryButtonText={styleMemoryBusy ? 'Saving…' : 'Remember style'}
+        secondaryButtonText="Not now"
+        primaryButtonDisabled={styleMemoryBusy || !activeProject?.hasArchitecture || !architecture}
+        onRequestSubmit={saveCurrentStyleMemory}
+        onRequestClose={() => setShowStyleMemoryModal(false)}
+      >
+        <p style={{ color: '#525252', lineHeight: 1.6 }}>
+          Network Picasso will save reusable guidance for label sizing, spacing, connector routing, page order,
+          and IBM Cloud hierarchy. Future Bob/MCP prompts for this project will include that guidance automatically.
+        </p>
+        {styleMemory && (
+          <div className="style-memory-modal-summary">
+            <span className="advisor-label">Current memory</span>
+            <strong>{styleMemory.name}</strong>
+            <p>{styleMemory.summary}</p>
+            <div>
+              {(styleMemory.promptGuidance || []).slice(0, 4).map((item) => (
+                <Tag key={item} type="blue">{item}</Tag>
+              ))}
+            </div>
+          </div>
+        )}
+        {!styleMemory && (
+          <p style={{ color: '#6f6f6f', marginTop: '0.75rem', fontSize: '0.875rem' }}>
+            This creates a project-level style memory file and adds style memory files to future export packages.
+          </p>
+        )}
       </Modal>
 
       {/* Restore point */}
