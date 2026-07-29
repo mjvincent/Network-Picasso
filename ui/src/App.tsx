@@ -1864,7 +1864,7 @@ export default function App() {
     setStatus(`MCP editor opened at ${BROWSER_MCP_EDITOR_URL}`);
   }
 
-  async function copyBobPrompt(preset: GuidedRemediationPreset) {
+  async function copyBobPrompt(preset: GuidedRemediationPreset, options: { mcpOpened?: boolean } = {}) {
     try {
       await navigator.clipboard.writeText(preset.prompt);
       setCopiedPrompt(preset.label);
@@ -1873,7 +1873,7 @@ export default function App() {
         targetPage: preset.targetPage,
         copiedAt: new Date().toISOString(),
         mcpWasRunning: mcpRunning,
-        mcpOpened: false,
+        mcpOpened: Boolean(options.mcpOpened),
       });
       setStatus(`Bob prompt copied: ${preset.label}`);
     } catch (err) {
@@ -1882,13 +1882,18 @@ export default function App() {
   }
 
   async function copyBobPromptAndOpenMcp(preset: GuidedRemediationPreset) {
-    await copyBobPrompt(preset);
-    if (mcpRunning) {
-      openMcpEditorTab();
+    const openedWindow = window.open(BROWSER_MCP_EDITOR_URL, 'drawio-mcp-editor');
+    const mcpOpened = Boolean(openedWindow);
+    setMcpEditorOpened(mcpOpened);
+    await copyBobPrompt(preset, { mcpOpened });
+    if (mcpOpened) {
       setStatus(`Bob prompt copied: ${preset.label}. Paste it into Bob to start the edit.`);
+      if (!mcpRunning) {
+        setMcpStatus('MCP editor tab opened. If it does not load, start or refresh the drawio MCP server in Bob.');
+      }
       return;
     }
-    setMcpStatus('Prompt copied. Start or refresh the drawio MCP server in Bob, then open the MCP editor.');
+    setMcpStatus('Prompt copied, but the browser blocked the MCP editor popup. Allow popups for this app or use Open MCP editor tab.');
   }
 
   // ── Settings ─────────────────────────────────────────────────────────────────

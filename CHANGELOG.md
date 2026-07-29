@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.6.4 - 2026-07-29
+
+### Fixed
+
+- **Copy + open MCP** now opens the Draw.io MCP editor synchronously during the button click before awaiting clipboard access, preventing browser popup blockers from suppressing the editor tab.
+- Remediation session status now records whether the MCP editor popup actually opened.
+
 ## 0.6.3 - 2026-07-29
 
 ### Added
