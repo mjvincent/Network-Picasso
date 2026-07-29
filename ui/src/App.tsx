@@ -1969,18 +1969,34 @@ export default function App() {
   }
 
   async function copyBobPromptAndOpenMcp(preset: GuidedRemediationPreset) {
+    const clipboardWrite = navigator.clipboard.writeText(preset.prompt);
     const openedWindow = window.open(BROWSER_MCP_EDITOR_URL, 'drawio-mcp-editor');
     const mcpOpened = Boolean(openedWindow);
     setMcpEditorOpened(mcpOpened);
-    await copyBobPrompt(preset, { mcpOpened });
-    if (mcpOpened) {
-      setStatus(`Bob prompt copied: ${preset.label}. Paste it into Bob to start the edit.`);
-      if (!mcpRunning) {
-        setMcpStatus('MCP editor tab opened. If it does not load, start or refresh the drawio MCP server in Bob.');
+    try {
+      await clipboardWrite;
+      setCopiedPrompt(preset.label);
+      setRemediationSession({
+        presetLabel: preset.label,
+        targetPage: preset.targetPage,
+        copiedAt: new Date().toISOString(),
+        mcpWasRunning: mcpRunning,
+        mcpOpened,
+      });
+      if (mcpOpened) {
+        setStatus(`Bob prompt copied: ${preset.label}. Paste it into Bob to start the edit.`);
+        if (!mcpRunning) {
+          setMcpStatus('MCP editor tab opened. If it does not load, start or refresh the drawio MCP server in Bob.');
+        }
+        return;
       }
-      return;
+      setMcpStatus('Prompt copied, but the browser blocked the MCP editor popup. Allow popups for this app or use Open MCP editor tab.');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Prompt copy failed');
+      setMcpStatus(mcpOpened
+        ? 'MCP editor opened, but the browser blocked clipboard access. Use Copy prompt, then paste into Bob.'
+        : 'Browser blocked both clipboard access and the MCP editor popup. Allow clipboard and popups for this app.');
     }
-    setMcpStatus('Prompt copied, but the browser blocked the MCP editor popup. Allow popups for this app or use Open MCP editor tab.');
   }
 
   // ── Settings ─────────────────────────────────────────────────────────────────
