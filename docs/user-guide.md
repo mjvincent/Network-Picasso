@@ -296,6 +296,9 @@ diagram workspace. Network Picasso downloads a ZIP with the current architecture
 five-page `.drawio` file, IBM pattern alignment, quality findings, assumptions/open questions,
 project activity, and style memory files.
 
+If the Draw.io MCP editor is running, the ZIP uses the live edited Draw.io document. If MCP is
+not running, the ZIP uses the generated diagram from the saved architecture model.
+
 After starting the export, the app asks whether to remember this Draw.io style. Use
 **Remember globally for future projects** when the label size, spacing, connector routing, and
 page order match how you want Network Picasso diagrams to look by default. Use

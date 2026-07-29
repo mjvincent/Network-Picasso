@@ -1239,10 +1239,13 @@ export default function App() {
     a.click();
   }
 
-  function exportProjectPackage() {
+  function exportProjectPackage(source?: 'generated' | 'mcp') {
     if (!activeProject) return;
+    const exportSource = source || (mcpRunning ? 'mcp' : 'generated');
     const a = document.createElement('a');
-    a.href = `/api/project-export-package?path=${encodeURIComponent(activeProject.path)}`;
+    const params = new URLSearchParams({ path: activeProject.path });
+    if (exportSource === 'mcp') params.set('source', 'mcp');
+    a.href = `/api/project-export-package?${params.toString()}`;
     a.download = `${activeProject.customer}-${activeProject.project || 'project'}-network-picasso.zip`;
     a.click();
   }
@@ -1250,7 +1253,9 @@ export default function App() {
   function finishAndExportProject() {
     exportProjectPackage();
     setShowStyleMemoryModal(true);
-    setStyleMemoryStatus('Export package started. You can now save this diagram look as reusable guidance.');
+    setStyleMemoryStatus(mcpRunning
+      ? 'Export package started from the live Draw.io MCP editor. You can now save this diagram look as reusable guidance.'
+      : 'Export package started from the generated model. Open MCP first to include live Draw.io edits.');
   }
 
   async function saveCurrentStyleMemory(scope: 'project' | 'global' = 'project') {
@@ -1263,6 +1268,7 @@ export default function App() {
         path: activeProject.path,
         architecturePath,
         scope,
+        source: mcpRunning ? 'mcp' : 'generated',
         name: scope === 'global'
           ? 'Global Network Picasso Draw.io style'
           : `${activeProject.customer}${activeProject.project ? ` / ${activeProject.project}` : ''} Draw.io style`,
@@ -2494,7 +2500,7 @@ export default function App() {
                           kind="primary"
                           size="sm"
                           renderIcon={Download}
-                          onClick={exportProjectPackage}
+                          onClick={() => exportProjectPackage()}
                           disabled={!activeProject.hasArchitecture}
                         >
                           Export package
@@ -3536,10 +3542,10 @@ export default function App() {
                     <div className="diagram-action-card">
                       <div className="diagram-action-header">
                         <strong>Finished package + style memory</strong>
-                        <InfoTip text="Downloads the project export package and then asks whether to remember this project’s preferred label, spacing, connector, and page-order guidance for future Bob/MCP cleanup prompts." />
+                        <InfoTip text="Downloads the project export package. When MCP is running, the package uses the live edited Draw.io document instead of regenerating the diagram from the architecture model." />
                       </div>
                       <p className="panel-copy">
-                        Export the current project package, then save the preferred Draw.io look so future remediation prompts do not start cold.
+                        Export the project package. If MCP is running, the ZIP includes the edited live Draw.io document; otherwise it uses the generated model.
                       </p>
                       <div className="style-memory-summary">
                         <Tag type={styleMemory ? 'green' : 'gray'}>

@@ -165,3 +165,26 @@ def test_verify_page_tabs_reports_duplicate_deployment(monkeypatch):
         "Deployment",
         "Assumptions & Decisions",
     ]
+
+
+def test_export_diagram_xml_exports_full_live_document(monkeypatch):
+    calls: list[tuple[str, dict]] = []
+
+    def fake_call_tool(name: str, args: dict, *, timeout: int = 30) -> dict:
+        calls.append((name, args))
+        if name == "list-documents":
+            return _tool_text([{"id": "doc-1"}])
+        if name == "export-diagram":
+            return {"content": [{"type": "text", "text": "<mxfile><diagram name=\"Deployment\" /></mxfile>"}]}
+        return _tool_text({"ok": True})
+
+    monkeypatch.setattr(mcp_bridge, "call_tool", fake_call_tool)
+
+    xml = mcp_bridge.export_diagram_xml()
+
+    assert xml.startswith("<mxfile")
+    assert [name for name, _ in calls] == ["list-documents", "export-diagram"]
+    assert calls[1][1]["format"] == "xml"
+    assert calls[1][1]["size"] == "diagram"
+    assert calls[1][1]["target_page"] == {"index": 0}
+    assert calls[1][1]["target_document"] == {"id": "doc-1"}

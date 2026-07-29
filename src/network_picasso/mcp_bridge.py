@@ -210,6 +210,23 @@ def verify_page_tabs() -> dict:
 # High-level helpers used by server.py
 # ---------------------------------------------------------------------------
 
+def export_diagram_xml() -> str:
+    """Export the current live Draw.io MCP document as multipage XML."""
+    doc_id = _get_document_id()
+    resp = call_tool("export-diagram", {
+        "target_page":     {"index": 0},
+        "format":          "xml",
+        "size":            "diagram",
+        "target_document": {"id": doc_id},
+    }, timeout=30)
+    content = resp.get("content", [])
+    if not content:
+        raise RuntimeError("MCP export returned no diagram content")
+    xml = str(content[0].get("text") or "").strip()
+    if not xml or "<mxfile" not in xml:
+        raise RuntimeError("MCP export did not return Draw.io XML")
+    return xml
+
 def open_diagram_in_editor(
     xml: str,
     *,

@@ -12,7 +12,7 @@ The app is designed for sellers who may not be deep network designers. It provid
 question prompts, IBM-pattern traceability, and Bob/Draw.io MCP hand-holding so the user can move
 from rough discovery notes to a customer-ready architecture conversation.
 
-Current version: **0.6.7**
+Current version: **0.6.8**
 
 ---
 
@@ -107,6 +107,7 @@ It produces five architecture pages:
 
 - **Finished export package**
   - Downloads a project ZIP containing the saved architecture model, five-page Draw.io file, IBM pattern alignment report, diagram quality report, assumptions/open questions, project activity, and style memory files.
+  - Uses the live Draw.io MCP editor as the `.drawio` source when MCP is running, so manual/Bob edits are preserved in the ZIP.
   - After export, the app can ask whether to remember the current diagram look for future refinement prompts.
   - Restore previews compare the current architecture with the selected restore point before replacing the working model.
   - Restore timeline filters separate milestones, autosaves, intake/imports, design decisions, quality checks, and restores/syncs.

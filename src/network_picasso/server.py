@@ -269,7 +269,13 @@ def _quality_label(quality: dict) -> str:
     return f"{score}/100 {status}".strip()
 
 
-def build_project_export_package(project_path: Path, settings: dict) -> tuple[bytes, str]:
+def build_project_export_package(
+    project_path: Path,
+    settings: dict,
+    *,
+    drawio_xml: str | None = None,
+    diagram_source: str = "generated",
+) -> tuple[bytes, str]:
     arch_path = project_architecture_path(project_path)
     if not arch_path.exists():
         raise FileNotFoundError(arch_path)
@@ -285,20 +291,20 @@ def build_project_export_package(project_path: Path, settings: dict) -> tuple[by
     with zipfile.ZipFile(buffer, "w", compression=zipfile.ZIP_DEFLATED) as archive:
         root = package_slug
         archive.writestr(f"{root}/architecture.json", json.dumps(architecture, indent=2))
-        drawio_xml = render_multipage_drawio(architecture)
-        archive.writestr(f"{root}/diagrams/network-picasso-all.drawio", drawio_xml)
+        packaged_drawio_xml = drawio_xml or render_multipage_drawio(architecture)
+        archive.writestr(f"{root}/diagrams/network-picasso-all.drawio", packaged_drawio_xml)
         archive.writestr(f"{root}/reports/architecture-summary.md", _architecture_summary_markdown(summary, architecture))
         archive.writestr(f"{root}/reports/ibm-pattern-alignment.md", _pattern_report_markdown(reviews))
         archive.writestr(f"{root}/reports/diagram-quality.md", _quality_report_markdown(reviews, architecture))
         archive.writestr(f"{root}/reports/assumptions-and-open-questions.md", _assumptions_markdown(architecture))
         archive.writestr(f"{root}/reports/project-activity.json", json.dumps(activity, indent=2))
         memory = load_style_memory(project_path) or load_global_style_memory(REPO_ROOT) or extract_style_memory(
-            drawio_xml,
+            packaged_drawio_xml,
             name=f"{customer}/{project} generated diagram style",
         )
         archive.writestr(f"{root}/style/style-memory.json", json.dumps(memory, indent=2))
         archive.writestr(f"{root}/style/style-memory.md", style_memory_markdown(memory))
-        archive.writestr(f"{root}/README.md", _export_readme_markdown(summary, customer, project))
+        archive.writestr(f"{root}/README.md", _export_readme_markdown(summary, customer, project, diagram_source=diagram_source))
     return buffer.getvalue(), f"{package_slug}.zip"
 
 
@@ -409,13 +415,15 @@ def _assumptions_markdown(architecture: dict) -> str:
     return "\n".join(lines) + "\n"
 
 
-def _export_readme_markdown(summary: dict, customer: str, project: str) -> str:
+def _export_readme_markdown(summary: dict, customer: str, project: str, *, diagram_source: str = "generated") -> str:
+    source_label = "live Draw.io MCP editor" if diagram_source == "mcp" else "Network Picasso generated model"
     return "\n".join([
         f"# Network Picasso Export - {summary.get('projectName') or project}",
         "",
         f"- Customer folder: {customer}",
         f"- Project folder: {project}",
         f"- Exported: {datetime.now(timezone.utc).isoformat()}",
+        f"- Draw.io source: {source_label}",
         "",
         "## Contents",
         "",
@@ -433,7 +441,7 @@ def _export_readme_markdown(summary: dict, customer: str, project: str) -> str:
 
 
 class NetworkPicassoHandler(BaseHTTPRequestHandler):
-    server_version = "NetworkPicasso/0.6.7"
+    server_version = "NetworkPicasso/0.6.8"
 
     def do_OPTIONS(self) -> None:
         self.send_response(204)
@@ -529,8 +537,24 @@ class NetworkPicassoHandler(BaseHTTPRequestHandler):
             except ValueError as exc:
                 self.send_error_json(400, str(exc))
                 return
+            source = (qs.get("source") or ["generated"])[0]
+            drawio_xml = None
+            if source == "mcp":
+                if not _mcp.is_running():
+                    self.send_error_json(503, "Draw.io MCP editor is not running. Open the MCP editor before exporting live edits.")
+                    return
+                try:
+                    drawio_xml = _mcp.export_diagram_xml()
+                except (ConnectionError, RuntimeError) as exc:
+                    self.send_error_json(503, f"Could not export live Draw.io MCP document: {exc}")
+                    return
             try:
-                body, filename = build_project_export_package(project_path, settings)
+                body, filename = build_project_export_package(
+                    project_path,
+                    settings,
+                    drawio_xml=drawio_xml,
+                    diagram_source="mcp" if drawio_xml else "generated",
+                )
             except FileNotFoundError:
                 self.send_error_json(404, "No architecture.json found for this project")
                 return
@@ -936,7 +960,12 @@ class NetworkPicassoHandler(BaseHTTPRequestHandler):
         if not architecture:
             architecture = read_json_file(arch_path)
         apply_saved_requirements(architecture)
-        xml = str(payload.get("drawioXml") or render_multipage_drawio(architecture))
+        xml = payload.get("drawioXml")
+        if not xml and str(payload.get("source") or "").strip().lower() == "mcp":
+            if not _mcp.is_running():
+                raise RuntimeError("Draw.io MCP editor is not running. Open MCP before saving live style memory.")
+            xml = _mcp.export_diagram_xml()
+        xml = str(xml or render_multipage_drawio(architecture))
         name = str(payload.get("name") or architecture.get("project", {}).get("name") or "Network Picasso diagram style")
         memory = extract_style_memory(xml, name=name)
         saved_path = None
