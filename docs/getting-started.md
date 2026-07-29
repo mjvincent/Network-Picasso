@@ -237,7 +237,9 @@ See [Draw.io MCP Handbook](drawio-mcp-handbook.md) for detailed troubleshooting.
 ## Optional Ollama Mode
 
 The default mode is deterministic rules. Ollama is optional and runs locally if installed on the
-host.
+host. When Ollama mode is enabled, Network Picasso uses the selected local model for assisted
+component extraction, design-gap questions, and deployment render planning against IBM Think
+Architecture pattern foundations.
 
 1. Start Ollama on the host.
 2. Pull a model such as `phi4-mini:latest`.
@@ -245,9 +247,10 @@ host.
 4. Select Ollama-assisted mode.
 5. Test the connection and save settings.
 
-The containerized API can use a host Ollama service when host networking is reachable from
-Docker. If your platform handles host networking differently, use the local developer workflow
-or adjust the API environment variables.
+The containerized API defaults to `NETWORK_PICASSO_OLLAMA_BASE_URL=http://host.docker.internal:11434`
+so it can reach Ollama running on the host machine. If your platform handles host networking
+differently, override `NETWORK_PICASSO_OLLAMA_BASE_URL` before running Docker Compose or use the
+local developer workflow.
 
 ## Local Developer Run
 

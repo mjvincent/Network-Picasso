@@ -12,7 +12,7 @@ The app is designed for sellers who may not be deep network designers. It provid
 question prompts, IBM-pattern traceability, and Bob/Draw.io MCP hand-holding so the user can move
 from rough discovery notes to a customer-ready architecture conversation.
 
-Current version: **0.6.11**
+Current version: **0.6.12**
 
 ---
 
@@ -88,7 +88,7 @@ It produces five architecture pages:
   - Provides guided Bob/MCP remediation presets for fixing labels and spacing, cleaning connector routing, polishing the Deployment page, reviewing all five pages, improving IBM pattern alignment, and preparing a customer-ready version.
   - Lets sellers choose the Bob remediation target before copying a prompt: current diagram type, a specific Draw.io page, or all five pages.
   - Verifies live MCP tab names and can rebuild the first five MCP page slots when stale or duplicate tabs are detected.
-  - Provides a **Copy + open MCP** action that opens the Draw.io MCP editor and places the selected prompt on the clipboard for Bob.
+  - Provides a **Copy + open MCP** action that opens the Draw.io MCP editor, pushes the current five-page diagram into MCP, and places the selected prompt on the clipboard for Bob.
   - Shows a remediation session status after prompt copy so sellers know the copied preset, target page, MCP handoff state, and whether re-analysis is still needed.
   - Explains that Bob still needs the pasted prompt unless IBM Bob exposes a direct prompt-submission API.
   - Adds help bubbles and a recommended-next-prompt cue so sellers know which remediation preset fits the current diagram need.
@@ -96,7 +96,7 @@ It produces five architecture pages:
 
 - **Local-first operation**
   - No cloud API keys required.
-  - Optional Ollama mode for local AI-assisted extraction and question generation.
+  - Optional Ollama mode for local AI-assisted extraction, question generation, and Draw.io render planning against IBM Think Architecture pattern foundations.
   - Docker Compose support with host ports chosen to avoid the existing RVTools stacks.
 
 - **Lightweight project persistence**

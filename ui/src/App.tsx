@@ -727,6 +727,7 @@ export default function App() {
   // Settings state
   const [settings, setSettings]           = useState<AppSettings>(DEFAULT_SETTINGS);
   const [ollamaModels, setOllamaModels]   = useState<string[]>([]);
+  const [ollamaBaseUrl, setOllamaBaseUrl] = useState('http://localhost:11434');
   const [settingsStatus, setSettingsStatus] = useState('');
   const [connectionStatus, setConnectionStatus] = useState<'idle' | 'ok' | 'fail'>('idle');
 
@@ -824,7 +825,10 @@ export default function App() {
 
     fetch('/api/ollama/models')
       .then((r) => r.json())
-      .then((data: { models: string[] }) => setOllamaModels(data.models || []))
+      .then((data: { models: string[]; baseUrl?: string }) => {
+        setOllamaModels(data.models || []);
+        setOllamaBaseUrl(data.baseUrl || 'http://localhost:11434');
+      })
       .catch(() => {});
 
     // Probe the MCP editor on startup (non-blocking)
@@ -1682,13 +1686,24 @@ export default function App() {
 
   // ── Diagram ──────────────────────────────────────────────────────────────────
 
+  function diagramRenderPayload(extra: Record<string, unknown> = {}) {
+    return {
+      architecturePath,
+      architecture,
+      diagramType,
+      mode: settings.mode,
+      ollamaModel: settings.ollamaModel,
+      ...extra,
+    };
+  }
+
   async function generateDiagram() {
     setBusy(true);
     setError('');
     setStatus('Generating diagram…');
     try {
       const payload = await postJson<{ outputPath: string }>('/api/generate-drawio', {
-        architecturePath, diagramType, mode: settings.mode, ollamaModel: settings.ollamaModel,
+        ...diagramRenderPayload(),
         outputPath: `outputs/network-picasso-${diagramType}.drawio`,
       });
       setDiagramPath(payload.outputPath);
@@ -1768,7 +1783,7 @@ export default function App() {
     try {
       const response = await fetch('/api/drawio-xml', {
         method: 'POST', headers: API_HEADERS,
-        body: JSON.stringify({ architecturePath, diagramType }),
+        body: JSON.stringify(diagramRenderPayload()),
       });
       if (!response.ok) throw new Error('Failed to get XML');
       const xml = await response.text();
@@ -1788,7 +1803,7 @@ export default function App() {
     try {
       const response = await fetch('/api/drawio-xml', {
         method: 'POST', headers: API_HEADERS,
-        body: JSON.stringify({ architecturePath, diagramType }),
+        body: JSON.stringify(diagramRenderPayload()),
       });
       if (!response.ok) throw new Error('Failed to get XML');
       const xml = await response.text();
@@ -1829,7 +1844,7 @@ export default function App() {
     try {
       const response = await fetch('/api/drawio-xml', {
         method: 'POST', headers: API_HEADERS,
-        body: JSON.stringify({ architecturePath, diagramType }),
+        body: JSON.stringify(diagramRenderPayload()),
       });
       if (!response.ok) throw new Error('Failed to get XML');
       const xml = await response.text();
@@ -1851,7 +1866,7 @@ export default function App() {
     try {
       const result = await postJson<{ ok: boolean; editorUrl: string }>(
         '/api/drawio-mcp-open',
-        { architecturePath, diagramType },
+        diagramRenderPayload(),
       );
       setMcpRunning(true);
       setMcpDiagramPushed(true);
@@ -1875,7 +1890,7 @@ export default function App() {
   async function saveAndOpenAllPages() {
     const payload = await postJson<{ outputPath: string; xml?: string }>(
       '/api/drawio-multipage',
-      { architecturePath, outputPath: 'outputs/network-picasso-all.drawio', includeXml: true },
+      diagramRenderPayload({ outputPath: 'outputs/network-picasso-all.drawio', includeXml: true }),
     );
     setDiagramPath(payload.outputPath);
     if (payload.xml) {
@@ -1899,7 +1914,7 @@ export default function App() {
       try {
         const result = await postJson<{ ok: boolean; editorUrl: string; pages: number }>(
           '/api/drawio-mcp-all-pages',
-          { architecturePath },
+          diagramRenderPayload(),
         );
         window.open(BROWSER_MCP_EDITOR_URL, 'drawio-mcp-editor');
         setMcpEditorOpened(true);
@@ -1968,7 +1983,7 @@ export default function App() {
     try {
       const result = await postJson<{ ok: boolean; editorUrl: string; pages: number }>(
         '/api/drawio-mcp-all-pages',
-        { architecturePath },
+        diagramRenderPayload(),
       );
       window.open(BROWSER_MCP_EDITOR_URL, 'drawio-mcp-editor');
       setMcpRunning(true);
@@ -2031,10 +2046,26 @@ export default function App() {
         mcpOpened,
       });
       if (mcpOpened) {
-        setStatus(`Bob prompt copied: ${preset.label}. Paste it into Bob to start the edit.`);
-        if (!mcpRunning) {
+        setStatus(`Bob prompt copied: ${preset.label}. Loading the current Network Picasso diagram into MCP…`);
+        if (mcpRunning && architecture) {
+          try {
+            const result = await postJson<{ ok: boolean; editorUrl: string; pages: number }>(
+              '/api/drawio-mcp-all-pages',
+              diagramRenderPayload(),
+            );
+            setMcpDiagramPushed(true);
+            setMcpStatus(`Current ${result.pages}-page diagram pushed to MCP. Paste the copied prompt into Bob to start the edit.`);
+          } catch (pushErr) {
+            setMcpStatus(
+              pushErr instanceof Error
+                ? `Prompt copied, but the current diagram could not be pushed to MCP: ${pushErr.message}`
+                : 'Prompt copied, but the current diagram could not be pushed to MCP.',
+            );
+          }
+        } else if (!mcpRunning) {
           setMcpStatus('MCP editor tab opened. If it does not load, start or refresh the drawio MCP server in Bob.');
         }
+        setStatus(`Bob prompt copied: ${preset.label}. Paste it into Bob to start the edit.`);
         return;
       }
       setMcpStatus('Prompt copied, but the browser blocked the MCP editor popup. Allow popups for this app or use Open MCP editor tab.');
@@ -2054,6 +2085,7 @@ export default function App() {
       const data = await fetch('/api/ollama/models').then((r) => r.json());
       const models: string[] = data.models || [];
       setOllamaModels(models);
+      setOllamaBaseUrl(data.baseUrl || 'http://localhost:11434');
       setConnectionStatus(models.length > 0 ? 'ok' : 'fail');
     } catch { setConnectionStatus('fail'); }
   }
@@ -3793,7 +3825,7 @@ export default function App() {
                     <h2>Ollama model</h2>
                     <InfoTip text="Select the local model to use for component extraction and gap analysis. Click 'Test connection' to load the list of models currently available in Ollama." />
                   </div>
-                  <TextInput id="ollama-base-url" labelText="Ollama base URL" value="http://localhost:11434" readOnly />
+                  <TextInput id="ollama-base-url" labelText="Ollama base URL" value={ollamaBaseUrl} readOnly />
                   <Dropdown
                     id="ollama-model"
                     titleText="Model"
@@ -3811,7 +3843,7 @@ export default function App() {
                     {connectionStatus === 'ok' && (
                       <Tag type="green">Connected — {ollamaModels.length} model{ollamaModels.length === 1 ? '' : 's'} available</Tag>
                     )}
-                    {connectionStatus === 'fail' && <Tag type="red">Ollama not reachable at localhost:11434</Tag>}
+                    {connectionStatus === 'fail' && <Tag type="red">Ollama not reachable at {ollamaBaseUrl}</Tag>}
                   </div>
 
                   <div className="step-header" style={{ marginTop: '1rem' }}>

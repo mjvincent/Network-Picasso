@@ -200,9 +200,10 @@ Use the remediation loop:
 The analyzer is most useful when paired with action. It identifies model fixes that Network
 Picasso can apply and presentation fixes that Bob/MCP should handle. The guided presets include
 current analyzer findings and five-page guardrails so sellers do not need to write Draw.io
-editing prompts from scratch. **Copy + open MCP** opens the Draw.io MCP editor and copies the
-prompt, but it does not submit the prompt into Bob automatically. After a preset is copied, the
-session status remains visible until the next analyzer run confirms the loop has been checked.
+editing prompts from scratch. **Copy + open MCP** opens the Draw.io MCP editor, pushes the
+current five-page diagram into the live MCP document, and copies the prompt, but it does not
+submit the prompt into Bob automatically. After a preset is copied, the session status remains
+visible until the next analyzer run confirms the loop has been checked.
 
 ## 9. Use Project Activity And Restore Points
 
@@ -328,6 +329,7 @@ inherit the global memory unless a project-level override exists.
 | Only one Draw.io page opens | Single-page action was used or browser has stale UI | Use **Generate all diagram types** and refresh the app |
 | Bob shows `drawio` disconnected | MCP server has not started or Bob needs refresh | Refresh Bob MCP, reopen the workspace, and open `http://127.0.0.1:4000` |
 | MCP editor is open but app says unavailable | Container cannot reach host MCP endpoint | Confirm `NETWORK_PICASSO_MCP_BASE_URL=http://host.docker.internal:4000` |
+| Ollama shows no models in Docker | Container cannot reach host Ollama endpoint | Confirm Ollama is running and `NETWORK_PICASSO_OLLAMA_BASE_URL=http://host.docker.internal:11434` |
 | Diagram labels overlap | Layout needs presentation polish | Run analyzer, copy Bob remediation prompt, edit via MCP, then re-analyze |
 | AI questions are too generic | Source files lack context or Ollama mode is off | Add requirements notes and re-run intake |
 

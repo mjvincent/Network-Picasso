@@ -83,6 +83,21 @@ def _post(base: str, path: str, payload: dict) -> tuple[int, dict]:
         return exc.code, json.loads(exc.read().decode())
 
 
+def _post_raw(base: str, path: str, payload: dict) -> tuple[int, bytes, dict[str, str]]:
+    data = json.dumps(payload).encode()
+    req = urllib.request.Request(
+        f"{base}{path}",
+        data=data,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=10) as r:
+            return r.status, r.read(), dict(r.headers)
+    except urllib.error.HTTPError as exc:
+        return exc.code, exc.read(), dict(exc.headers)
+
+
 def _tiny_png() -> bytes:
     def chunk(kind: bytes, data: bytes) -> bytes:
         return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data) & 0xFFFFFFFF)
@@ -786,6 +801,137 @@ def test_generate_drawio_prefers_architecture_path_over_stale_payload(server, tm
     assert "Fresh" in xml
     assert "Edge VPC" in xml
     assert "Stale" not in xml
+
+
+def test_drawio_xml_prefers_active_architecture_payload(server, tmp_path):
+    arch_path = tmp_path / "architecture.json"
+    arch_path.write_text(json.dumps({
+        "project": {"name": "Old Omnicare"},
+        "ibm_cloud": {
+            "regions": [{"name": "us-south"}],
+            "compute": [{"name": "Medical imaging processing VSIs"}],
+        },
+    }))
+
+    status, raw, _headers = _post_raw(server, "/api/drawio-xml", {
+        "architecturePath": str(arch_path),
+        "architecture": {
+            "project": {"name": "Retail Analytics"},
+            "ibm_cloud": {
+                "regions": [{"name": "us-south"}],
+                "vpcs": [{"name": "Workload VPC"}],
+                "compute": [{"name": "VPC VSI workload tier"}],
+                "data": [{"name": "Cloud Object Storage archive"}],
+                "ingress": [{"name": "Public Load Balancer"}],
+            },
+        },
+        "diagramType": "deployment",
+        "mode": "rules",
+    })
+
+    xml = raw.decode()
+    assert status == 200
+    assert "Retail Analytics" in xml
+    assert "VPC VSI workload tier" in xml
+    assert "Old Omnicare" not in xml
+    assert "Medical imaging processing VSIs" not in xml
+
+
+def test_drawio_xml_applies_ollama_render_plan(server, monkeypatch):
+    from network_picasso import server as server_module
+
+    calls = []
+
+    def fake_plan_render(architecture, model, base_url, deployment_guide="", style_guide=""):
+        calls.append((architecture["project"]["name"], model, bool(deployment_guide), bool(style_guide)))
+        return {
+            "pattern": "hub-and-spoke",
+            "pattern_reason": "Retail workload needs separated edge and workload VPCs.",
+            "has_on_prem": False,
+            "has_tgw": True,
+            "has_powervs": False,
+            "has_dr": False,
+            "az_count": 3,
+            "vpcs": [
+                {"name": "Edge VPC", "purpose": "Internet ingress", "tiers": ["Public", "Management"]},
+                {"name": "Workload VPC", "purpose": "Private application and data tiers", "tiers": ["Private", "Data"]},
+            ],
+            "shared_services": ["Activity Tracker", "VPC Flow Logs"],
+            "connectivity_label": "",
+        }
+
+    monkeypatch.setattr(server_module._ollama, "plan_render", fake_plan_render)
+
+    status, raw, _headers = _post_raw(server, "/api/drawio-xml", {
+        "architecture": {
+            "project": {"name": "Retail Analytics"},
+            "ibm_cloud": {
+                "regions": [{"name": "us-south"}],
+                "vpcs": [{"name": "Workload VPC"}],
+                "compute": [{"name": "VPC VSI workload tier"}],
+                "ingress": [{"name": "Public Load Balancer"}],
+            },
+        },
+        "diagramType": "deployment",
+        "mode": "ollama",
+        "ollamaModel": "phi4-mini:latest",
+    })
+
+    xml = raw.decode()
+    assert status == 200
+    assert calls == [("Retail Analytics", "phi4-mini:latest", True, True)]
+    assert "Edge VPC" in xml
+    assert "Transit Gateway" in xml
+
+
+def test_mcp_all_pages_applies_ollama_render_plan(server, monkeypatch):
+    from network_picasso import server as server_module
+
+    def fake_plan_render(*_args, **_kwargs):
+        return {
+            "pattern": "hub-and-spoke",
+            "pattern_reason": "Separated edge/workload VPCs.",
+            "has_on_prem": False,
+            "has_tgw": True,
+            "has_powervs": False,
+            "has_dr": False,
+            "az_count": 3,
+            "vpcs": [
+                {"name": "Edge VPC", "purpose": "Internet ingress", "tiers": ["Public"]},
+                {"name": "Workload VPC", "purpose": "Private application tier", "tiers": ["Private", "Data"]},
+            ],
+            "shared_services": ["Activity Tracker"],
+            "connectivity_label": "",
+        }
+
+    captured = {}
+
+    def fake_open_all_pages(diagrams):
+        captured["diagrams"] = diagrams
+        return [{"page": name} for name in diagrams]
+
+    monkeypatch.setattr(server_module._ollama, "plan_render", fake_plan_render)
+    monkeypatch.setattr(server_module._mcp, "is_running", lambda: True)
+    monkeypatch.setattr(server_module._mcp, "open_all_pages", fake_open_all_pages)
+
+    status, body = _post(server, "/api/drawio-mcp-all-pages", {
+        "architecture": {
+            "project": {"name": "Retail Analytics"},
+            "ibm_cloud": {
+                "regions": [{"name": "us-south"}],
+                "vpcs": [{"name": "Workload VPC"}],
+                "compute": [{"name": "VPC VSI workload tier"}],
+            },
+        },
+        "mode": "ollama",
+        "ollamaModel": "phi4-mini:latest",
+    })
+
+    assert status == 200
+    assert body["pages"] == 5
+    deployment_xml = captured["diagrams"]["deployment"]
+    assert "Edge VPC" in deployment_xml
+    assert "Workload VPC" in deployment_xml
 
 
 def test_requirements_endpoint_enriches_architecture_model(server, tmp_path):

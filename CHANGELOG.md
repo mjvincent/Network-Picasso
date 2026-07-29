@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.6.12 - 2026-07-29
+
+### Changed
+
+- Draw.io XML, preview, diagrams.net open, MCP single-page open, MCP all-pages open, and multipage export now all apply the saved Ollama render-planning mode when enabled, instead of only applying phi4-mini during the basic generate action.
+- **Copy + open MCP** now pushes the current five-page Network Picasso diagram into the live MCP editor before handing off the Bob prompt, reducing the chance that a stale Omnicare or sample design remains visible.
+- Option C now prefers the active architecture model from the UI when both an active model and a saved path are present.
+
+### Fixed
+
+- Prevented diagrams.net/MCP open actions from silently falling back to rules-only or stale file-path rendering when the user is working from a newly pasted description.
+
 ## 0.6.11 - 2026-07-29
 
 ### Added

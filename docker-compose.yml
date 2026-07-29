@@ -29,6 +29,7 @@ services:
       NETWORK_PICASSO_HOST: 0.0.0.0
       NETWORK_PICASSO_PORT: 8787
       NETWORK_PICASSO_MCP_BASE_URL: http://host.docker.internal:4000
+      NETWORK_PICASSO_OLLAMA_BASE_URL: ${NETWORK_PICASSO_OLLAMA_BASE_URL:-http://host.docker.internal:11434}
       NETWORK_PICASSO_DATABASE_URL: postgresql://${NETWORK_PICASSO_POSTGRES_USER:-network_picasso}:${NETWORK_PICASSO_POSTGRES_PASSWORD:-network_picasso_dev}@db:5432/${NETWORK_PICASSO_POSTGRES_DB:-network_picasso}
     ports:
       - "${NETWORK_PICASSO_API_PORT:-8788}:8787"

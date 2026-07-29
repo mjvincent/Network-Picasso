@@ -71,7 +71,11 @@ DEFAULT_ARCHITECTURE_PATH = "examples/sample/architecture.json"
 UPLOAD_INPUT_PATH = "inputs/uploads/current"
 UPLOAD_ARCHITECTURE_PATH = "inputs/uploads/current/architecture.json"
 SETTINGS_PATH = "inputs/settings.json"
-OLLAMA_BASE_URL = "http://localhost:11434"
+OLLAMA_BASE_URL = (
+    os.environ.get("NETWORK_PICASSO_OLLAMA_BASE_URL")
+    or os.environ.get("OLLAMA_BASE_URL")
+    or "http://localhost:11434"
+)
 
 _SETTINGS_DEFAULTS: dict = {
     "mode": "rules",
@@ -88,6 +92,33 @@ def apply_saved_requirements(architecture: dict) -> None:
             text = str(req.get("text") or "")
             source = str(req.get("source") or "requirements")
             enrich_architecture_from_requirements(architecture, text, source=source)
+
+
+def apply_ai_render_plan_if_requested(
+    architecture: dict,
+    payload: dict,
+    *,
+    diagram_type: str = "deployment",
+) -> bool:
+    """Apply the saved AI render-planning mode before producing Draw.io XML."""
+    settings = load_settings()
+    mode = str(payload.get("mode") or settings.get("mode") or "rules")
+    if mode != "ollama" or diagram_type != "deployment":
+        return False
+
+    model = str(payload.get("ollamaModel") or settings.get("ollamaModel") or _SETTINGS_DEFAULTS["ollamaModel"])
+    render_plan = _ollama.plan_render(
+        architecture,
+        model,
+        OLLAMA_BASE_URL,
+        deployment_guide=DEPLOYMENT_GUIDE,
+        style_guide=STYLE_GUIDE,
+    )
+    if not render_plan:
+        return False
+    architecture.setdefault("render_plan", {}).update(render_plan)
+    print(f"[drawio] LLM render plan: {render_plan.get('pattern')} — {render_plan.get('pattern_reason', '')}")
+    return True
 
 
 def repo_path(value: str) -> Path:
@@ -559,7 +590,7 @@ def _export_readme_markdown(
 
 
 class NetworkPicassoHandler(BaseHTTPRequestHandler):
-    server_version = "NetworkPicasso/0.6.11"
+    server_version = "NetworkPicasso/0.6.12"
 
     def do_OPTIONS(self) -> None:
         self.send_response(204)
@@ -586,7 +617,7 @@ class NetworkPicassoHandler(BaseHTTPRequestHandler):
             return
         if parsed.path == "/api/ollama/models":
             models = _ollama.list_models(OLLAMA_BASE_URL)
-            self.send_json({"models": models})
+            self.send_json({"models": models, "baseUrl": OLLAMA_BASE_URL})
             return
         if parsed.path == "/api/settings":
             self.send_json(load_settings())
@@ -1560,6 +1591,10 @@ class NetworkPicassoHandler(BaseHTTPRequestHandler):
             arch_path = repo_path(payload.get("architecturePath") or DEFAULT_ARCHITECTURE_PATH)
             architecture = read_json_file(arch_path)
         diagram_type = str(payload.get("diagramType") or "deployment")
+        apply_saved_requirements(architecture)
+        ai_planned = apply_ai_render_plan_if_requested(architecture, payload, diagram_type=diagram_type)
+        if ai_planned and payload.get("architecturePath"):
+            atomic_write_json(repo_path(payload.get("architecturePath")), architecture)
         xml = render_drawio(architecture, diagram_type=diagram_type)
 
         if not _mcp.is_running():
@@ -1591,6 +1626,10 @@ class NetworkPicassoHandler(BaseHTTPRequestHandler):
         if not architecture:
             arch_path = repo_path(payload.get("architecturePath") or DEFAULT_ARCHITECTURE_PATH)
             architecture = read_json_file(arch_path)
+        apply_saved_requirements(architecture)
+        ai_planned = apply_ai_render_plan_if_requested(architecture, payload, diagram_type="deployment")
+        if ai_planned and payload.get("architecturePath"):
+            atomic_write_json(repo_path(payload.get("architecturePath")), architecture)
 
         if not _mcp.is_running():
             self.send_error_json(503, "drawio-mcp-server is not running at localhost:4000. Start it via the MCP panel in Bob.")
@@ -1630,6 +1669,10 @@ class NetworkPicassoHandler(BaseHTTPRequestHandler):
         if not architecture:
             arch_path = repo_path(payload.get("architecturePath") or DEFAULT_ARCHITECTURE_PATH)
             architecture = read_json_file(arch_path)
+        apply_saved_requirements(architecture)
+        ai_planned = apply_ai_render_plan_if_requested(architecture, payload, diagram_type="deployment")
+        if ai_planned and payload.get("architecturePath"):
+            atomic_write_json(repo_path(payload.get("architecturePath")), architecture)
         output_path = repo_path(
             payload.get("outputPath") or "outputs/network-picasso-all.drawio"
         )
@@ -1643,16 +1686,19 @@ class NetworkPicassoHandler(BaseHTTPRequestHandler):
 
     def handle_drawio_xml(self, payload: dict) -> None:
         architecture_path_str = payload.get("architecturePath")
-        if architecture_path_str:
+        architecture = payload.get("architecture")
+        if architecture:
+            apply_saved_requirements(architecture)
+        elif architecture_path_str:
             architecture = read_json_file(repo_path(architecture_path_str))
             apply_saved_requirements(architecture)
         else:
-            architecture = payload.get("architecture")
-            if not architecture:
-                self.send_error_json(400, "architecture or architecturePath is required")
-                return
-            apply_saved_requirements(architecture)
+            self.send_error_json(400, "architecture or architecturePath is required")
+            return
         diagram_type = str(payload.get("diagramType") or "deployment")
+        ai_planned = apply_ai_render_plan_if_requested(architecture, payload, diagram_type=diagram_type)
+        if ai_planned and architecture_path_str:
+            atomic_write_json(repo_path(architecture_path_str), architecture)
         self.send_xml(render_drawio(architecture, diagram_type=diagram_type))
 
     def handle_generate_drawio(self, payload: dict) -> None:
@@ -1670,21 +1716,9 @@ class NetworkPicassoHandler(BaseHTTPRequestHandler):
 
         # Ollama mode: ask the LLM to choose the reference pattern and enrich
         # the architecture with a render plan before generating the diagram.
-        settings = load_settings()
-        mode = str(payload.get("mode") or settings.get("mode") or "rules")
-        if mode == "ollama" and diagram_type == "deployment":
-            model = str(payload.get("ollamaModel") or settings.get("ollamaModel") or _SETTINGS_DEFAULTS["ollamaModel"])
-            render_plan = _ollama.plan_render(
-                architecture, model, OLLAMA_BASE_URL,
-                deployment_guide=DEPLOYMENT_GUIDE,
-                style_guide=STYLE_GUIDE,
-            )
-            if render_plan:
-                # Persist LLM pattern decision into architecture for logging / later use
-                architecture.setdefault("render_plan", {}).update(render_plan)
-                if payload.get("architecturePath"):
-                    atomic_write_json(architecture_path, architecture)
-                print(f"[generate] LLM render plan: {render_plan.get('pattern')} — {render_plan.get('pattern_reason', '')}")
+        ai_planned = apply_ai_render_plan_if_requested(architecture, payload, diagram_type=diagram_type)
+        if ai_planned and payload.get("architecturePath"):
+            atomic_write_json(architecture_path, architecture)
 
         if payload.get("architecturePath"):
             atomic_write_json(architecture_path, architecture)
