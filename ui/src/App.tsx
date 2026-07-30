@@ -1914,20 +1914,16 @@ export default function App() {
     setMcpStatus('');
     setError('');
     try {
-      const result = await postJson<{ ok: boolean; editorUrl: string }>(
-        '/api/drawio-mcp-open',
-        diagramRenderPayload(),
+      const result = await postJson<{ ok: boolean; editorUrl: string; pages: number; source?: string }>(
+        '/api/drawio-mcp-all-pages',
+        diagramRenderPayload({ forceRegenerate: true }),
       );
       setMcpRunning(true);
       setMcpDiagramPushed(true);
-      // Focus the already-open editor tab rather than opening a new one each time.
-      // Only open a new tab if this is the first successful push (tab not yet open).
-      if (!mcpRunning) {
-        window.open(BROWSER_MCP_EDITOR_URL, 'drawio-mcp-editor');
-        setMcpEditorOpened(true);
-      }
-      setMcpStatus(`Diagram pushed to the live editor (${diagramType})`);
-      setStatus(`Diagram is open in the live Draw.io editor at ${BROWSER_MCP_EDITOR_URL}`);
+      window.open(BROWSER_MCP_EDITOR_URL, 'drawio-mcp-editor');
+      setMcpEditorOpened(true);
+      setMcpStatus(`Generated ${result.pages}-page diagram loaded into the live editor.`);
+      setStatus(`Five-page generated Draw.io document is open in the MCP editor at ${BROWSER_MCP_EDITOR_URL}`);
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'MCP open failed';
       setMcpStatus(msg);
@@ -3658,7 +3654,7 @@ export default function App() {
                       </Button>
                       <Button kind="secondary" renderIcon={Launch} onClick={openInMcpEditor}
                         disabled={busy || !architecture || !mcpRunning}>
-                        Open in MCP editor
+                        Open generated five-page design
                       </Button>
                       {mcpStatus && (
                         <p style={{ fontSize: '0.8rem', color: mcpRunning ? '#198038' : '#da1e28', marginTop: '0.5rem' }}>
