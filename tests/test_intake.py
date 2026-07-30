@@ -15,6 +15,7 @@ from network_picasso.intake import (
     build_architecture_from_requirements,
     classify_file,
     dedupe_components,
+    enrich_architecture_from_requirements,
     infer_environment,
     is_pricing_catalog,
     is_solutioning_workbook,
@@ -135,6 +136,26 @@ def test_ups_vcf_rovs_requirements_extract_hybrid_classic_topology():
     assert "ROVS cluster for VDI testing" in names
     assert {"10.237.240.0/22", "10.237.244.0/22", "10.237.248.0/22"} <= subnet_cidrs
     assert not any("PowerVS" in name for name in names)
+
+
+def test_ups_vcf_rovs_enrichment_preserves_architect_pattern_override():
+    arch = {
+        "project": {"name": "UPS VCF ROVS"},
+        "render_plan": {
+            "pattern": "mzr",
+            "pattern_name": "Multi-Zone VPC (MZR)",
+            "pattern_source": "architect",
+        },
+        "ibm_cloud": {},
+    }
+
+    enrich_architecture_from_requirements(arch, UPS_REQUIREMENTS, source="test")
+
+    assert arch["render_plan"]["pattern"] == "mzr"
+    assert arch["render_plan"]["pattern_name"] == "Multi-Zone VPC (MZR)"
+    assert arch["render_plan"]["pattern_source"] == "architect"
+    assert arch["render_plan"]["topology_variant"] == "classic-vcf-rovs"
+    assert any(item["name"] == "ROVS POC VPC" for item in arch["ibm_cloud"]["vpcs"])
 
 
 def test_xlsx_basic():

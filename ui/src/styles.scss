@@ -921,6 +921,22 @@ body {
   gap: 0.875rem;
 }
 
+.pattern-override {
+  align-items: flex-end;
+  border: 1px solid #e0e0e0;
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: minmax(18rem, 1fr) auto;
+  padding: 1rem;
+}
+
+@media (max-width: 42rem) {
+  .pattern-override {
+    align-items: stretch;
+    grid-template-columns: 1fr;
+  }
+}
+
 .pattern-card {
   background: #ffffff;
   border: 1px solid #e0e0e0;

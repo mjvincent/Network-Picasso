@@ -1225,6 +1225,19 @@ def enrich_architecture_from_requirements(
     if customer_name:
         architecture.setdefault("project", {}).setdefault("customer", customer_name)
     ibm_cloud = architecture.setdefault("ibm_cloud", {})
+    plan = architecture.setdefault("render_plan", {})
+    architect_pattern = {
+        key: plan.get(key)
+        for key in ("pattern", "pattern_name", "pattern_score")
+        if plan.get("pattern_source") == "architect" and plan.get(key) is not None
+    }
+
+    def restore_architect_pattern() -> None:
+        if not architect_pattern:
+            return
+        plan.update(architect_pattern)
+        plan["pattern_source"] = "architect"
+
     facts: dict[str, list[dict[str, str]]] = {
         key: list(ibm_cloud.get(key, []))
         for key in KEYWORDS
@@ -1310,7 +1323,6 @@ def enrich_architecture_from_requirements(
                 "region": "us-east",
             }, source=source_label, notes=requirements)
 
-        plan = architecture.setdefault("render_plan", {})
         plan.update({
             "pattern": "hybrid-classic-vpc",
             "pattern_name": "Hybrid Classic to VPC Transit Gateway",
@@ -1330,6 +1342,7 @@ def enrich_architecture_from_requirements(
             ],
             "shared_services": [],
         })
+        restore_architect_pattern()
         facts["vpcs"] = [
             item for item in facts.get("vpcs", [])
             if str(item.get("name") or "") != "Workload VPC"
@@ -1368,11 +1381,11 @@ def enrich_architecture_from_requirements(
             source=source_label, notes=requirements,
             region="us-east" if "wdc" in text or "us-east" in text else "",
         )
-        plan = architecture.setdefault("render_plan", {})
         plan["has_dr"] = True
         plan["pattern"] = "resiliency-dr"
         plan["pattern_name"] = "Hybrid Resiliency and Disaster Recovery"
         plan["pattern_source"] = source
+        restore_architect_pattern()
 
     if mentions_healthcare:
         for name, purpose in [
@@ -1429,7 +1442,6 @@ def enrich_architecture_from_requirements(
         architecture.setdefault("render_plan", {})["az_count"] = 1
 
     if mentions_dr and (mentions_powervs or mentions_healthcare):
-        plan = architecture.setdefault("render_plan", {})
         plan["pattern"] = "hybrid-powervs-dr" if mentions_powervs else "healthcare-regional-dr"
         plan["pattern_name"] = (
             "Hybrid PowerVS and Regional DR"
@@ -1451,6 +1463,7 @@ def enrich_architecture_from_requirements(
             "VPC Flow Logs",
             "Virtual Private Endpoints",
         ]
+        restore_architect_pattern()
 
     for key, values in facts.items():
         if values:

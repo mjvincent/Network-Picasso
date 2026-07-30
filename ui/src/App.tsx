@@ -92,6 +92,25 @@ type PatternResult = {
   missing: string[];
 };
 
+const IBM_PATTERN_OPTIONS: PatternResult[] = [
+  { id: 'hybrid-classic-vpc', name: 'Hybrid Classic to VPC Transit Gateway', description: 'On-premises or Classic connectivity routed into IBM Cloud VPC through Transit Gateway.', url: 'https://www.ibm.com/think/architectures/patterns', score: 0, matched: [], missing: [] },
+  { id: 'hybrid', name: 'Hybrid Connectivity', description: 'Private connectivity from enterprise networks to IBM Cloud using Direct Link or VPN.', url: 'https://www.ibm.com/think/architectures/patterns', score: 0, matched: [], missing: [] },
+  { id: 'hub-and-spoke', name: 'Hub-and-Spoke (Edge VPC)', description: 'Dedicated edge or hub network with private workload spokes connected through Transit Gateway.', url: 'https://www.ibm.com/think/architectures/patterns', score: 0, matched: [], missing: [] },
+  { id: 'mzr', name: 'Multi-Zone VPC (MZR)', description: 'Production VPC spread across multiple availability zones in an IBM Cloud multi-zone region.', url: 'https://www.ibm.com/think/architectures/patterns', score: 0, matched: [], missing: [] },
+  { id: 'basic-vpc', name: 'Basic VPC', description: 'Single VPC pattern for simple workloads and low-complexity environments.', url: 'https://www.ibm.com/think/architectures/patterns', score: 0, matched: [], missing: [] },
+  { id: 'three-tier-vpc', name: 'Three-Tier VPC', description: 'Public, private application, and data tiers separated inside a VPC.', url: 'https://www.ibm.com/think/architectures/patterns', score: 0, matched: [], missing: [] },
+  { id: 'powervs', name: 'IBM Power Virtual Server (PowerVS)', description: 'PowerVS workloads connected to VPC or enterprise networks.', url: 'https://www.ibm.com/think/architectures/patterns', score: 0, matched: [], missing: [] },
+  { id: 'fsc', name: 'Financial Services Cloud (FSC)', description: 'Regulated financial services architecture with strong security and compliance controls.', url: 'https://www.ibm.com/think/architectures/patterns', score: 0, matched: [], missing: [] },
+  { id: 'roks', name: 'Red Hat OpenShift on IBM Cloud (ROKS)', description: 'Managed OpenShift worker nodes and application ingress on IBM Cloud VPC.', url: 'https://www.ibm.com/think/architectures/patterns', score: 0, matched: [], missing: [] },
+  { id: 'security-compliance', name: 'Security and Compliance Architecture', description: 'Evidence collection, logging, audit, key management, and compliance posture.', url: 'https://www.ibm.com/think/architectures/patterns', score: 0, matched: [], missing: [] },
+  { id: 'resiliency-dr', name: 'Resiliency and Disaster Recovery', description: 'Multi-region or standby recovery design with explicit recovery objectives.', url: 'https://www.ibm.com/think/architectures/patterns', score: 0, matched: [], missing: [] },
+  { id: 'cloud-native', name: 'Cloud-Native and Container Orchestration', description: 'Kubernetes, registry, CI/CD, and microservices-oriented IBM Cloud architecture.', url: 'https://www.ibm.com/think/architectures/patterns', score: 0, matched: [], missing: [] },
+  { id: 'event-driven', name: 'Event-Driven Architecture', description: 'Kafka, MQ, serverless, or asynchronous application integration pattern.', url: 'https://www.ibm.com/think/architectures/patterns', score: 0, matched: [], missing: [] },
+  { id: 'ai-data', name: 'AI and Data Platform (watsonx)', description: 'AI, ML, lakehouse, GPU, and governed data platform pattern.', url: 'https://www.ibm.com/think/architectures/patterns', score: 0, matched: [], missing: [] },
+  { id: 'satellite', name: 'IBM Satellite and Edge', description: 'IBM Cloud services extended to on-premises or edge locations.', url: 'https://www.ibm.com/think/architectures/patterns', score: 0, matched: [], missing: [] },
+  { id: 'devops-iac', name: 'DevOps and Infrastructure as Code', description: 'Terraform, Schematics, toolchains, and deployment automation pattern.', url: 'https://www.ibm.com/think/architectures/patterns', score: 0, matched: [], missing: [] },
+];
+
 type PillarReview = {
   name: string;
   score: number;
@@ -174,6 +193,7 @@ type StyleMemory = {
 type Architecture = {
   project: { name: string; environment?: string };
   ibm_cloud: Record<string, Component[] | string[]>;
+  render_plan?: Record<string, unknown>;
   questions?: { answered?: AnsweredQuestionType[]; open?: Question[] | string[] };
   quality?: {
     lastReview?: {
@@ -715,6 +735,7 @@ export default function App() {
   const [fileRoles, setFileRoles] = useState<FileRole[]>([]);
   const [patternResults, setPatternResults] = useState<PatternResult[]>([]);
   const [chosenPattern, setChosenPatternState] = useState<PatternResult | null>(null);
+  const [selectedPatternOverrideId, setSelectedPatternOverrideId] = useState('');
   const [patternBusy, setPatternBusy] = useState(false);
   const [architectureReview, setArchitectureReview] = useState<ArchitectureReview | null>(null);
   const [architectureReviewBusy, setArchitectureReviewBusy] = useState(false);
@@ -1164,6 +1185,7 @@ export default function App() {
       setDiagramQuality(null);
       setPatternResults([]);
       setChosenPatternState(null);
+      setSelectedPatternOverrideId('');
       setPreviewXml(null);
       setRequirementsText('');
       setRequirementsSaved(false);
@@ -1203,6 +1225,7 @@ export default function App() {
     setDiagramQuality(null);
     setPatternResults([]);
     setChosenPatternState(null);
+    setSelectedPatternOverrideId('');
     setPreviewXml(null);
     setMcpEditorOpened(false);
     setMcpDiagramPushed(false);
@@ -1630,6 +1653,7 @@ export default function App() {
         if (replaceArchitecture) {
           setChosenPatternState(null);
           setPatternResults([]);
+          setSelectedPatternOverrideId('');
           setStatus('Fresh architecture created from requirements');
         }
         await runArchitectureReview(payload.architecture, text.trim());
@@ -1689,6 +1713,7 @@ export default function App() {
       setPatternResults(ranked);
       if (!chosenPattern && review.recommendedPattern) {
         setChosenPatternState(review.recommendedPattern);
+        setSelectedPatternOverrideId(review.recommendedPattern.id);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Architecture review failed');
@@ -1710,6 +1735,7 @@ export default function App() {
       // Auto-select top match if not already chosen
       if (!chosenPattern && payload.best) {
         setChosenPatternState(payload.best);
+        setSelectedPatternOverrideId(payload.best.id);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Pattern match failed');
@@ -1720,6 +1746,7 @@ export default function App() {
 
   async function confirmPattern(pattern: PatternResult) {
     setChosenPatternState(pattern);
+    setSelectedPatternOverrideId(pattern.id);
     try {
       await postJson('/api/set-pattern', {
         architecturePath,
@@ -1727,6 +1754,16 @@ export default function App() {
         patternName: pattern.name,
         score: pattern.score,
       });
+      setArchitecture((current) => current ? {
+        ...current,
+        render_plan: {
+          ...(current.render_plan || {}),
+          pattern: pattern.id,
+          pattern_name: pattern.name,
+          pattern_source: 'architect',
+          pattern_score: pattern.score,
+        },
+      } : current);
       setStatus(`Pattern set: ${pattern.name}`);
     } catch (err) {
       // Non-fatal — pattern is still set in local state
@@ -1737,13 +1774,21 @@ export default function App() {
   // ── Diagram ──────────────────────────────────────────────────────────────────
 
   function diagramRenderPayload(extra: Record<string, unknown> = {}) {
-    return {
-      architecturePath,
-      architecture,
+    const base: Record<string, unknown> = {
       diagramType,
       mode: settings.mode,
       ollamaModel: settings.ollamaModel,
       ...extra,
+    };
+    if (architecturePath) {
+      return {
+        ...base,
+        architecturePath,
+      };
+    }
+    return {
+      ...base,
+      architecture,
     };
   }
 
@@ -3112,6 +3157,34 @@ export default function App() {
                           hideCloseButton
                         />
                       )}
+
+                      <div className="pattern-override">
+                        <Select
+                          id="pattern-override-select"
+                          labelText="Manual pattern override"
+                          helperText="Use this when the automatic match is close but not the topology you want."
+                          value={selectedPatternOverrideId}
+                          onChange={(event) => setSelectedPatternOverrideId(event.target.value)}
+                        >
+                          <SelectItem value="" text="Select an IBM pattern" />
+                          {IBM_PATTERN_OPTIONS.map((pattern) => (
+                            <SelectItem key={pattern.id} value={pattern.id} text={pattern.name} />
+                          ))}
+                        </Select>
+                        <Button
+                          kind="tertiary"
+                          size="md"
+                          renderIcon={Checkmark}
+                          disabled={!selectedPatternOverrideId}
+                          onClick={() => {
+                            const scored = patternResults.find((pattern) => pattern.id === selectedPatternOverrideId);
+                            const fallback = IBM_PATTERN_OPTIONS.find((pattern) => pattern.id === selectedPatternOverrideId);
+                            if (scored || fallback) confirmPattern(scored || fallback!);
+                          }}
+                        >
+                          Use selected pattern
+                        </Button>
+                      </div>
 
                       {patternResults.length === 0 ? (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>

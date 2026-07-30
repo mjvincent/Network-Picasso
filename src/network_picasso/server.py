@@ -121,9 +121,40 @@ def apply_ai_render_plan_if_requested(
     )
     if not render_plan:
         return False
-    architecture.setdefault("render_plan", {}).update(render_plan)
+    existing_plan = architecture.setdefault("render_plan", {})
+    architect_pattern = existing_plan.get("pattern_source") == "architect"
+    if architect_pattern:
+        pattern_override = {
+            key: existing_plan.get(key)
+            for key in ("pattern", "pattern_name", "pattern_score")
+            if existing_plan.get(key) is not None
+        }
+        existing_plan.update(render_plan)
+        existing_plan.update(pattern_override)
+        existing_plan["pattern_source"] = "architect"
+    else:
+        existing_plan.update(render_plan)
     print(f"[drawio] LLM render plan: {render_plan.get('pattern')} — {render_plan.get('pattern_reason', '')}")
     return True
+
+
+def architecture_from_render_payload(payload: dict) -> tuple[dict, Path | None]:
+    """Return architecture and optional architecture path for render endpoints.
+
+    Project-backed render calls must trust the saved architecture file over the
+    browser's in-memory object. React can temporarily hold stale architecture
+    state while a project is being loaded or autosaved, and that stale payload
+    should never override the persisted requirements used for Draw.io output.
+    """
+    architecture_path_value = payload.get("architecturePath")
+    if architecture_path_value:
+        architecture_path = repo_path(architecture_path_value)
+        return read_json_file(architecture_path), architecture_path
+    architecture = payload.get("architecture")
+    if architecture:
+        return architecture, None
+    architecture_path = repo_path(DEFAULT_ARCHITECTURE_PATH)
+    return read_json_file(architecture_path), architecture_path
 
 
 def repo_path(value: str) -> Path:
@@ -1716,10 +1747,7 @@ class NetworkPicassoHandler(BaseHTTPRequestHandler):
                 project_path = managed_project_path(str(architecture_path.parent), settings)
             except ValueError:
                 project_path = None
-        architecture = payload.get("architecture")
-        if not architecture:
-            arch_path = repo_path(architecture_path_value or DEFAULT_ARCHITECTURE_PATH)
-            architecture = read_json_file(arch_path)
+        architecture, _architecture_path = architecture_from_render_payload(payload)
         diagram_type = str(payload.get("diagramType") or "deployment")
         apply_saved_requirements(architecture)
         ai_planned = apply_ai_render_plan_if_requested(architecture, payload, diagram_type=diagram_type)
@@ -1765,10 +1793,7 @@ class NetworkPicassoHandler(BaseHTTPRequestHandler):
                 project_path = managed_project_path(str(architecture_path.parent), settings)
             except ValueError:
                 project_path = None
-        architecture = payload.get("architecture")
-        if not architecture:
-            arch_path = repo_path(architecture_path_value or DEFAULT_ARCHITECTURE_PATH)
-            architecture = read_json_file(arch_path)
+        architecture, _architecture_path = architecture_from_render_payload(payload)
         apply_saved_requirements(architecture)
         ai_planned = apply_ai_render_plan_if_requested(architecture, payload, diagram_type="deployment")
         if ai_planned and architecture_path_value:
@@ -1834,10 +1859,7 @@ class NetworkPicassoHandler(BaseHTTPRequestHandler):
                 project_path = managed_project_path(str(architecture_path.parent), settings)
             except ValueError:
                 project_path = None
-        architecture = payload.get("architecture")
-        if not architecture:
-            arch_path = repo_path(architecture_path_value or DEFAULT_ARCHITECTURE_PATH)
-            architecture = read_json_file(arch_path)
+        architecture, _architecture_path = architecture_from_render_payload(payload)
         apply_saved_requirements(architecture)
         ai_planned = apply_ai_render_plan_if_requested(architecture, payload, diagram_type="deployment")
         if ai_planned and architecture_path_value:
@@ -1862,15 +1884,11 @@ class NetworkPicassoHandler(BaseHTTPRequestHandler):
                 project_path = managed_project_path(str(repo_path(architecture_path_str).parent), load_settings())
             except ValueError:
                 project_path = None
-        architecture = payload.get("architecture")
-        if architecture:
-            apply_saved_requirements(architecture)
-        elif architecture_path_str:
-            architecture = read_json_file(repo_path(architecture_path_str))
-            apply_saved_requirements(architecture)
-        else:
+        if not architecture_path_str and not payload.get("architecture"):
             self.send_error_json(400, "architecture or architecturePath is required")
             return
+        architecture, _architecture_path = architecture_from_render_payload(payload)
+        apply_saved_requirements(architecture)
         diagram_type = str(payload.get("diagramType") or "deployment")
         ai_planned = apply_ai_render_plan_if_requested(architecture, payload, diagram_type=diagram_type)
         if ai_planned and architecture_path_str:

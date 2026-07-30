@@ -28,6 +28,19 @@ from network_picasso.server import (
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[1]
 
+UPS_REQUIREMENTS = (
+    "We need to create an infrastructure / network diagram for UPS's VCF ProdNet, VCF TestNet "
+    "and ROVS POC environment in IBM Cloud. Today UPS connects to IBM Cloud WDC via a DirectLink "
+    "2.0 connection into IBM Cloud Classic. The DirectLink terminates on a Juniper vSRX which "
+    "routes traffic between on-prem and IBM Cloud ProdNet and TestNet VCF environments. We are "
+    "adding a third environment in IBM Cloud VPC in WDC. This environment will be running a ROVS "
+    "cluster for VDI testing. It will be in a single zone in us-east-3. ROVS POC subnet- "
+    "10.237.240.0/20 10.237.240.0/22 us-east-1 10.237.244.0/22 us-east-2 10.237.248.0/22 "
+    "us-east-3 TestNet Supernet: 10.233.128.0/17 Production Supernet: 10.237.0.0/16 We'll need "
+    "to show the DirectLink 2.0 connectivity from on-prem to the vSRX, and to a transit gateway "
+    "connection to the ROVS POC environment in IBM Cloud VPC."
+)
+
 
 # ---------------------------------------------------------------------------
 # Fixture: live server
@@ -858,18 +871,109 @@ def test_generate_drawio_prefers_architecture_path_over_stale_payload(server, tm
     assert "Stale" not in xml
 
 
-def test_drawio_xml_prefers_active_architecture_payload(server, tmp_path):
+def test_drawio_xml_prefers_architecture_path_over_stale_payload(server, tmp_path):
     arch_path = tmp_path / "architecture.json"
     arch_path.write_text(json.dumps({
-        "project": {"name": "Old Omnicare"},
-        "ibm_cloud": {
-            "regions": [{"name": "us-south"}],
-            "compute": [{"name": "Medical imaging processing VSIs"}],
-        },
+        "project": {"name": "UPS VCF ROVS"},
+        "requirements": [{"text": UPS_REQUIREMENTS, "source": "test"}],
+        "ibm_cloud": {"regions": [{"name": "us-east"}]},
     }))
 
     status, raw, _headers = _post_raw(server, "/api/drawio-xml", {
         "architecturePath": str(arch_path),
+        "architecture": {
+            "project": {"name": "Old Omnicare"},
+            "ibm_cloud": {
+                "regions": [{"name": "us-south"}],
+                "compute": [{"name": "Medical imaging processing VSIs"}],
+            },
+        },
+        "diagramType": "deployment",
+        "mode": "rules",
+    })
+
+    xml = raw.decode()
+    assert status == 200
+    assert "UPS VCF ROVS" in xml
+    assert "VCF ProdNet" in xml
+    assert "VCF TestNet" in xml
+    assert "ROVS POC VPC" in xml
+    assert "Juniper vSRX" in xml
+    assert "DirectLink 2.0" in xml
+    assert "Old Omnicare" not in xml
+    assert "Medical imaging processing VSIs" not in xml
+
+
+def test_drawio_multipage_prefers_architecture_path_over_stale_payload(server, tmp_path):
+    arch_path = tmp_path / "architecture.json"
+    output_path = tmp_path / "all.drawio"
+    arch_path.write_text(json.dumps({
+        "project": {"name": "UPS VCF ROVS"},
+        "requirements": [{"text": UPS_REQUIREMENTS, "source": "test"}],
+        "ibm_cloud": {"regions": [{"name": "us-east"}]},
+    }))
+
+    status, body = _post(server, "/api/drawio-multipage", {
+        "architecturePath": str(arch_path),
+        "architecture": {
+            "project": {"name": "Old Omnicare"},
+            "ibm_cloud": {
+                "regions": [{"name": "us-south"}],
+                "compute": [{"name": "Medical imaging processing VSIs"}],
+            },
+        },
+        "mode": "rules",
+        "forceRegenerate": True,
+        "includeXml": True,
+        "outputPath": str(output_path),
+    })
+
+    assert status == 200
+    assert body["source"] == "generated"
+    xml = body["xml"]
+    for expected in ("Executive Overview", "VCF ProdNet", "VCF TestNet", "ROVS POC VPC", "Transit Gateway"):
+        assert expected in xml
+    assert "Old Omnicare" not in xml
+    assert "Medical imaging processing VSIs" not in xml
+
+
+def test_mcp_all_pages_prefers_architecture_path_over_stale_payload(server, tmp_path, monkeypatch):
+    from network_picasso import server as server_module
+
+    arch_path = tmp_path / "architecture.json"
+    arch_path.write_text(json.dumps({
+        "project": {"name": "UPS VCF ROVS"},
+        "requirements": [{"text": UPS_REQUIREMENTS, "source": "test"}],
+        "ibm_cloud": {"regions": [{"name": "us-east"}]},
+    }))
+    captured = {}
+    monkeypatch.setattr(server_module._mcp, "is_running", lambda: True)
+    monkeypatch.setattr(server_module._mcp, "open_multipage_diagram_in_editor", lambda xml, **kwargs: captured.update({"xml": xml, "kwargs": kwargs}) or {"ok": True})
+    monkeypatch.setattr(server_module._mcp, "open_all_pages", lambda _diagrams: pytest.fail("all pages should open atomically as a multipage Draw.io document"))
+
+    status, body = _post(server, "/api/drawio-mcp-all-pages", {
+        "architecturePath": str(arch_path),
+        "architecture": {
+            "project": {"name": "Old Omnicare"},
+            "ibm_cloud": {
+                "regions": [{"name": "us-south"}],
+                "compute": [{"name": "Medical imaging processing VSIs"}],
+            },
+        },
+        "mode": "rules",
+        "forceRegenerate": True,
+    })
+
+    assert status == 200
+    assert body["source"] == "generated"
+    assert "VCF ProdNet" in captured["xml"]
+    assert "ROVS POC VPC" in captured["xml"]
+    assert "Old Omnicare" not in captured["xml"]
+    assert "Medical imaging processing VSIs" not in captured["xml"]
+
+
+def test_drawio_xml_uses_active_architecture_payload_without_path(server):
+    status, raw, _headers = _post_raw(server, "/api/drawio-xml", {
         "architecture": {
             "project": {"name": "Retail Analytics"},
             "ibm_cloud": {
@@ -888,8 +992,35 @@ def test_drawio_xml_prefers_active_architecture_payload(server, tmp_path):
     assert status == 200
     assert "Retail Analytics" in xml
     assert "VPC VSI workload tier" in xml
-    assert "Old Omnicare" not in xml
     assert "Medical imaging processing VSIs" not in xml
+
+
+def test_set_pattern_override_is_preserved_during_project_render(server, tmp_path):
+    arch_path = tmp_path / "architecture.json"
+    arch_path.write_text(json.dumps({
+        "project": {"name": "UPS VCF ROVS"},
+        "render_plan": {
+            "pattern": "mzr",
+            "pattern_name": "Multi-Zone VPC (MZR)",
+            "pattern_source": "architect",
+        },
+        "requirements": [{"text": UPS_REQUIREMENTS, "source": "test"}],
+        "ibm_cloud": {
+            "regions": [{"name": "us-east"}],
+        },
+    }))
+
+    status, raw, _headers = _post_raw(server, "/api/drawio-xml", {
+        "architecturePath": str(arch_path),
+        "diagramType": "deployment",
+        "mode": "rules",
+    })
+
+    assert status == 200
+    on_disk = json.loads(arch_path.read_text())
+    assert on_disk["render_plan"]["pattern"] == "mzr"
+    assert on_disk["render_plan"]["pattern_source"] == "architect"
+    assert "VCF ProdNet" in raw.decode()
 
 
 def test_drawio_xml_applies_ollama_render_plan(server, monkeypatch):
