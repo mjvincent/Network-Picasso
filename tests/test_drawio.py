@@ -169,6 +169,39 @@ def test_classic_vcf_rovs_deployment_renders_customer_topology():
     assert "PowerVS" not in xml
 
 
+def test_hybrid_classic_pattern_override_renders_classic_handoff_layout():
+    arch = {
+        "project": {"name": "UPS VCF ROVS", "customer": "UPS"},
+        "render_plan": {
+            "pattern": "hybrid-classic-vpc",
+            "pattern_name": "Hybrid Classic to VPC Transit Gateway",
+            "pattern_source": "architect",
+            "connectivity_label": "DirectLink 2.0",
+        },
+        "ibm_cloud": {
+            "regions": [{"name": "us-east"}],
+            "vpcs": [
+                {"name": "VCF ProdNet"},
+                {"name": "VCF TestNet"},
+                {"name": "ROVS POC VPC"},
+            ],
+            "connectivity": [
+                {"name": "DirectLink 2.0"},
+                {"name": "Juniper vSRX"},
+                {"name": "Transit Gateway"},
+            ],
+            "compute": [{"name": "ROVS cluster"}],
+        },
+    }
+
+    xml = render_drawio(arch, diagram_type="deployment")
+
+    assert "IBM Cloud Classic / Existing Network" in xml
+    assert "Juniper vSRX" in xml
+    assert "Classic routed handoff" in xml
+    assert "ROVS POC VPC" in xml
+
+
 def test_classic_vcf_rovs_all_tabs_are_topology_aware_without_stale_story():
     arch = {
         "project": {"name": "UPS VCF ROVS"},

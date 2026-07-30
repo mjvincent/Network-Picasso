@@ -1023,6 +1023,37 @@ def test_set_pattern_override_is_preserved_during_project_render(server, tmp_pat
     assert "VCF ProdNet" in raw.decode()
 
 
+def test_set_pattern_enriches_hybrid_classic_requirements(server, tmp_path):
+    arch_path = tmp_path / "architecture.json"
+    arch_path.write_text(json.dumps({
+        "project": {"name": "UPS VCF ROVS"},
+        "requirements": [{"text": UPS_REQUIREMENTS, "source": "test"}],
+        "ibm_cloud": {},
+    }))
+
+    status, body = _post(server, "/api/set-pattern", {
+        "architecturePath": str(arch_path),
+        "patternId": "hybrid-classic-vpc",
+        "patternName": "Hybrid Classic to VPC Transit Gateway",
+    })
+
+    assert status == 200
+    assert body["renderPlan"]["pattern"] == "hybrid-classic-vpc"
+    assert body["renderPlan"]["pattern_source"] == "architect"
+    assert body["renderPlan"]["topology_variant"] == "classic-vcf-rovs"
+    on_disk = json.loads(arch_path.read_text())
+    names = {
+        item["name"]
+        for values in on_disk["ibm_cloud"].values()
+        if isinstance(values, list)
+        for item in values
+        if isinstance(item, dict)
+    }
+    assert "VCF ProdNet" in names
+    assert "Juniper vSRX" in names
+    assert "Transit Gateway" in names
+
+
 def test_drawio_xml_applies_ollama_render_plan(server, monkeypatch):
     from network_picasso import server as server_module
 

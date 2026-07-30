@@ -1658,6 +1658,7 @@ class NetworkPicassoHandler(BaseHTTPRequestHandler):
         render_plan["pattern_source"] = "architect"
         if score is not None:
             render_plan["pattern_score"] = float(score)
+        apply_saved_requirements(architecture)
 
         atomic_write_json(architecture_path, architecture)
         sync_project_if_managed(architecture_path.parent, load_settings(), architecture=architecture, event_type="pattern-set")

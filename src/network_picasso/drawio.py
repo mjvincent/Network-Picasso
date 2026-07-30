@@ -1394,6 +1394,17 @@ def _vpcs_from_render_plan(render_plan: dict, ibm_cloud: dict) -> list[dict]:
     return existing or [{"name": "VPC", "purpose": ""}]
 
 
+def _should_render_classic_vcf_rovs(render_plan: dict, ibm_cloud: dict) -> bool:
+    """True when the deployment should use the Classic/vSRX handoff layout."""
+    topology_variant = str(render_plan.get("topology_variant") or "").lower()
+    if topology_variant == "classic-vcf-rovs":
+        return True
+    pattern = str(render_plan.get("pattern") or "").lower()
+    if pattern != "hybrid-classic-vpc":
+        return False
+    return True
+
+
 def _tiers_for_vpc(vpc: dict, tier_items: dict[str, list[dict]]) -> dict[str, list[dict]]:
     """Ensure template tiers appear even when no extracted item exists yet."""
     tiers = vpc.get("tiers")
@@ -2170,7 +2181,7 @@ def _render_deployment(builder: DrawioBuilder, project: dict, ibm_cloud: dict, r
     AZ count, node types) is derived from the ibm_cloud dict.
     """
     render_plan = render_plan or {}
-    if str(render_plan.get("topology_variant") or "").lower() == "classic-vcf-rovs":
+    if _should_render_classic_vcf_rovs(render_plan, ibm_cloud):
         _render_classic_vcf_rovs_deployment(builder, project, ibm_cloud, render_plan)
         return
 
