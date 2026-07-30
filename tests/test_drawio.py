@@ -155,7 +155,7 @@ def test_classic_vcf_rovs_deployment_renders_customer_topology():
 
     xml = render_drawio(arch, diagram_type="deployment")
 
-    assert "IBM Cloud Classic - WDC" in xml
+    assert "IBM Cloud Classic / Existing Network" in xml
     assert "Juniper vSRX" in xml
     assert "VCF ProdNet" in xml
     assert "VCF TestNet" in xml
@@ -164,6 +164,53 @@ def test_classic_vcf_rovs_deployment_renders_customer_topology():
     assert "ROVS cluster" in xml
     assert "10.237.248.0/22" in xml
     assert "PowerVS" not in xml
+
+
+def test_classic_vcf_rovs_all_tabs_are_topology_aware_without_stale_story():
+    arch = {
+        "project": {"name": "UPS VCF ROVS"},
+        "render_plan": {
+            "topology_variant": "classic-vcf-rovs",
+            "pattern": "hybrid-classic-vpc",
+            "pattern_name": "Hybrid Classic to VPC Transit Gateway",
+            "pattern_reason": "Classic vSRX routes existing VCF networks to a new VPC through Transit Gateway.",
+            "has_on_prem": True,
+            "has_tgw": True,
+            "has_powervs": False,
+            "connectivity_label": "DirectLink 2.0",
+            "vpcs": [
+                {"name": "VCF ProdNet", "purpose": "Existing Classic VCF production network 10.237.0.0/16", "region": "us-east", "tiers": ["Private"]},
+                {"name": "VCF TestNet", "purpose": "Existing Classic VCF test network 10.233.128.0/17", "region": "us-east", "tiers": ["Private"]},
+                {"name": "ROVS POC VPC", "purpose": "New VPC ROVS/VDI POC 10.237.240.0/20", "region": "us-east", "tiers": ["Private"]},
+            ],
+        },
+        "ibm_cloud": {
+            "regions": [{"name": "us-east"}],
+            "vpcs": [
+                {"name": "VCF ProdNet", "cidr": "10.237.0.0/16"},
+                {"name": "VCF TestNet", "cidr": "10.233.128.0/17"},
+                {"name": "ROVS POC VPC", "cidr": "10.237.240.0/20"},
+            ],
+            "connectivity": [
+                {"name": "DirectLink 2.0"},
+                {"name": "Juniper vSRX"},
+                {"name": "Transit Gateway"},
+            ],
+            "compute": [{"name": "ROVS cluster for VDI testing"}],
+            "subnets": [{"name": "ROVS POC subnet us-east-3", "zone": "us-east-3", "cidr": "10.237.248.0/22"}],
+        },
+    }
+
+    diagrams = render_all_diagrams(arch)
+    combined = "\n".join(diagrams.values())
+
+    for expected in ("VCF ProdNet", "VCF TestNet", "ROVS POC VPC", "DirectLink 2.0", "Transit Gateway"):
+        assert expected in combined
+    for stale in ("medical imaging", "Clinicians", "OmniCare", "DAL VPC", "WDC VPC", "PowerVS Workspace"):
+        assert stale not in combined
+    assert "ROVS POC VPC" in diagrams["executive"]
+    assert "ROVS POC VPC" in diagrams["context"]
+    assert "ROVS POC VPC" in diagrams["logical"]
 
 
 def test_md_files_loaded():
@@ -260,7 +307,7 @@ def test_multi_region_requirements_render_primary_dr_regions():
     assert "Shared Services / Compliance Foundation" in xml
     assert "PowerVS with VPC landing zone" in xml
     assert "DR VSI recovery tier" in xml
-    assert "Replicated imaging data" in xml
+    assert "Replicated workload data" in xml
     assert "VPC from unified pricing workbook" not in xml
 
 
@@ -311,10 +358,11 @@ def test_executive_overview_renders_seller_friendly_story():
     }
     xml = render_drawio(arch, diagram_type="executive")
     assert "Executive Overview" in xml
-    assert "Enterprise Sites" in xml
-    assert "Dallas / us-south" in xml
-    assert "Washington DC / us-east" in xml
-    assert "Shared Security, Compliance, and Operations Foundation" in xml
+    assert "Enterprise / External" in xml
+    assert "us-south" in xml
+    assert "us-east" in xml
+    assert "Shared Services / Foundation" in xml
+    assert "medical imaging" not in xml
 
 
 def test_deployment_summarizes_multiple_vsi_profiles_as_workload_tier():

@@ -58,6 +58,7 @@ import {
   ListChecked,
   Layers,
   Renew,
+  Save,
   Settings,
   Upload,
 } from '@carbon/icons-react';
@@ -242,6 +243,10 @@ type ProjectActivity = {
     hasArchitecture: boolean;
     architectureSize: number;
     architectureModifiedAt: string;
+    hasSavedDrawio?: boolean;
+    savedDrawioPath?: string;
+    savedDrawioSize?: number;
+    savedDrawioModifiedAt?: string;
   };
   persistence: {
     enabled: boolean;
@@ -520,6 +525,18 @@ ${context}
 ${memoryBlock}
 
 ${guardrails} Ensure each page has clear audience fit: executive page is simple, context page shows boundaries, logical page shows relationships, deployment page shows implementable topology, and assumptions page clearly states validation items. Do not make broad topology changes. Summarize final readiness by page.`,
+    },
+    {
+      id: 'bob-frontier-polish',
+      label: 'Bob final polish review',
+      description: 'Optional second pass using Bob after the Draw.io file is open through MCP.',
+      targetPage: 'All five pages',
+      prompt: `Use the ibm-drawio-editing skill. If Bob offers a model choice, use the strongest available reasoning/model option for visual architecture review; otherwise use the active Bob model. Inspect the open five-page Draw.io MCP document: ${allPages}.
+
+${context}
+${memoryBlock}
+
+${guardrails} Act as a senior IBM Cloud network architect doing final QA. Improve spacing, labeling, connector routing, page-level consistency, and IBM Think Architecture pattern traceability. Preserve every customer-specific requirement and all existing topology relationships unless the architecture model clearly contradicts the drawing. Summarize what you changed, what you intentionally left unchanged, and any remaining architectural questions for the seller.`,
     },
   ];
 }
@@ -1254,7 +1271,40 @@ export default function App() {
     a.click();
   }
 
-  function finishAndExportProject() {
+  async function saveLiveMcpDiagram() {
+    if (!activeProject) return;
+    setBusy(true);
+    setError('');
+    setMcpStatus('');
+    try {
+      const result = await postJson<{ ok: boolean; path: string; message: string }>('/api/project-diagram/save', {
+        path: activeProject.path,
+        source: 'mcp',
+      });
+      setMcpStatus(`${result.message} ${result.path}`);
+      setStatus(`Saved live Draw.io edits to ${result.path}`);
+      loadProjectActivity(activeProject);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Could not save live Draw.io edits';
+      setMcpStatus(msg);
+      setError(msg);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function finishAndExportProject() {
+    if (mcpRunning && activeProject) {
+      try {
+        await postJson('/api/project-diagram/save', {
+          path: activeProject.path,
+          source: 'mcp',
+        });
+        loadProjectActivity(activeProject);
+      } catch (err) {
+        setMcpStatus(err instanceof Error ? err.message : 'Live MCP edits could not be saved before export.');
+      }
+    }
     exportProjectPackage();
     setShowStyleMemoryModal(true);
     setStyleMemoryStatus(mcpRunning
@@ -1887,24 +1937,24 @@ export default function App() {
     }
   }
 
-  async function saveAndOpenAllPages() {
-    const payload = await postJson<{ outputPath: string; xml?: string }>(
+  async function saveAndOpenAllPages(forceRegenerate = false) {
+    const payload = await postJson<{ outputPath: string; xml?: string; source?: string }>(
       '/api/drawio-multipage',
-      diagramRenderPayload({ outputPath: 'outputs/network-picasso-all.drawio', includeXml: true }),
+      diagramRenderPayload({ outputPath: 'outputs/network-picasso-all.drawio', includeXml: true, forceRegenerate }),
     );
     setDiagramPath(payload.outputPath);
     if (payload.xml) {
       const drawioUrl = `https://app.diagrams.net/#R${encodeDrawioUrlPayload(payload.xml)}`;
       window.open(drawioUrl, 'drawio-all-pages');
       setStatus(
-        `Five-page Draw.io file saved to ${payload.outputPath}; opening as a multipage diagrams.net file.`,
+        `Five-page Draw.io file ${payload.source === 'saved' ? 'opened from saved project edits' : 'generated from the model'} at ${payload.outputPath}.`,
       );
     } else {
       setStatus(`Five-page Draw.io file saved to ${payload.outputPath}`);
     }
   }
 
-  async function generateAllPages() {
+  async function generateAllPages(forceRegenerate = false) {
     if (!architecture) return;
     setBusy(true);
     setMcpStatus('');
@@ -1912,20 +1962,22 @@ export default function App() {
     if (mcpRunning) {
       // Push all architecture diagrams to the MCP editor as pages.
       try {
-        const result = await postJson<{ ok: boolean; editorUrl: string; pages: number }>(
+        const result = await postJson<{ ok: boolean; editorUrl: string; pages: number; source?: string }>(
           '/api/drawio-mcp-all-pages',
-          diagramRenderPayload(),
+          diagramRenderPayload({ forceRegenerate }),
         );
         window.open(BROWSER_MCP_EDITOR_URL, 'drawio-mcp-editor');
         setMcpEditorOpened(true);
         setMcpDiagramPushed(true);
-        setStatus(`All ${result.pages} diagram pages opened in MCP editor`);
+        setStatus(result.source === 'saved'
+          ? 'Saved project Draw.io edits reopened in MCP editor.'
+          : `All ${result.pages} generated diagram pages opened in MCP editor`);
       } catch (err) {
         const msg = err instanceof Error ? err.message : 'Multi-page MCP open failed';
         setMcpStatus(msg);
         setMcpRunning(false);
         try {
-          await saveAndOpenAllPages();
+          await saveAndOpenAllPages(forceRegenerate);
           setMcpStatus(`${msg}; opened the all-pages file in diagrams.net instead.`);
         } catch (fallbackErr) {
           setError(fallbackErr instanceof Error ? fallbackErr.message : msg);
@@ -1936,7 +1988,7 @@ export default function App() {
     } else {
       // Fallback: save a multi-page .drawio file and open it in diagrams.net.
       try {
-        await saveAndOpenAllPages();
+        await saveAndOpenAllPages(forceRegenerate);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Multi-page export failed');
       } finally {
@@ -2587,6 +2639,26 @@ export default function App() {
                             <span>File size</span>
                             <strong>{formatBytes(projectActivity.file.architectureSize)}</strong>
                           </div>
+                          <div>
+                            <span>Saved Draw.io</span>
+                            {projectActivity.file.hasSavedDrawio ? (
+                              <code>{projectActivity.file.savedDrawioPath}</code>
+                            ) : (
+                              <strong>Not saved yet</strong>
+                            )}
+                          </div>
+                          {projectActivity.file.hasSavedDrawio && (
+                            <>
+                              <div>
+                                <span>Diagram checkpoint</span>
+                                <strong>{formatActivityDate(projectActivity.file.savedDrawioModifiedAt || '')}</strong>
+                              </div>
+                              <div>
+                                <span>Diagram size</span>
+                                <strong>{formatBytes(projectActivity.file.savedDrawioSize || 0)}</strong>
+                              </div>
+                            </>
+                          )}
                           <div>
                             <span>Postgres</span>
                             <Tag type={projectActivity.persistence.connected ? 'green' : 'gray'} size="sm">
@@ -3606,9 +3678,15 @@ export default function App() {
                           ? 'Opens all five diagram pages in the MCP editor.'
                           : 'Saves and opens a five-page .drawio file: executive, context, logical, deployment, and assumptions/decisions.'}
                       </p>
-                      <Button renderIcon={Layers} onClick={generateAllPages}
+                      <Button renderIcon={Layers} onClick={() => generateAllPages(false)}
                         disabled={busy || !architecture}>
-                        {mcpRunning ? 'Open all pages in MCP editor' : 'Open all-pages .drawio file'}
+                        {projectActivity?.file?.hasSavedDrawio
+                          ? 'Open saved project diagram'
+                          : (mcpRunning ? 'Open all pages in MCP editor' : 'Open all-pages .drawio file')}
+                      </Button>
+                      <Button kind="ghost" size="sm" onClick={() => generateAllPages(true)}
+                        disabled={busy || !architecture}>
+                        Regenerate from model
                       </Button>
                     </div>
 
@@ -3622,12 +3700,16 @@ export default function App() {
                       </p>
                       <div className="style-memory-summary">
                         <Tag type={mcpRunning ? 'green' : 'gray'}>
-                          {mcpRunning ? 'Export source: live MCP editor' : 'Export source: generated model'}
+                          {mcpRunning
+                            ? 'Export source: live MCP editor'
+                            : (projectActivity?.file?.hasSavedDrawio ? 'Export source: saved project diagram' : 'Export source: generated model')}
                         </Tag>
                         <span>
                           {mcpRunning
                             ? 'Uses the browser-edited Draw.io tabs.'
-                            : 'Start/open MCP to package browser-edited diagrams.'}
+                            : (projectActivity?.file?.hasSavedDrawio
+                              ? 'Uses the last saved Draw.io checkpoint.'
+                              : 'Start/open MCP to package browser-edited diagrams.')}
                         </span>
                       </div>
                       <div className="style-memory-summary">
@@ -3640,6 +3722,17 @@ export default function App() {
                           </span>
                         )}
                       </div>
+                      {projectActivity?.file?.hasSavedDrawio && (
+                        <div className="style-memory-summary">
+                          <Tag type="green">Saved Draw.io checkpoint</Tag>
+                          <span>
+                            {projectActivity.file.savedDrawioPath} · {formatBytes(projectActivity.file.savedDrawioSize || 0)}
+                          </span>
+                        </div>
+                      )}
+                      <Button kind="secondary" size="sm" renderIcon={Save} onClick={saveLiveMcpDiagram} disabled={busy || !activeProject?.hasArchitecture || !mcpRunning}>
+                        Save live MCP edits
+                      </Button>
                       <Button renderIcon={Download} onClick={finishAndExportProject} disabled={!activeProject?.hasArchitecture || !architecture}>
                         Finished: export package
                       </Button>

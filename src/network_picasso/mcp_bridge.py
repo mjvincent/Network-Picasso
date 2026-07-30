@@ -309,6 +309,27 @@ def open_diagram_in_editor(
     return result
 
 
+def open_multipage_diagram_in_editor(
+    xml: str,
+    *,
+    filename: str = "network-picasso-all.drawio",
+) -> dict:
+    """Push a saved multi-page Draw.io document into the live editor.
+
+    This is used for project-persisted MCP edits. Unlike generated page pushes,
+    the source XML is already the diagram of record and should be reopened as-is.
+    """
+    doc_id = _get_document_id()
+    return call_tool("import-diagram", {
+        "data":            xml,
+        "format":          "xml",
+        "mode":            "replace",
+        "filename":        filename,
+        "target_page":     {"index": 0},
+        "target_document": {"id": doc_id},
+    }, timeout=30)
+
+
 def add_xml_to_diagram(xml: str, *, target_page: dict | None = None) -> dict:
     """Merge *xml* cells into the current diagram page (``add`` mode).
 

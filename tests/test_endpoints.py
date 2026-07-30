@@ -624,6 +624,61 @@ def test_project_export_package_includes_rendered_mcp_assets(tmp_path):
         assert "pdf/network-picasso-diagram-packet.pdf" in readme
 
 
+def test_project_export_package_prefers_saved_project_drawio(tmp_path):
+    root = tmp_path / "projects"
+    proj_path = root / "acme" / "q1"
+    proj_path.mkdir(parents=True)
+    (proj_path / "architecture.json").write_text(json.dumps({
+        "project": {"name": "Acme Q1"},
+        "ibm_cloud": {"regions": [{"name": "us-south"}]},
+    }))
+    saved_xml = "<mxfile><diagram name=\"Deployment\"><mxGraphModel><root><mxCell id=\"saved\" value=\"Saved Bob layout\" /></root></mxGraphModel></diagram></mxfile>"
+    (proj_path / "diagrams").mkdir()
+    (proj_path / "diagrams" / "live-edited.drawio").write_text(saved_xml)
+
+    body, _filename = build_project_export_package(proj_path, {"projectsRoot": str(root)})
+
+    with zipfile.ZipFile(io.BytesIO(body)) as archive:
+        drawio_name = next(name for name in archive.namelist() if name.endswith("/diagrams/network-picasso-all.drawio"))
+        assert "Saved Bob layout" in archive.read(drawio_name).decode()
+
+
+def test_project_diagram_save_endpoint_persists_drawio(server, tmp_path):
+    settings_path = REPO_ROOT / "inputs" / "settings.json"
+    settings_path.parent.mkdir(parents=True, exist_ok=True)
+    original = settings_path.read_text() if settings_path.exists() else None
+    try:
+        root = tmp_path / "projects"
+        settings_path.write_text(json.dumps({"projectsRoot": str(root)}))
+        _post(server, "/api/projects", {"customer": "acme", "project": "q3"})
+        proj_path = root / "acme" / "q3"
+        (proj_path / "architecture.json").write_text(json.dumps({
+            "project": {"name": "Acme Q3"},
+            "ibm_cloud": {},
+        }))
+        xml = "<mxfile><diagram name=\"Deployment\"><mxGraphModel><root><mxCell id=\"edited\" value=\"Finished edit\" /></root></mxGraphModel></diagram></mxfile>"
+
+        status, body = _post(server, "/api/project-diagram/save", {
+            "path": str(proj_path),
+            "drawioXml": xml,
+            "source": "test",
+        })
+
+        assert status == 200
+        assert body["ok"] is True
+        saved_path = proj_path / "diagrams" / "live-edited.drawio"
+        assert "Finished edit" in saved_path.read_text()
+        status, activity = _get(server, f"/api/project-activity?path={proj_path}")
+        assert status == 200
+        assert activity["file"]["hasSavedDrawio"] is True
+        assert activity["file"]["savedDrawioSize"] > 0
+    finally:
+        if original is not None:
+            settings_path.write_text(original)
+        elif settings_path.exists():
+            settings_path.unlink()
+
+
 def test_style_memory_save_endpoint_persists_project_style(server, tmp_path):
     settings_path = REPO_ROOT / "inputs" / "settings.json"
     settings_path.parent.mkdir(parents=True, exist_ok=True)
@@ -884,6 +939,54 @@ def test_drawio_xml_applies_ollama_render_plan(server, monkeypatch):
     assert "Transit Gateway" in xml
 
 
+def test_drawio_xml_applies_ollama_render_plan_to_executive_tab(server, monkeypatch):
+    from network_picasso import server as server_module
+
+    calls = []
+
+    def fake_plan_render(architecture, model, base_url, deployment_guide="", style_guide=""):
+        calls.append((architecture["project"]["name"], model, bool(deployment_guide), bool(style_guide)))
+        return {
+            "pattern": "hub-and-spoke",
+            "pattern_reason": "Retail workload needs separated edge and workload VPCs.",
+            "topology_variant": "",
+            "has_on_prem": False,
+            "has_tgw": True,
+            "has_powervs": False,
+            "has_dr": False,
+            "az_count": 3,
+            "vpcs": [
+                {"name": "Edge VPC", "purpose": "Internet ingress", "tiers": ["Public", "Management"]},
+                {"name": "Workload VPC", "purpose": "Private application and data tiers", "tiers": ["Private", "Data"]},
+            ],
+            "shared_services": ["Activity Tracker", "VPC Flow Logs"],
+            "connectivity_label": "",
+        }
+
+    monkeypatch.setattr(server_module._ollama, "plan_render", fake_plan_render)
+
+    status, raw, _headers = _post_raw(server, "/api/drawio-xml", {
+        "architecture": {
+            "project": {"name": "Retail Analytics"},
+            "ibm_cloud": {
+                "regions": [{"name": "us-south"}],
+                "vpcs": [{"name": "Workload VPC"}],
+                "compute": [{"name": "VPC VSI workload tier"}],
+            },
+        },
+        "diagramType": "executive",
+        "mode": "ollama",
+        "ollamaModel": "phi4-mini:latest",
+    })
+
+    xml = raw.decode()
+    assert status == 200
+    assert calls == [("Retail Analytics", "phi4-mini:latest", True, True)]
+    assert "Edge VPC" in xml
+    assert "Workload VPC" in xml
+    assert "medical imaging" not in xml
+
+
 def test_mcp_all_pages_applies_ollama_render_plan(server, monkeypatch):
     from network_picasso import server as server_module
 
@@ -932,6 +1035,45 @@ def test_mcp_all_pages_applies_ollama_render_plan(server, monkeypatch):
     deployment_xml = captured["diagrams"]["deployment"]
     assert "Edge VPC" in deployment_xml
     assert "Workload VPC" in deployment_xml
+
+
+def test_mcp_all_pages_prefers_saved_project_drawio(server, tmp_path, monkeypatch):
+    from network_picasso import server as server_module
+
+    settings_path = REPO_ROOT / "inputs" / "settings.json"
+    settings_path.parent.mkdir(parents=True, exist_ok=True)
+    original = settings_path.read_text() if settings_path.exists() else None
+    try:
+        root = tmp_path / "projects"
+        settings_path.write_text(json.dumps({"projectsRoot": str(root)}))
+        _post(server, "/api/projects", {"customer": "acme", "project": "q4"})
+        proj_path = root / "acme" / "q4"
+        arch_path = proj_path / "architecture.json"
+        arch_path.write_text(json.dumps({
+            "project": {"name": "Acme Q4"},
+            "ibm_cloud": {"regions": [{"name": "us-south"}]},
+        }))
+        saved_xml = "<mxfile><diagram name=\"Deployment\"><mxGraphModel><root><mxCell id=\"saved\" value=\"Saved MCP edits\" /></root></mxGraphModel></diagram></mxfile>"
+        (proj_path / "diagrams").mkdir()
+        (proj_path / "diagrams" / "live-edited.drawio").write_text(saved_xml)
+
+        captured = {}
+        monkeypatch.setattr(server_module._mcp, "is_running", lambda: True)
+        monkeypatch.setattr(server_module._mcp, "open_multipage_diagram_in_editor", lambda xml, **kwargs: captured.update({"xml": xml, "kwargs": kwargs}) or {"ok": True})
+        monkeypatch.setattr(server_module._mcp, "open_all_pages", lambda _diagrams: pytest.fail("saved Draw.io should be opened instead of generated pages"))
+
+        status, body = _post(server, "/api/drawio-mcp-all-pages", {
+            "architecturePath": str(arch_path),
+        })
+
+        assert status == 200
+        assert body["source"] == "saved"
+        assert "Saved MCP edits" in captured["xml"]
+    finally:
+        if original is not None:
+            settings_path.write_text(original)
+        elif settings_path.exists():
+            settings_path.unlink()
 
 
 def test_requirements_endpoint_enriches_architecture_model(server, tmp_path):

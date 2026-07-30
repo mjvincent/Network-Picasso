@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from html import escape
 from itertools import count
 from pathlib import Path
@@ -356,8 +357,55 @@ def _stencil_color(shape: str) -> str:
 # DrawioBuilder
 # ---------------------------------------------------------------------------
 
+@dataclass(frozen=True)
+class RendererStyle:
+    service_font_size: int = 11
+    container_label_font_size: int = 13
+    connector_font_size: int = 10
+    label_box_width: int = 180
+    label_box_height: int = 32
+    page_width: int = 2400
+    page_height: int = 1600
+    node_gap: int = 72
+    density: str = "balanced"
+
+
+def _safe_int(value: object, default: int, *, minimum: int, maximum: int) -> int:
+    try:
+        result = int(float(value))  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return default
+    return max(minimum, min(maximum, result))
+
+
+def _renderer_style_from_memory(style_memory: dict | None) -> RendererStyle:
+    if not isinstance(style_memory, dict):
+        return RendererStyle()
+    preferences = style_memory.get("preferences") if isinstance(style_memory.get("preferences"), dict) else {}
+    page_size = preferences.get("pageSize") if isinstance(preferences.get("pageSize"), dict) else {}
+    label_box = preferences.get("medianLabelBox") if isinstance(preferences.get("medianLabelBox"), dict) else {}
+    service_font = _safe_int(preferences.get("serviceLabelFontSize"), 11, minimum=9, maximum=14)
+    label_width = _safe_int(label_box.get("width"), 180, minimum=120, maximum=340)
+    label_height = _safe_int(label_box.get("height"), 32, minimum=24, maximum=72)
+    page_width = _safe_int(page_size.get("width"), 2400, minimum=1600, maximum=3200)
+    page_height = _safe_int(page_size.get("height"), 1600, minimum=1000, maximum=2200)
+    density = str(preferences.get("density") or "balanced")
+    return RendererStyle(
+        service_font_size=service_font,
+        container_label_font_size=max(service_font + 2, 12),
+        connector_font_size=max(service_font - 1, 9),
+        label_box_width=label_width,
+        label_box_height=label_height,
+        page_width=page_width,
+        page_height=page_height,
+        node_gap=64 if density == "compact" else 78,
+        density=density,
+    )
+
+
 class DrawioBuilder:
-    def __init__(self) -> None:
+    def __init__(self, style: RendererStyle | None = None) -> None:
+        self.style = style or RendererStyle()
         self._ids = count(2)
         self.cells: list[str] = [
             '<mxCell id="0" />',
@@ -398,7 +446,7 @@ class DrawioBuilder:
             "aspect=fixed;resizable=0;"
             "labelPosition=center;verticalLabelPosition=bottom;"
             "align=center;verticalAlign=top;"
-            f"fontSize=11;fontColor={COLOR['icon_font']};"
+            f"fontSize={self.style.service_font_size};fontColor={COLOR['icon_font']};"
             "html=1;"
         )
         icon_style = (
@@ -447,7 +495,7 @@ class DrawioBuilder:
             "aspect=fixed;resizable=0;"
             "labelPosition=center;verticalLabelPosition=bottom;"
             "align=center;verticalAlign=top;"
-            f"fontSize=11;fontColor={COLOR['icon_font']};"
+            f"fontSize={self.style.service_font_size};fontColor={COLOR['icon_font']};"
             "html=1;"
         )
         icon_style = (
@@ -521,7 +569,7 @@ class DrawioBuilder:
             "shape=rect;fillColor=none;strokeColor=none;"
             "labelPosition=center;verticalLabelPosition=middle;"
             "align=left;verticalAlign=middle;"
-            "fontSize=13;fontStyle=1;part=1;movable=0;resizable=0;rotatable=0;"
+            f"fontSize={self.style.container_label_font_size};fontStyle=1;part=1;movable=0;resizable=0;rotatable=0;"
             "spacingLeft=3;"
         )
         label_x = 8 + icon_size + 8
@@ -567,7 +615,7 @@ class DrawioBuilder:
         fill: str = "none",
         stroke: str = "#8d8d8d",
         stroke_width: int = 1,
-        font_size: int = 13,
+        font_size: int | None = None,
         font_style: int = 1,
         dashed: bool = False,
         vertical_align: str = "top",
@@ -580,7 +628,7 @@ class DrawioBuilder:
             "container=1;collapsible=0;expand=0;recursiveResize=0;"
             "rounded=0;whiteSpace=wrap;html=1;"
             f"fillColor={fill};strokeColor={stroke};strokeWidth={stroke_width};"
-            f"fontSize={font_size};fontStyle={font_style};"
+            f"fontSize={font_size or self.style.container_label_font_size};fontStyle={font_style};"
             f"verticalAlign={vertical_align};align=left;"
             + dash_str
         )
@@ -614,7 +662,7 @@ class DrawioBuilder:
             "aspect=fixed;resizable=0;"
             "labelPosition=center;verticalLabelPosition=bottom;"
             "align=center;verticalAlign=top;"
-            f"fontSize=11;fontColor={COLOR['icon_font']};"
+            f"fontSize={self.style.service_font_size};fontColor={COLOR['icon_font']};"
             "html=1;"
         )
         icon_style = (
@@ -662,7 +710,7 @@ class DrawioBuilder:
         icon_d = max(d // 2, 10)
         icon_offset = (d - icon_d) // 2
         label_x = x + d + 6
-        label_w = max(width - d - 8, 60)
+        label_w = max(min(width - d - 8, self.style.label_box_width), 60)
 
         bg_style = (
             "shape=rect;"
@@ -678,7 +726,7 @@ class DrawioBuilder:
         text_style = (
             "shape=rect;fillColor=none;strokeColor=none;"
             "whiteSpace=wrap;html=1;align=left;verticalAlign=middle;"
-            "fontSize=11;fontStyle=0;spacingLeft=2;overflow=hidden;"
+            f"fontSize={self.style.service_font_size};fontStyle=0;spacingLeft=2;overflow=hidden;"
         )
         self.cells.append(
             f'<mxCell id="{bg_id}" value="" style="{bg_style}" vertex="1" parent="{parent}">'
@@ -692,7 +740,7 @@ class DrawioBuilder:
         )
         self.cells.append(
             f'<mxCell id="{label_id}" value="{escape(label)}" style="{text_style}" vertex="1" parent="{parent}">'
-            f'<mxGeometry x="{label_x}" y="{y - 2}" width="{label_w}" height="{d + 8}" as="geometry" />'
+            f'<mxGeometry x="{label_x}" y="{y - 2}" width="{label_w}" height="{max(d + 8, self.style.label_box_height)}" as="geometry" />'
             "</mxCell>"
         )
         return bg_id
@@ -740,7 +788,7 @@ class DrawioBuilder:
             "shape=rect;fillColor=none;strokeColor=none;"
             "labelPosition=center;verticalLabelPosition=middle;"
             "align=left;verticalAlign=middle;"
-            "fontSize=13;fontStyle=1;part=1;movable=0;resizable=0;rotatable=0;"
+            f"fontSize={self.style.container_label_font_size};fontStyle=1;part=1;movable=0;resizable=0;rotatable=0;"
             "spacingLeft=3;"
         )
         label_x = 8 + icon_size + 8
@@ -782,7 +830,7 @@ class DrawioBuilder:
         *,
         fill: str = "#ffffff",
         stroke: str = "#1192E8",
-        font_size: int = 11,
+        font_size: int | None = None,
         font_style: int = 0,
         dashed: bool = False,
         align: str = "center",
@@ -793,7 +841,7 @@ class DrawioBuilder:
         style = (
             "rounded=1;whiteSpace=wrap;html=1;"
             f"fillColor={fill};strokeColor={stroke};"
-            f"fontSize={font_size};fontStyle={font_style};"
+            f"fontSize={font_size or self.style.service_font_size};fontStyle={font_style};"
             f"align={align};verticalAlign={vertical_align};"
         )
         if dashed:
@@ -811,7 +859,7 @@ class DrawioBuilder:
         cell_id = f"e{next(self._ids)}"
         style = (
             "edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;"
-            "jettySize=auto;html=1;fontSize=10;endArrow=block;endFill=1;"
+            f"jettySize=auto;html=1;fontSize={self.style.connector_font_size};endArrow=block;endFill=1;"
             "strokeColor=#1192E8;"
         )
         if dashed:
@@ -847,7 +895,7 @@ class DrawioBuilder:
             "container=1;collapsible=0;expand=0;recursiveResize=0;"
             f"fillColor={fill};strokeColor={COLOR['az_stroke']};strokeWidth=1;"
             "rounded=0;whiteSpace=wrap;html=1;"
-            "fontStyle=1;fontSize=11;align=left;verticalAlign=top;"
+            f"fontStyle=1;fontSize={self.style.service_font_size};align=left;verticalAlign=top;"
         )
         self.cells.append(
             f'<mxCell id="{cell_id}" value="{escape(label)}" style="{style}" '
@@ -886,7 +934,7 @@ class DrawioBuilder:
             f'  <diagram name="{escape(diagram_name)}">\n'
             '    <mxGraphModel dx="1600" dy="1000" grid="1" gridSize="10" guides="1" '
             'tooltips="1" connect="1" arrows="1" fold="1" page="1" '
-            'pageScale="1" pageWidth="2400" pageHeight="1600" math="0" shadow="0">\n'
+            f'pageScale="1" pageWidth="{self.style.page_width}" pageHeight="{self.style.page_height}" math="0" shadow="0">\n'
             "      <root>\n"
             f"        {body}\n"
             "      </root>\n"
@@ -1056,7 +1104,8 @@ def _render_title(builder: DrawioBuilder, project: dict, diagram_type: str) -> N
 #   Security boundary and identity/authentication.
 #   Optional operations/monitoring block at the bottom.
 
-def _render_context(builder: DrawioBuilder, project: dict, ibm_cloud: dict) -> None:
+def _render_context(builder: DrawioBuilder, project: dict, ibm_cloud: dict, render_plan: dict | None = None) -> None:
+    render_plan = render_plan or {}
     _render_title(builder, project, "context")
 
     # ── External lane (left) — IBM Location: grey border, network--public icon ──
@@ -1077,6 +1126,7 @@ def _render_context(builder: DrawioBuilder, project: dict, ibm_cloud: dict) -> N
     builder.edge(ext_sys_node, cloud, "API integration")
 
     regions = ibm_cloud.get("regions") or [{"name": "Region TBD"}]
+    planned_vpcs = _vpcs_from_render_plan(render_plan, ibm_cloud)
     region_nodes: list[str] = []
 
     for idx, region in enumerate(regions[:2]):
@@ -1088,12 +1138,23 @@ def _render_context(builder: DrawioBuilder, project: dict, ibm_cloud: dict) -> N
         )
         region_nodes.append(rn)
 
-        vpc = _preferred(ibm_cloud.get("vpcs"), {"name": "VPC", "purpose": "Application network"})
+        vpc = planned_vpcs[min(idx, len(planned_vpcs) - 1)] if planned_vpcs else _preferred(ibm_cloud.get("vpcs"), {"name": "VPC", "purpose": "Application network"})
         # IBM Location: cyan border, ibm-cloud--vpc icon
-        builder.ibm_location(
+        vpc_container = builder.ibm_location(
             _label(vpc, "VPC"), rx + 30, ACCOUNT_Y + 130, 700, 370,
             shape="ibm-cloud--vpc", stroke_color=COLOR["network"],
         )
+        if idx == 0 and len(planned_vpcs) > 1:
+            for vpc_index, planned_vpc in enumerate(planned_vpcs[:4]):
+                builder.child_service_tile(
+                    _clean_diagram_label(str(planned_vpc.get("name") or f"VPC {vpc_index + 1}")),
+                    28 + (vpc_index % 2) * 320,
+                    278 + (vpc_index // 2) * 42,
+                    280,
+                    vpc_container,
+                    "ibm-cloud--vpc",
+                    d=20,
+                )
 
         # Ingress → Compute → Data (left-to-right, style guide)
         ingress  = _preferred(ibm_cloud.get("ingress"),  {"name": "Ingress"})
@@ -1143,7 +1204,8 @@ def _render_context(builder: DrawioBuilder, project: dict, ibm_cloud: dict) -> N
 #   Bottom: logging, monitoring, backup, CI/CD, security controls
 #   Labeled arrows for key flows.
 
-def _render_logical(builder: DrawioBuilder, project: dict, ibm_cloud: dict) -> None:
+def _render_logical(builder: DrawioBuilder, project: dict, ibm_cloud: dict, render_plan: dict | None = None) -> None:
+    render_plan = render_plan or {}
     _render_title(builder, project, "logical")
 
     # ── Left: external — IBM Location: grey, network--public ─────────────
@@ -1163,6 +1225,7 @@ def _render_logical(builder: DrawioBuilder, project: dict, ibm_cloud: dict) -> N
     builder.edge(ext_sys_node, cloud, "API")
 
     regions = ibm_cloud.get("regions") or [{"name": "Region TBD"}]
+    planned_vpcs = _vpcs_from_render_plan(render_plan, ibm_cloud)
     vpc_nodes: list[str] = []
 
     for idx, region in enumerate(regions[:2]):
@@ -1172,12 +1235,23 @@ def _render_logical(builder: DrawioBuilder, project: dict, ibm_cloud: dict) -> N
             shape="location", stroke_color=COLOR["grey"],
         )
 
-        vpc = _preferred(ibm_cloud.get("vpcs"), {"name": "VPC"})
+        vpc = planned_vpcs[min(idx, len(planned_vpcs) - 1)] if planned_vpcs else _preferred(ibm_cloud.get("vpcs"), {"name": "VPC"})
         vpc_node = builder.ibm_location(
             _label(vpc, "VPC"), rx + 20, ACCOUNT_Y + 120, 520, 380,
             shape="ibm-cloud--vpc", stroke_color=COLOR["network"],
         )
         vpc_nodes.append(vpc_node)
+        if idx == 0 and len(planned_vpcs) > 1:
+            for vpc_index, planned_vpc in enumerate(planned_vpcs[:4]):
+                builder.child_service_tile(
+                    _clean_diagram_label(str(planned_vpc.get("name") or f"VPC {vpc_index + 1}")),
+                    24 + (vpc_index % 2) * 225,
+                    270 + (vpc_index // 2) * 42,
+                    200,
+                    vpc_node,
+                    "ibm-cloud--vpc",
+                    d=20,
+                )
 
         ingress  = _preferred(ibm_cloud.get("ingress"),  {"name": "Ingress"})
         compute  = _preferred(ibm_cloud.get("compute"),  {"name": "Compute"})
@@ -1444,13 +1518,13 @@ def _fallback_dr_tier_items(ibm_cloud: dict, region: dict) -> dict[str, list[dic
         tier_items["Private"] = [{
             "name": "DR VSI recovery tier",
             "type": "compute",
-            "purpose": "Standby compute capacity for medical imaging workloads",
+            "purpose": "Standby compute capacity for disaster recovery workloads",
         }]
     if not tier_items["Data"]:
         tier_items["Data"] = [{
-            "name": "Replicated imaging data",
+            "name": "Replicated workload data",
             "type": "data",
-            "purpose": "Recovery copy for archive and file-storage data",
+            "purpose": "Recovery copy for application and storage data",
         }]
     return tier_items
 
@@ -1484,6 +1558,43 @@ def _prioritized_foundation_items(items: list[dict], preferred_names: list[str],
         if len(selected) >= limit:
             break
     return selected
+
+
+def _component_label(item: dict | str, fallback: str = "Component") -> str:
+    if isinstance(item, dict):
+        name = str(item.get("name") or item.get("type") or fallback).strip()
+        purpose = str(item.get("purpose") or "").strip()
+        if purpose and _is_diagram_purpose(purpose):
+            return f"{_clean_diagram_label(name)}\n{_clean_diagram_label(purpose)}"
+        return _clean_diagram_label(name)
+    return _clean_diagram_label(str(item or fallback))
+
+
+def _category_items(ibm_cloud: dict, category: str, limit: int = 4) -> list[dict]:
+    items = ibm_cloud.get(category, [])
+    if not isinstance(items, list):
+        return []
+    result: list[dict] = []
+    for item in items:
+        if isinstance(item, dict):
+            name = str(item.get("name") or item.get("type") or "").strip()
+            if name:
+                result.append(item)
+        elif str(item).strip():
+            result.append({"name": str(item).strip(), "type": category})
+        if len(result) >= limit:
+            break
+    return result
+
+
+def _first_component(ibm_cloud: dict, category: str, fallback: str) -> dict:
+    items = _category_items(ibm_cloud, category, 1)
+    return items[0] if items else {"name": fallback, "type": category}
+
+
+def _cidr_suffix(ibm_cloud: dict, name: str) -> str:
+    cidr = _find_cidr_for_name(ibm_cloud, name)
+    return f"\n{cidr}" if cidr else ""
 
 
 def _render_vpc_zones(
@@ -1569,74 +1680,101 @@ def _find_cidr_for_name(ibm_cloud: dict, name_token: str) -> str:
 
 
 def _render_classic_vcf_rovs_deployment(builder: DrawioBuilder, project: dict, ibm_cloud: dict, render_plan: dict) -> None:
-    """Render Classic vSRX to VPC Transit Gateway topologies such as UPS ROVS."""
+    """Render Classic/vSRX to VPC Transit Gateway topologies from the model."""
     _render_title(builder, project, "deployment")
 
     left = _BASE_X
     top = _BASE_Y
     gap = 28
+    planned_vpcs = _vpcs_from_render_plan(render_plan, ibm_cloud)
+    existing_networks = [vpc for vpc in planned_vpcs if "classic" in str(vpc.get("purpose", "")).lower() or "vcf" in str(vpc.get("name", "")).lower()]
+    vpc_targets = [vpc for vpc in planned_vpcs if vpc not in existing_networks] or planned_vpcs[-1:]
+    connectivity_items = _category_items(ibm_cloud, "connectivity", 4)
+    direct_link = next((item for item in connectivity_items if "direct" in str(item.get("name", "")).lower()), _first_component(ibm_cloud, "connectivity", str(render_plan.get("connectivity_label") or "Private connectivity")))
+    router = next((item for item in connectivity_items if any(token in str(item.get("name", "")).lower() for token in ("vsrx", "router", "firewall"))), {"name": "Classic routing / firewall"})
+    tgw_item = next((item for item in connectivity_items if "transit" in str(item.get("name", "")).lower()), {"name": "Transit Gateway"})
+    compute = _first_component(ibm_cloud, "compute", "Workload cluster")
 
     enterprise = builder.ibm_location(
-        "UPS Enterprise / On-Premises", left, top, 250, 360,
+        "Enterprise / On-Premises", left, top, 250, 360,
         shape="network--enterprise", stroke_color=COLOR["grey"],
     )
-    users = builder.ibm_actor("UPS users", left + 24, top + 70, "user", d=40)
-    wan = builder.ibm_actor("UPS WAN", left + 24, top + 170, "enterprise", d=40)
+    users = builder.ibm_actor("Users", left + 24, top + 70, "user", d=40)
+    wan = builder.ibm_actor("Enterprise WAN", left + 24, top + 170, "enterprise", d=40)
 
     conn_x = left + 250 + gap
     connectivity = builder.ibm_location(
-        "DirectLink 2.0 Connectivity", conn_x, top, 230, 360,
+        "Connectivity", conn_x, top, 230, 360,
         shape="arrows--horizontal", stroke_color=COLOR["network"],
     )
-    dl = builder.ibm_node("DirectLink 2.0", conn_x + 40, top + 130, "ibm-cloud--direct-link-2--connect", d=44)
+    dl_label = _clean_diagram_label(str(direct_link.get("name") or "Private connectivity"))
+    dl = builder.ibm_node(dl_label, conn_x + 40, top + 130, _stencil_shape(dl_label) or "ibm-cloud--direct-link-2--connect", d=44)
 
     classic_x = conn_x + 230 + gap
     classic = builder.ibm_location(
-        "IBM Cloud Classic - WDC", classic_x, top, 400, 360,
+        "IBM Cloud Classic / Existing Network", classic_x, top, 400, 360,
         shape="ibm-cloud", stroke_color=COLOR["network"], stroke_width=2,
     )
-    vsrx = builder.ibm_node("Juniper vSRX\nrouting/firewall", classic_x + 34, top + 70, "ibm-cloud--security-groups-for-vpc", d=44)
+    router_label = _component_label(router, "Classic routing / firewall")
+    vsrx = builder.ibm_node(router_label, classic_x + 34, top + 70, _stencil_shape(router_label) or "ibm-cloud--security-groups-for-vpc", d=44)
+    first_network = existing_networks[0] if existing_networks else {"name": "Existing Network", "purpose": "Customer network routed through Classic"}
+    second_network = existing_networks[1] if len(existing_networks) > 1 else {"name": "Additional Existing Network", "purpose": "Additional routed network"}
     prod = builder.box(
-        f"VCF ProdNet\nProduction Supernet {_find_cidr_for_name(ibm_cloud, 'VCF ProdNet') or '10.237.0.0/16'}",
+        _component_label(first_network, "Existing Network") + _cidr_suffix(ibm_cloud, str(first_network.get("name") or "")),
         classic_x + 34, top + 150, 320, 70,
         fill=COLOR["Private"], stroke=COLOR["az_stroke"], font_size=11,
     )
     test = builder.box(
-        f"VCF TestNet\nTestNet Supernet {_find_cidr_for_name(ibm_cloud, 'VCF TestNet') or '10.233.128.0/17'}",
+        _component_label(second_network, "Additional Existing Network") + _cidr_suffix(ibm_cloud, str(second_network.get("name") or "")),
         classic_x + 34, top + 245, 320, 70,
         fill="#E8DAFF", stroke=COLOR["az_stroke"], font_size=11,
     )
 
     tgw_x = classic_x + 400 + gap
     tgw_box = builder.box(
-        "Classic routed handoff\nvia Transit Gateway",
+        "Classic routed handoff\nvia transit gateway",
         tgw_x, top + 95, 180, 155,
         fill="#FFFFFF", stroke=COLOR["network"], font_size=11,
     )
-    tgw = builder.transit_gateway("Transit Gateway", tgw_x + 64, top + 160)
+    tgw_label = _clean_diagram_label(str(tgw_item.get("name") or "Transit Gateway"))
+    tgw = builder.transit_gateway(tgw_label, tgw_x + 64, top + 160)
 
     account_x = tgw_x + 180 + gap
     account_w = 790
     account = builder.ibm_location(
-        "IBM Cloud VPC - WDC / us-east", account_x, top, account_w, 560,
+        "IBM Cloud VPC", account_x, top, account_w, 560,
         shape="ibm-cloud", stroke_color=COLOR["network"], stroke_width=2,
     )
+    target_region = str((vpc_targets[0] if vpc_targets else {}).get("region") or "")
+    if not target_region and ibm_cloud.get("regions"):
+        target_region = str((ibm_cloud.get("regions") or [{}])[0].get("name") or "")
     region = builder.child_ibm_location(
-        "us-east\nWDC Region", 24, 56, account_w - 48, 470,
+        target_region or "Region",
+        24, 56, account_w - 48, 470,
         "location", COLOR["grey"], account,
     )
+    target_vpc = vpc_targets[0] if vpc_targets else {"name": "Workload VPC"}
     vpc = builder.child_ibm_location(
-        f"ROVS POC VPC\n{_find_cidr_for_name(ibm_cloud, 'ROVS POC VPC') or '10.237.240.0/20'}",
+        _component_label(target_vpc, "Workload VPC") + _cidr_suffix(ibm_cloud, str(target_vpc.get("name") or "")),
         36, 70, account_w - 72, 380,
         "ibm-cloud--vpc", COLOR["network"], region,
     )
 
     subnets = [
         item for item in ibm_cloud.get("subnets", [])
-        if isinstance(item, dict) and "rovs" in str(item.get("name", "")).lower()
+        if isinstance(item, dict)
+        and (
+            str(item.get("vpc") or "").lower() == str(target_vpc.get("name") or "").lower()
+            or str(target_vpc.get("name") or "").lower() in str(item.get("notes") or item.get("name") or "").lower()
+            or all(
+                token in str(item.get("name") or item.get("notes") or "").lower()
+                for token in re.findall(r"[a-z0-9]+", str(target_vpc.get("name") or "").lower())
+                if token not in {"vpc", "network", "environment"}
+            )
+        )
     ]
     if not subnets:
-        subnets = [{"name": "ROVS POC subnet us-east-3", "zone": "us-east-3", "cidr": "10.237.248.0/22"}]
+        subnets = [{"name": "Private subnet", "zone": "Zone 1", "cidr": ""}]
     subnets = sorted(subnets, key=lambda item: str(item.get("zone") or item.get("name") or ""))
     zone_y = 62
     cluster_id = ""
@@ -1648,31 +1786,31 @@ def _render_classic_vcf_rovs_deployment(builder: DrawioBuilder, project: dict, i
             "data--center", COLOR["grey"], vpc, dashed=True, icon_size=20,
         )
         subnet_id = builder.container(
-            f"{subnet.get('name') or 'ROVS POC subnet'}\n{cidr}".strip(),
+            f"{subnet.get('name') or 'Private subnet'}\n{cidr}".strip(),
             14, 34, account_w - 140, 32,
             fill=COLOR["Private"], stroke=COLOR["az_stroke"], font_size=10,
             parent=zone_id,
         )
         if zone == "us-east-3" or index == len(subnets[:3]) - 1:
             cluster_id = builder.child_ibm_node(
-                "ROVS cluster\nVDI testing", 26, 2,
-                "logo--openshift", subnet_id, d=28,
+                _component_label(compute, "Workload cluster"), 26, 2,
+                _stencil_shape(str(compute.get("name") or "")) or "ibm-cloud--virtual-server-vpc", subnet_id, d=28,
             )
         zone_y += 90
 
-    builder.edge(users, dl, "VDI / management traffic")
+    builder.edge(users, dl, "user / management traffic")
     builder.edge(wan, dl, "private WAN")
-    builder.edge(dl, vsrx, "DirectLink terminates")
-    builder.edge(vsrx, prod, "routes ProdNet")
-    builder.edge(vsrx, test, "routes TestNet")
+    builder.edge(dl, vsrx, "private connectivity terminates")
+    builder.edge(vsrx, prod, "routes network")
+    builder.edge(vsrx, test, "routes network")
     builder.edge(vsrx, tgw_box, "Classic routed handoff")
     builder.edge(tgw_box, tgw, "")
-    builder.edge(tgw, vpc, "TGW attachment to ROVS POC VPC")
+    builder.edge(tgw, vpc, "transit attachment")
     if cluster_id:
         builder.edge(vpc, cluster_id, "private VPC routing", dashed=True)
 
     builder.box(
-        "Seller validation: confirm BGP/route tables, vSRX policy zones, TGW attachment details, and whether us-east-1/us-east-2 CIDRs are reserved or active for the single-zone POC.",
+        "Seller validation: confirm BGP/route tables, firewall policy zones, transit attachment details, CIDR ownership, and whether listed zones/subnets are active, reserved, or future expansion.",
         account_x, top + 590, account_w, 66,
         fill="#FFF1F1", stroke=COLOR["security"], font_size=11,
         align="left", vertical_align="middle",
@@ -1835,88 +1973,130 @@ def _render_multi_region_deployment(
 
 
 def _render_executive_overview(builder: DrawioBuilder, project: dict, ibm_cloud: dict, render_plan: dict | None = None) -> None:
-    """Render a seller-friendly first page with only the architectural story."""
+    """Render a seller-friendly first page from the active architecture model."""
     render_plan = render_plan or {}
     _render_title(builder, project, "executive overview")
 
     left = 90
     top = 130
-    gap = 36
-    cloud_x = 430
+    gap = 32
+    enterprise_w = 260
+    connectivity_w = 230
+    cloud_x = left + enterprise_w + gap + connectivity_w + gap
     cloud_y = top
     cloud_w = 1440
     cloud_h = 650
 
+    has_on_prem = _plan_bool(
+        render_plan,
+        "has_on_prem",
+        any("direct link" in str(item.get("name", "")).lower() or "vpn" in str(item.get("name", "")).lower()
+            for item in ibm_cloud.get("connectivity", []) if isinstance(item, dict)),
+    )
+    has_tgw = _plan_bool(render_plan, "has_tgw", _has_transit_gateway(ibm_cloud))
+    has_powervs = _plan_bool(render_plan, "has_powervs", _has_powervs(ibm_cloud))
+    planned_vpcs = _vpcs_from_render_plan(render_plan, ibm_cloud)
+    regions = ibm_cloud.get("regions") or [{"name": "Region TBD"}]
+    connectivity_items = _category_items(ibm_cloud, "connectivity", 4)
+    planned_shared = render_plan.get("shared_services", [])
+    if not isinstance(planned_shared, list):
+        planned_shared = [planned_shared] if str(planned_shared).strip() else []
+    shared_services = [
+        *[{"name": str(name), "type": "shared_services"} for name in planned_shared if str(name).strip()],
+        *_category_items(ibm_cloud, "security", 3),
+        *_category_items(ibm_cloud, "observability", 3),
+        *_category_items(ibm_cloud, "data", 3),
+    ]
+
     enterprise = builder.ibm_location(
-        "Enterprise Sites", left, top + 80, 250, 260,
+        "Enterprise / External", left, top + 80, enterprise_w, 260,
         shape="network--enterprise", stroke_color=COLOR["grey"],
     )
-    users = builder.ibm_actor("Clinicians / Centers", left + 32, top + 150, "user", d=44)
-    wan = builder.ibm_actor("Enterprise WAN", left + 32, top + 245, "enterprise", d=44)
+    users = builder.ibm_actor("Users / Clients", left + 32, top + 150, "user", d=44)
+    external = builder.ibm_actor("Enterprise Network", left + 32, top + 245, "enterprise", d=44)
 
+    conn_x = left + enterprise_w + gap
     connectivity = builder.ibm_location(
-        "HA Direct Link", left + 250 + gap, top + 80, 230, 260,
+        "Connectivity", conn_x, top + 80, connectivity_w, 260,
         shape="arrows--horizontal", stroke_color=COLOR["network"],
     )
-    dl_label = str(render_plan.get("connectivity_label") or "HA Direct Link 1 Gbps")
-    builder.ibm_node(
-        dl_label,
-        left + 250 + gap + 38,
-        top + 175,
-        _stencil_shape(dl_label) or "ibm-cloud--direct-link-2--connect",
-        d=48,
-    )
+    if connectivity_items:
+        for index, item in enumerate(connectivity_items[:3]):
+            label = _clean_diagram_label(str(item.get("name") or "Connectivity"))
+            builder.ibm_node(label, conn_x + 34, top + 130 + index * 62, _stencil_shape(label) or "arrows--horizontal", d=40)
+    else:
+        dl_label = str(render_plan.get("connectivity_label") or "Connectivity")
+        builder.ibm_node(dl_label, conn_x + 34, top + 175, _stencil_shape(dl_label) or "arrows--horizontal", d=44)
 
     cloud = builder.ibm_location(
-        "IBM Cloud landing zone", cloud_x, cloud_y, cloud_w, cloud_h,
+        "IBM Cloud Architecture", cloud_x, cloud_y, cloud_w, cloud_h,
         shape="ibm-cloud", stroke_color=COLOR["network"], stroke_width=2,
     )
 
-    region_w = 610
-    region_h = 350
-    primary = builder.child_ibm_location(
-        "Dallas / us-south\nPrimary medical imaging processing",
-        40, 70, region_w, region_h,
-        "location", COLOR["grey"], cloud,
-    )
-    dr = builder.child_ibm_location(
-        "Washington DC / us-east\nDisaster recovery and retrieval",
-        40 + region_w + 60, 70, region_w, region_h,
-        "location", COLOR["grey"], cloud,
-    )
-
-    primary_vpc = builder.child_ibm_location("DAL VPC", 30, 85, region_w - 60, 140, "ibm-cloud--vpc", COLOR["network"], primary)
-    dr_vpc = builder.child_ibm_location("WDC VPC", 30, 85, region_w - 60, 140, "ibm-cloud--vpc", COLOR["network"], dr)
-
-    for parent, title, services in [
-        (primary_vpc, "Image processing", ["Private Load Balancer", "Medical imaging VSIs", "COS + NFS storage"]),
-        (dr_vpc, "Recovery services", ["DR VSI recovery tier", "Replicated imaging data", "PowerVS connectivity"]),
-    ]:
-        builder.container(title, 36, 55, region_w - 132, 28, fill="#f4f4f4", stroke=COLOR["grey"], font_size=12, parent=parent)
-        for idx, service in enumerate(services):
+    column_count = max(1, min(len(planned_vpcs) or len(regions), 3))
+    region_w = (cloud_w - 80 - (column_count - 1) * 34) // column_count
+    region_h = 355
+    vpc_ids: list[str] = []
+    for index in range(column_count):
+        region = regions[min(index, len(regions) - 1)] if regions else {"name": "Region TBD"}
+        vpc = planned_vpcs[index] if index < len(planned_vpcs) else (planned_vpcs[0] if planned_vpcs else {"name": "VPC"})
+        rx = 40 + index * (region_w + 34)
+        region_id = builder.child_ibm_location(
+            _label(region, f"Region {index + 1}"),
+            rx, 70, region_w, region_h,
+            "location", COLOR["grey"], cloud,
+        )
+        vpc_label = _component_label(vpc, "VPC") + _cidr_suffix(ibm_cloud, str(vpc.get("name") or ""))
+        vpc_id = builder.child_ibm_location(
+            vpc_label,
+            30, 90, region_w - 60, 160,
+            "ibm-cloud--vpc", COLOR["network"], region_id,
+        )
+        vpc_ids.append(vpc_id)
+        tier_names = [str(tier) for tier in vpc.get("tiers", []) if str(tier).strip()] if isinstance(vpc, dict) else []
+        if not tier_names:
+            tier_names = [item["name"] for item in _category_items(ibm_cloud, "compute", 2)] or ["Workload tier"]
+        builder.container(
+            "Planned tiers / workloads",
+            44, 60, region_w - 112, 28,
+            fill="#f4f4f4", stroke=COLOR["grey"], font_size=11,
+            parent=vpc_id,
+        )
+        for tier_index, tier_name in enumerate(tier_names[:3]):
             builder.child_service_tile(
-                service,
-                46 + idx * 170,
-                96,
-                150,
-                parent,
-                _stencil_shape(service) or "cloud-services",
-                d=22,
+                _clean_diagram_label(tier_name),
+                54 + tier_index * max(145, (region_w - 150) // 3),
+                102,
+                max(120, (region_w - 185) // 3),
+                vpc_id,
+                _stencil_shape(tier_name) or "ibm-cloud--subnets",
+                d=20,
             )
 
-    for parent in (primary, dr):
-        pwr = builder.child_ibm_location("PowerVS Workspace", 30, 245, region_w - 60, 70, "ibm--power-vs", COLOR["compute"], parent, dashed=True)
-        builder.child_service_tile("PowerVS servers", 18, 32, region_w - 120, pwr, "ibm--power-vs", d=22)
+        if has_tgw:
+            tgw = builder.child_ibm_node("Transit Gateway", 36, 270, "ibm-cloud--transit-gateway", region_id, d=34)
+            builder.edge(tgw, vpc_id, "")
+
+    if has_powervs and vpc_ids:
+        pwr = builder.child_ibm_location("PowerVS Workspace", 40, 445, 330, 86, "ibm--power-vs", COLOR["compute"], cloud, dashed=True)
+        builder.child_service_tile("PowerVS workloads", 18, 36, 250, pwr, "ibm--power-vs", d=20)
+        builder.edge(vpc_ids[0], pwr, "cloud connection", dashed=True)
 
     foundation = builder.child_ibm_location(
-        "Shared Security, Compliance, and Operations Foundation",
+        "Shared Services / Foundation",
         40, 455, cloud_w - 80, 155,
         "cloud-services", COLOR["data"], cloud,
     )
+    pattern_name = str(render_plan.get("pattern_name") or render_plan.get("pattern") or best_pattern({"ibm_cloud": ibm_cloud}).get("name") or "IBM pattern to confirm")
+    service_names = []
+    for item in shared_services:
+        name = str(item.get("name") or "").strip()
+        if name and name not in service_names:
+            service_names.append(name)
     foundation_text = (
-        "HIPAA evidence and audit: SCC, Activity Tracker, VPC Flow Logs\n"
-        "Customer-managed protection: Key Protect / HPCS, Secrets Manager\n"
-        "Private service access: VPEs for IBM Cloud services, COS archive, NFS file storage"
+        f"IBM Think pattern: {_clean_diagram_label(pattern_name)}\n"
+        f"Shared services: {', '.join(service_names[:8]) if service_names else 'To confirm from requirements'}\n"
+        f"Seller validation: {render_plan.get('pattern_reason') or 'Confirm routing, security boundaries, resilience, and operations ownership.'}"
     )
     builder.container(
         foundation_text, 28, 54, cloud_w - 136, 78,
@@ -1924,10 +2104,15 @@ def _render_executive_overview(builder: DrawioBuilder, project: dict, ibm_cloud:
         font_style=0, parent=foundation,
     )
 
-    builder.edge(users, connectivity, "intake/retrieval")
-    builder.edge(wan, connectivity, "")
+    builder.edge(users, connectivity, "user traffic")
+    if has_on_prem:
+        builder.edge(external, connectivity, "private connectivity")
+    else:
+        builder.edge(external, connectivity, "")
     builder.edge(connectivity, cloud, "")
-    builder.edge(primary_vpc, dr_vpc, "regional DR")
+    if len(vpc_ids) > 1:
+        for source, target in zip(vpc_ids, vpc_ids[1:]):
+            builder.edge(source, target, "planned routing", dashed=True)
 
 
 def _render_deployment(builder: DrawioBuilder, project: dict, ibm_cloud: dict, render_plan: dict | None = None) -> None:  # noqa: PLR0912, PLR0915
@@ -2409,7 +2594,7 @@ DIAGRAM_PAGE_NAMES = {
 }
 
 
-def render_drawio(architecture: dict, *, diagram_type: str) -> str:
+def render_drawio(architecture: dict, *, diagram_type: str, style_memory: dict | None = None) -> str:
     """Return Draw.io XML for *architecture* using IBM Cloud stencil shapes.
 
     Layout conventions are derived from the LLM Architecture MD Files:
@@ -2424,18 +2609,18 @@ def render_drawio(architecture: dict, *, diagram_type: str) -> str:
     project = architecture.get("project", {})
     ibm_cloud = architecture.get("ibm_cloud", {})
     render_plan = architecture.get("render_plan", {})
-    builder = DrawioBuilder()
+    builder = DrawioBuilder(_renderer_style_from_memory(style_memory))
 
     if diagram_type == "executive":
         _render_executive_overview(builder, project, ibm_cloud, render_plan=render_plan)
     elif diagram_type == "deployment":
         _render_deployment(builder, project, ibm_cloud, render_plan=render_plan)
     elif diagram_type == "logical":
-        _render_logical(builder, project, ibm_cloud)
+        _render_logical(builder, project, ibm_cloud, render_plan=render_plan)
     elif diagram_type == "decisions":
         _render_assumptions_decisions(builder, project, architecture)
     else:
-        _render_context(builder, project, ibm_cloud)
+        _render_context(builder, project, ibm_cloud, render_plan=render_plan)
 
     return builder.render(diagram_name=DIAGRAM_PAGE_NAMES.get(diagram_type, "Context"))
 
@@ -2625,7 +2810,7 @@ def render_ibm_location_snippet(
     )
 
 
-def render_all_diagrams(architecture: dict) -> dict[str, str]:
+def render_all_diagrams(architecture: dict, *, style_memory: dict | None = None) -> dict[str, str]:
     """Return all diagram types as a dict keyed by type name.
 
     Returns::
@@ -2639,15 +2824,15 @@ def render_all_diagrams(architecture: dict) -> dict[str, str]:
     Suitable for multi-page imports via the MCP ``import-diagram`` tool.
     """
     return {
-        "executive":  render_drawio(architecture, diagram_type="executive"),
-        "context":    render_drawio(architecture, diagram_type="context"),
-        "logical":    render_drawio(architecture, diagram_type="logical"),
-        "deployment": render_drawio(architecture, diagram_type="deployment"),
-        "decisions":  render_drawio(architecture, diagram_type="decisions"),
+        "executive":  render_drawio(architecture, diagram_type="executive", style_memory=style_memory),
+        "context":    render_drawio(architecture, diagram_type="context", style_memory=style_memory),
+        "logical":    render_drawio(architecture, diagram_type="logical", style_memory=style_memory),
+        "deployment": render_drawio(architecture, diagram_type="deployment", style_memory=style_memory),
+        "decisions":  render_drawio(architecture, diagram_type="decisions", style_memory=style_memory),
     }
 
 
-def render_multipage_drawio(architecture: dict) -> str:
+def render_multipage_drawio(architecture: dict, *, style_memory: dict | None = None) -> str:
     """Return a single multi-page Draw.io XML document with all diagram types.
 
     Each diagram type becomes a named page (``<diagram>`` element).  The result
@@ -2656,7 +2841,7 @@ def render_multipage_drawio(architecture: dict) -> str:
     """
     diagrams_xml: list[str] = []
     for dtype, page_name in DIAGRAM_PAGE_NAMES.items():
-        inner_xml = render_drawio(architecture, diagram_type=dtype)
+        inner_xml = render_drawio(architecture, diagram_type=dtype, style_memory=style_memory)
         # Strip the outer <?xml ...?><mxGraphModel> wrapper — we need just the
         # <root>...</root> content to embed as a named page.
         import re as _re

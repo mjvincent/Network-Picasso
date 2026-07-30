@@ -82,7 +82,8 @@ You are an IBM Cloud senior architect. You will be given:
 2. The IBM Cloud diagram style guide
 3. The IBM Cloud deployment architecture guide
 
-Your task is to produce a JSON "render plan" that tells the diagram renderer exactly what to draw.
+Your task is to produce a JSON "render plan" that tells every diagram tab what to draw:
+Executive Overview, Context, Logical Architecture, Deployment, and Assumptions & Decisions.
 Base every decision on the provided architecture model and answered questions — do NOT invent
 components that are not in the model.
 
@@ -92,6 +93,7 @@ Reference patterns from ibm.com/think/architectures/patterns:
   • hub-and-spoke     – Edge VPC + one or more workload VPCs + Transit Gateway
   • three-tier-vpc    – presentation / application / data subnet tiers in one VPC
   • hybrid            – Direct Link or VPN connecting on-premises to IBM Cloud
+  • hybrid-classic-vpc – IBM Cloud Classic or network appliance handoff into IBM Cloud VPC
   • powervs           – PowerVS workspace connected via Transit Gateway
   • fsc               – Financial Services Cloud: no public egress, all VPE, HPCS, SCC
 
@@ -100,6 +102,7 @@ Return ONLY a single JSON object (no markdown, no commentary) with exactly these
 {
   "pattern":         string,   // one of the pattern names above, or "custom"
   "pattern_reason":  string,   // one sentence explaining why this pattern was chosen
+  "topology_variant": string,   // short topology id, or "" if no specialized topology is needed
   "has_on_prem":     bool,     // true if Direct Link or VPN is in connectivity
   "has_tgw":         bool,     // true if Transit Gateway is in connectivity
   "has_powervs":     bool,     // true if PowerVS is in compute
@@ -112,7 +115,7 @@ Return ONLY a single JSON object (no markdown, no commentary) with exactly these
       "tiers":   [string]      // subnet tiers to show: "Public", "Private", "Management", "Data"
     }
   ],
-  "shared_services": [string], // service names to show in the shared services panel
+  "shared_services": [string], // service names to show in shared/foundation panels across tabs
   "connectivity_label": string // label for the connectivity bar (e.g. "Direct Link 2.0")
 }
 """

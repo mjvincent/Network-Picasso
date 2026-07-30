@@ -100,10 +100,15 @@ def apply_ai_render_plan_if_requested(
     *,
     diagram_type: str = "deployment",
 ) -> bool:
-    """Apply the saved AI render-planning mode before producing Draw.io XML."""
+    """Apply the saved AI render-planning mode before producing Draw.io XML.
+
+    Render planning is architecture-wide. Every tab must receive the same model
+    interpretation, otherwise one page can drift back to generic or stale
+    assumptions while another page reflects the customer requirements.
+    """
     settings = load_settings()
     mode = str(payload.get("mode") or settings.get("mode") or "rules")
-    if mode != "ollama" or diagram_type != "deployment":
+    if mode != "ollama":
         return False
 
     model = str(payload.get("ollamaModel") or settings.get("ollamaModel") or _SETTINGS_DEFAULTS["ollamaModel"])
@@ -138,6 +143,47 @@ def relative_to_repo(path: Path) -> str:
 def managed_project_path(value: str, settings: dict) -> Path:
     """Resolve a user-supplied project path and ensure it stays managed."""
     return ensure_within_root(repo_path(value), resolve_projects_root(settings))
+
+
+def project_live_drawio_path(project_path: Path) -> Path:
+    return project_path / "diagrams" / "live-edited.drawio"
+
+
+def project_live_drawio_metadata_path(project_path: Path) -> Path:
+    return project_path / "diagrams" / "live-edited.metadata.json"
+
+
+def read_project_live_drawio(project_path: Path) -> str | None:
+    path = project_live_drawio_path(project_path)
+    if not path.exists():
+        return None
+    xml = path.read_text(encoding="utf-8").strip()
+    if "<mxfile" not in xml:
+        return None
+    return xml
+
+
+def style_memory_for_project(project_path: Path | None) -> dict | None:
+    if project_path:
+        memory = load_style_memory(project_path)
+        if memory:
+            return memory
+    return load_global_style_memory(REPO_ROOT)
+
+
+def save_project_live_drawio(project_path: Path, xml: str, *, source: str) -> Path:
+    if "<mxfile" not in xml:
+        raise ValueError("Draw.io XML must be a multi-page mxfile document")
+    diagram_path = project_live_drawio_path(project_path)
+    diagram_path.parent.mkdir(parents=True, exist_ok=True)
+    diagram_path.write_text(xml, encoding="utf-8")
+    project_live_drawio_metadata_path(project_path).write_text(json.dumps({
+        "savedAt": datetime.now(timezone.utc).isoformat(),
+        "source": source,
+        "path": relative_to_repo(diagram_path),
+        "bytes": len(xml.encode("utf-8")),
+    }, indent=2), encoding="utf-8")
+    return diagram_path
 
 
 def sync_project_if_managed(
@@ -178,18 +224,29 @@ def project_activity_payload(project_path: Path, settings: dict) -> dict:
     customer, project = persistence.project_identity(managed, root)
     project_id = f"{customer}/{project}"
     arch_path = project_architecture_path(managed)
+    drawio_path = project_live_drawio_path(managed)
     file_meta: dict = {
         "path": relative_to_repo(managed),
         "architecturePath": relative_to_repo(arch_path),
         "hasArchitecture": arch_path.exists(),
         "architectureSize": 0,
         "architectureModifiedAt": "",
+        "hasSavedDrawio": drawio_path.exists(),
+        "savedDrawioPath": relative_to_repo(drawio_path) if drawio_path.exists() else "",
+        "savedDrawioSize": 0,
+        "savedDrawioModifiedAt": "",
     }
     if arch_path.exists():
         stat = arch_path.stat()
         file_meta.update({
             "architectureSize": stat.st_size,
             "architectureModifiedAt": datetime.fromtimestamp(stat.st_mtime, timezone.utc).isoformat(),
+        })
+    if drawio_path.exists():
+        stat = drawio_path.stat()
+        file_meta.update({
+            "savedDrawioSize": stat.st_size,
+            "savedDrawioModifiedAt": datetime.fromtimestamp(stat.st_mtime, timezone.utc).isoformat(),
         })
     persisted = None
     try:
@@ -316,7 +373,8 @@ def build_project_export_package(
     architecture = read_json_file(arch_path)
     apply_saved_requirements(architecture)
     summary = architecture_summary(architecture)
-    reviews = _diagram_quality_reviews(architecture)
+    style_memory = style_memory_for_project(project_path)
+    reviews = _diagram_quality_reviews(architecture, style_memory=style_memory)
     activity = project_activity_payload(project_path, settings)
     customer, project = persistence.project_identity(project_path, resolve_projects_root(settings))
     package_slug = safe_filename(f"{customer}-{project}-network-picasso").replace(" ", "-")
@@ -324,12 +382,19 @@ def build_project_export_package(
     pattern_report_md = _pattern_report_markdown(reviews)
     quality_report_md = _quality_report_markdown(reviews, architecture)
     assumptions_md = _assumptions_markdown(architecture)
+    saved_drawio_xml = None if drawio_xml else read_project_live_drawio(project_path)
+    effective_diagram_source = diagram_source
+    if saved_drawio_xml:
+        effective_diagram_source = "saved project Draw.io"
 
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, "w", compression=zipfile.ZIP_DEFLATED) as archive:
         root = package_slug
         archive.writestr(f"{root}/architecture.json", json.dumps(architecture, indent=2))
-        packaged_drawio_xml = drawio_xml or render_multipage_drawio(architecture)
+        packaged_drawio_xml = drawio_xml or saved_drawio_xml or render_multipage_drawio(
+            architecture,
+            style_memory=style_memory,
+        )
         archive.writestr(f"{root}/diagrams/network-picasso-all.drawio", packaged_drawio_xml)
         archive.writestr(f"{root}/reports/architecture-summary.md", architecture_summary_md)
         archive.writestr(f"{root}/reports/ibm-pattern-alignment.md", pattern_report_md)
@@ -340,7 +405,7 @@ def build_project_export_package(
             archive,
             root,
             rendered_assets,
-            metadata=_pdf_packet_metadata(summary, customer, project, diagram_source),
+            metadata=_pdf_packet_metadata(summary, customer, project, effective_diagram_source),
             sections=[
                 PdfSection("Architecture Summary", architecture_summary_md),
                 PdfSection("IBM Pattern Alignment", pattern_report_md),
@@ -360,7 +425,7 @@ def build_project_export_package(
                 summary,
                 customer,
                 project,
-                diagram_source=diagram_source,
+                diagram_source=effective_diagram_source,
                 rendered_asset_count=len(image_entries),
             ),
         )
@@ -442,10 +507,10 @@ def _write_rendered_assets(
     return entries
 
 
-def _diagram_quality_reviews(architecture: dict) -> list[dict]:
+def _diagram_quality_reviews(architecture: dict, style_memory: dict | None = None) -> list[dict]:
     reviews = []
     for diagram_type in ("executive", "context", "logical", "deployment"):
-        xml = render_drawio(architecture, diagram_type=diagram_type)
+        xml = render_drawio(architecture, diagram_type=diagram_type, style_memory=style_memory)
         reviews.append(analyze_diagram_quality(architecture, diagram_type=diagram_type, xml=xml))
     return reviews
 
@@ -632,7 +697,16 @@ class NetworkPicassoHandler(BaseHTTPRequestHandler):
             )
             diagram_type = (qs.get("diagramType") or ["deployment"])[0]
             architecture = read_json_file(architecture_path)
-            self.send_xml(render_drawio(architecture, diagram_type=diagram_type))
+            project_path = None
+            try:
+                project_path = managed_project_path(str(architecture_path.parent), load_settings())
+            except ValueError:
+                project_path = None
+            self.send_xml(render_drawio(
+                architecture,
+                diagram_type=diagram_type,
+                style_memory=style_memory_for_project(project_path),
+            ))
             return
         if parsed.path == "/api/drawio-mcp/health":
             running = _mcp.is_running()
@@ -695,9 +769,13 @@ class NetworkPicassoHandler(BaseHTTPRequestHandler):
                     return
                 try:
                     drawio_xml = _mcp.export_diagram_xml()
+                    save_project_live_drawio(project_path, drawio_xml, source="mcp-export")
                     rendered_assets = _mcp.export_rendered_pages()
                 except (ConnectionError, RuntimeError) as exc:
                     self.send_error_json(503, f"Could not export live Draw.io MCP document: {exc}")
+                    return
+                except ValueError as exc:
+                    self.send_error_json(400, str(exc))
                     return
             try:
                 body, filename = build_project_export_package(
@@ -807,6 +885,8 @@ class NetworkPicassoHandler(BaseHTTPRequestHandler):
                 self.handle_move_project(payload)
             elif parsed.path == "/api/projects/autosave":
                 self.handle_project_autosave(payload)
+            elif parsed.path == "/api/project-diagram/save":
+                self.handle_project_diagram_save(payload)
             elif parsed.path == "/api/style-memory/save":
                 self.handle_style_memory_save(payload)
             elif parsed.path == "/api/style-memory/preview":
@@ -1099,6 +1179,39 @@ class NetworkPicassoHandler(BaseHTTPRequestHandler):
         sync_project_if_managed(project_path, settings, architecture=architecture, event_type="autosave")
         self.send_json({"ok": True, "outputPath": relative_to_repo(arch_path)})
 
+    def handle_project_diagram_save(self, payload: dict) -> None:
+        path_str = str(payload.get("path") or "").strip()
+        if not path_str:
+            self.send_error_json(400, "path is required")
+            return
+        settings = load_settings()
+        project_path = managed_project_path(path_str, settings)
+        source = str(payload.get("source") or "mcp").strip().lower()
+        xml = str(payload.get("drawioXml") or "").strip()
+        if not xml and source == "mcp":
+            if not _mcp.is_running():
+                self.send_error_json(503, "Draw.io MCP editor is not running. Open MCP before saving live edits.")
+                return
+            try:
+                xml = _mcp.export_diagram_xml()
+            except (ConnectionError, RuntimeError) as exc:
+                self.send_error_json(503, f"Could not export live Draw.io MCP document: {exc}")
+                return
+        if not xml:
+            self.send_error_json(400, "drawioXml is required unless source is mcp")
+            return
+        try:
+            saved_path = save_project_live_drawio(project_path, xml, source=source)
+        except ValueError as exc:
+            self.send_error_json(400, str(exc))
+            return
+        sync_project_if_managed(project_path, settings, event_type="diagram-saved")
+        self.send_json({
+            "ok": True,
+            "path": relative_to_repo(saved_path),
+            "message": "Saved live Draw.io edits to the project.",
+        })
+
     def _style_memory_from_payload(self, payload: dict, *, save: bool) -> dict:
         path_str = str(payload.get("path") or "").strip()
         settings = load_settings()
@@ -1117,7 +1230,7 @@ class NetworkPicassoHandler(BaseHTTPRequestHandler):
             if not _mcp.is_running():
                 raise RuntimeError("Draw.io MCP editor is not running. Open MCP before saving live style memory.")
             xml = _mcp.export_diagram_xml()
-        xml = str(xml or render_multipage_drawio(architecture))
+        xml = str(xml or render_multipage_drawio(architecture, style_memory=style_memory_for_project(project_path)))
         name = str(payload.get("name") or architecture.get("project", {}).get("name") or "Network Picasso diagram style")
         memory = extract_style_memory(xml, name=name)
         saved_path = None
@@ -1437,7 +1550,11 @@ class NetworkPicassoHandler(BaseHTTPRequestHandler):
         diagram_type = str(payload.get("diagramType") or "deployment")
         xml = payload.get("xml")
         if not xml:
-            xml = render_drawio(architecture, diagram_type=diagram_type)
+            xml = render_drawio(
+                architecture,
+                diagram_type=diagram_type,
+                style_memory=style_memory_for_project(arch_path.parent if arch_path else None),
+            )
         review = analyze_diagram_quality(architecture, diagram_type=diagram_type, xml=str(xml))
         if arch_path is not None:
             architecture.setdefault("quality", {})["lastReview"] = {
@@ -1460,7 +1577,11 @@ class NetworkPicassoHandler(BaseHTTPRequestHandler):
         apply_saved_requirements(architecture)
         review = payload.get("review")
         if not isinstance(review, dict):
-            xml = render_drawio(architecture, diagram_type=diagram_type)
+            xml = render_drawio(
+                architecture,
+                diagram_type=diagram_type,
+                style_memory=style_memory_for_project(architecture_path.parent),
+            )
             review = analyze_diagram_quality(architecture, diagram_type=diagram_type, xml=xml)
         result = apply_quality_remediations(architecture, review)
         architecture = result["architecture"]
@@ -1586,16 +1707,29 @@ class NetworkPicassoHandler(BaseHTTPRequestHandler):
 
             { "ok": true, "editorUrl": "http://127.0.0.1:4000" }
         """
+        settings = load_settings()
+        project_path: Path | None = None
+        architecture_path_value = payload.get("architecturePath")
+        if architecture_path_value:
+            try:
+                architecture_path = repo_path(architecture_path_value)
+                project_path = managed_project_path(str(architecture_path.parent), settings)
+            except ValueError:
+                project_path = None
         architecture = payload.get("architecture")
         if not architecture:
-            arch_path = repo_path(payload.get("architecturePath") or DEFAULT_ARCHITECTURE_PATH)
+            arch_path = repo_path(architecture_path_value or DEFAULT_ARCHITECTURE_PATH)
             architecture = read_json_file(arch_path)
         diagram_type = str(payload.get("diagramType") or "deployment")
         apply_saved_requirements(architecture)
         ai_planned = apply_ai_render_plan_if_requested(architecture, payload, diagram_type=diagram_type)
-        if ai_planned and payload.get("architecturePath"):
-            atomic_write_json(repo_path(payload.get("architecturePath")), architecture)
-        xml = render_drawio(architecture, diagram_type=diagram_type)
+        if ai_planned and architecture_path_value:
+            atomic_write_json(repo_path(architecture_path_value), architecture)
+        xml = render_drawio(
+            architecture,
+            diagram_type=diagram_type,
+            style_memory=style_memory_for_project(project_path),
+        )
 
         if not _mcp.is_running():
             self.send_error_json(503, "drawio-mcp-server is not running at localhost:4000. Start it via the MCP panel in Bob.")
@@ -1622,25 +1756,44 @@ class NetworkPicassoHandler(BaseHTTPRequestHandler):
 
             { "ok": true, "editorUrl": "http://127.0.0.1:4000", "pages": [...] }
         """
+        settings = load_settings()
+        project_path: Path | None = None
+        architecture_path_value = payload.get("architecturePath")
+        if architecture_path_value:
+            try:
+                architecture_path = repo_path(architecture_path_value)
+                project_path = managed_project_path(str(architecture_path.parent), settings)
+            except ValueError:
+                project_path = None
         architecture = payload.get("architecture")
         if not architecture:
-            arch_path = repo_path(payload.get("architecturePath") or DEFAULT_ARCHITECTURE_PATH)
+            arch_path = repo_path(architecture_path_value or DEFAULT_ARCHITECTURE_PATH)
             architecture = read_json_file(arch_path)
         apply_saved_requirements(architecture)
         ai_planned = apply_ai_render_plan_if_requested(architecture, payload, diagram_type="deployment")
-        if ai_planned and payload.get("architecturePath"):
-            atomic_write_json(repo_path(payload.get("architecturePath")), architecture)
+        if ai_planned and architecture_path_value:
+            atomic_write_json(repo_path(architecture_path_value), architecture)
 
         if not _mcp.is_running():
             self.send_error_json(503, "drawio-mcp-server is not running at localhost:4000. Start it via the MCP panel in Bob.")
             return
         try:
-            diagrams = render_all_diagrams(architecture)
-            results  = _mcp.open_all_pages(diagrams)
+            saved_xml = None if payload.get("forceRegenerate") else (read_project_live_drawio(project_path) if project_path else None)
+            if saved_xml:
+                _mcp.open_multipage_diagram_in_editor(
+                    saved_xml,
+                    filename=project_live_drawio_path(project_path).name if project_path else "live-edited.drawio",
+                )
+                results = [{"source": "saved-project-drawio"}]
+                source = "saved"
+            else:
+                diagrams = render_all_diagrams(architecture, style_memory=style_memory_for_project(project_path))
+                results = _mcp.open_all_pages(diagrams)
+                source = "generated"
         except (ConnectionError, RuntimeError) as exc:
             self.send_error_json(503, str(exc))
             return
-        self.send_json({"ok": True, "editorUrl": _mcp.MCP_BASE_URL, "pages": len(results)})
+        self.send_json({"ok": True, "editorUrl": _mcp.MCP_BASE_URL, "pages": len(results), "source": source})
 
     def handle_drawio_mcp_verify_tabs(self) -> None:
         """Verify the open Draw.io MCP document has the expected page tabs."""
@@ -1665,27 +1818,43 @@ class NetworkPicassoHandler(BaseHTTPRequestHandler):
 
             { "outputPath": str }
         """
+        settings = load_settings()
+        project_path: Path | None = None
+        architecture_path_value = payload.get("architecturePath")
+        if architecture_path_value:
+            try:
+                architecture_path = repo_path(architecture_path_value)
+                project_path = managed_project_path(str(architecture_path.parent), settings)
+            except ValueError:
+                project_path = None
         architecture = payload.get("architecture")
         if not architecture:
-            arch_path = repo_path(payload.get("architecturePath") or DEFAULT_ARCHITECTURE_PATH)
+            arch_path = repo_path(architecture_path_value or DEFAULT_ARCHITECTURE_PATH)
             architecture = read_json_file(arch_path)
         apply_saved_requirements(architecture)
         ai_planned = apply_ai_render_plan_if_requested(architecture, payload, diagram_type="deployment")
-        if ai_planned and payload.get("architecturePath"):
-            atomic_write_json(repo_path(payload.get("architecturePath")), architecture)
+        if ai_planned and architecture_path_value:
+            atomic_write_json(repo_path(architecture_path_value), architecture)
         output_path = repo_path(
             payload.get("outputPath") or "outputs/network-picasso-all.drawio"
         )
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        xml = render_multipage_drawio(architecture)
+        saved_xml = None if payload.get("forceRegenerate") else (read_project_live_drawio(project_path) if project_path else None)
+        xml = saved_xml or render_multipage_drawio(architecture, style_memory=style_memory_for_project(project_path))
         output_path.write_text(xml, encoding="utf-8")
-        response = {"outputPath": relative_to_repo(output_path)}
+        response = {"outputPath": relative_to_repo(output_path), "source": "saved" if saved_xml else "generated"}
         if payload.get("includeXml"):
             response["xml"] = xml
         self.send_json(response)
 
     def handle_drawio_xml(self, payload: dict) -> None:
         architecture_path_str = payload.get("architecturePath")
+        project_path: Path | None = None
+        if architecture_path_str:
+            try:
+                project_path = managed_project_path(str(repo_path(architecture_path_str).parent), load_settings())
+            except ValueError:
+                project_path = None
         architecture = payload.get("architecture")
         if architecture:
             apply_saved_requirements(architecture)
@@ -1699,10 +1868,20 @@ class NetworkPicassoHandler(BaseHTTPRequestHandler):
         ai_planned = apply_ai_render_plan_if_requested(architecture, payload, diagram_type=diagram_type)
         if ai_planned and architecture_path_str:
             atomic_write_json(repo_path(architecture_path_str), architecture)
-        self.send_xml(render_drawio(architecture, diagram_type=diagram_type))
+        self.send_xml(render_drawio(
+            architecture,
+            diagram_type=diagram_type,
+            style_memory=style_memory_for_project(project_path),
+        ))
 
     def handle_generate_drawio(self, payload: dict) -> None:
         architecture_path = repo_path(payload.get("architecturePath") or DEFAULT_ARCHITECTURE_PATH)
+        project_path: Path | None = None
+        if payload.get("architecturePath"):
+            try:
+                project_path = managed_project_path(str(architecture_path.parent), load_settings())
+            except ValueError:
+                project_path = None
         if payload.get("architecturePath"):
             architecture = read_json_file(architecture_path)
             apply_saved_requirements(architecture)
@@ -1724,7 +1903,14 @@ class NetworkPicassoHandler(BaseHTTPRequestHandler):
             atomic_write_json(architecture_path, architecture)
 
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        output_path.write_text(render_drawio(architecture, diagram_type=diagram_type), encoding="utf-8")
+        output_path.write_text(
+            render_drawio(
+                architecture,
+                diagram_type=diagram_type,
+                style_memory=style_memory_for_project(project_path),
+            ),
+            encoding="utf-8",
+        )
         self.send_json({
             "outputPath": relative_to_repo(output_path),
             "renderPlan": architecture.get("render_plan"),

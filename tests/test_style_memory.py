@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from network_picasso.drawio import render_multipage_drawio
+from network_picasso.drawio import render_drawio, render_multipage_drawio
 from network_picasso.style_memory import extract_style_memory, style_memory_markdown, style_memory_prompt
 
 
@@ -27,3 +27,32 @@ def test_extract_style_memory_creates_prompt_ready_preferences():
     assert any("service labels" in item for item in memory["promptGuidance"])
     assert "Saved Draw.io style memory" in style_memory_prompt(memory)
     assert "Preferred Guidance" in style_memory_markdown(memory)
+
+
+def test_render_multipage_drawio_applies_style_memory_preferences():
+    architecture = {
+        "project": {"name": "Remembered Style", "environment": "Production"},
+        "render_plan": {"pattern": "vsi-vpc"},
+        "ibm_cloud": {
+            "regions": [{"name": "us-south"}],
+            "vpcs": [{"name": "Production VPC"}],
+            "compute": [{"name": "Application VSI"}],
+            "connectivity": [{"name": "Direct Link"}],
+        },
+    }
+    memory = {
+        "preferences": {
+            "serviceLabelFontSize": 13,
+            "medianLabelBox": {"width": 220, "height": 48},
+            "pageSize": {"width": 2600, "height": 1700},
+            "density": "compact",
+        }
+    }
+
+    xml = render_multipage_drawio(architecture, style_memory=memory)
+    single_page_xml = render_drawio(architecture, diagram_type="deployment", style_memory=memory)
+
+    assert 'fontSize=13' in xml
+    assert 'height="48"' in xml
+    assert 'pageWidth="2600"' in single_page_xml
+    assert 'pageHeight="1700"' in single_page_xml
