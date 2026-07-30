@@ -1664,7 +1664,28 @@ def _render_vpc_zones(
 
 
 def _find_cidr_for_name(ibm_cloud: dict, name_token: str) -> str:
-    token = name_token.lower()
+    token = name_token.lower().strip()
+    if not token:
+        return ""
+    for category in ("vpcs", "subnets"):
+        for item in ibm_cloud.get(category, []):
+            if not isinstance(item, dict):
+                continue
+            name = str(item.get("name") or "").lower().strip()
+            cidr = str(item.get("cidr") or "")
+            if name == token and cidr:
+                return cidr
+    for category in ("vpcs", "subnets"):
+        for item in ibm_cloud.get(category, []):
+            if not isinstance(item, dict):
+                continue
+            haystack = " ".join(str(item.get(key) or "") for key in ("name", "purpose")).lower()
+            cidr = str(item.get("cidr") or "")
+            if token in haystack and cidr:
+                return cidr
+            match = re.search(r'\b\d{1,3}(?:\.\d{1,3}){3}/\d{1,2}\b', haystack)
+            if token in haystack and match:
+                return match.group(0)
     for category in ("vpcs", "subnets"):
         for item in ibm_cloud.get(category, []):
             if not isinstance(item, dict):
@@ -1676,6 +1697,31 @@ def _find_cidr_for_name(ibm_cloud: dict, name_token: str) -> str:
             match = re.search(r'\b\d{1,3}(?:\.\d{1,3}){3}/\d{1,2}\b', haystack)
             if token in haystack and match:
                 return match.group(0)
+    return ""
+
+
+def _label_with_cidr(label: str, cidr: str) -> str:
+    label = _clean_diagram_label(label)
+    cidr = str(cidr or "").strip()
+    if cidr and cidr not in label:
+        return f"{label}\n{cidr}"
+    return label
+
+
+def _customer_name_from_model(project: dict, ibm_cloud: dict) -> str:
+    for key in ("customer", "client", "account", "company"):
+        value = str(project.get(key) or "").strip()
+        if value:
+            return value
+    haystacks: list[str] = []
+    for category in ("vpcs", "subnets", "connectivity", "compute", "regions"):
+        for item in ibm_cloud.get(category, []):
+            if isinstance(item, dict):
+                haystacks.append(" ".join(str(item.get(key) or "") for key in ("notes", "purpose")))
+    text = "\n".join(haystacks)
+    possessive = re.search(r"\b([A-Z][A-Z0-9&.-]{1,})'s\b", text)
+    if possessive:
+        return possessive.group(1)
     return ""
 
 
@@ -1694,20 +1740,22 @@ def _render_classic_vcf_rovs_deployment(builder: DrawioBuilder, project: dict, i
     router = next((item for item in connectivity_items if any(token in str(item.get("name", "")).lower() for token in ("vsrx", "router", "firewall"))), {"name": "Classic routing / firewall"})
     tgw_item = next((item for item in connectivity_items if "transit" in str(item.get("name", "")).lower()), {"name": "Transit Gateway"})
     compute = _first_component(ibm_cloud, "compute", "Workload cluster")
+    customer_name = _customer_name_from_model(project, ibm_cloud)
+    customer_prefix = f"{customer_name} " if customer_name else ""
 
     enterprise = builder.ibm_location(
-        "Enterprise / On-Premises", left, top, 250, 360,
+        f"{customer_prefix}Enterprise / On-Premises", left, top, 250, 360,
         shape="network--enterprise", stroke_color=COLOR["grey"],
     )
-    users = builder.ibm_actor("Users", left + 24, top + 70, "user", d=40)
-    wan = builder.ibm_actor("Enterprise WAN", left + 24, top + 170, "enterprise", d=40)
+    users = builder.ibm_actor(f"{customer_prefix}users" if customer_name else "Users", left + 24, top + 70, "user", d=40)
+    wan = builder.ibm_actor(f"{customer_prefix}WAN" if customer_name else "Enterprise WAN", left + 24, top + 170, "enterprise", d=40)
 
     conn_x = left + 250 + gap
+    dl_label = _clean_diagram_label(str(direct_link.get("name") or "Private connectivity"))
     connectivity = builder.ibm_location(
-        "Connectivity", conn_x, top, 230, 360,
+        f"{dl_label} Connectivity", conn_x, top, 230, 360,
         shape="arrows--horizontal", stroke_color=COLOR["network"],
     )
-    dl_label = _clean_diagram_label(str(direct_link.get("name") or "Private connectivity"))
     dl = builder.ibm_node(dl_label, conn_x + 40, top + 130, _stencil_shape(dl_label) or "ibm-cloud--direct-link-2--connect", d=44)
 
     classic_x = conn_x + 230 + gap
@@ -1720,12 +1768,12 @@ def _render_classic_vcf_rovs_deployment(builder: DrawioBuilder, project: dict, i
     first_network = existing_networks[0] if existing_networks else {"name": "Existing Network", "purpose": "Customer network routed through Classic"}
     second_network = existing_networks[1] if len(existing_networks) > 1 else {"name": "Additional Existing Network", "purpose": "Additional routed network"}
     prod = builder.box(
-        _component_label(first_network, "Existing Network") + _cidr_suffix(ibm_cloud, str(first_network.get("name") or "")),
+        _label_with_cidr(_component_label(first_network, "Existing Network"), _find_cidr_for_name(ibm_cloud, str(first_network.get("name") or ""))),
         classic_x + 34, top + 150, 320, 70,
         fill=COLOR["Private"], stroke=COLOR["az_stroke"], font_size=11,
     )
     test = builder.box(
-        _component_label(second_network, "Additional Existing Network") + _cidr_suffix(ibm_cloud, str(second_network.get("name") or "")),
+        _label_with_cidr(_component_label(second_network, "Additional Existing Network"), _find_cidr_for_name(ibm_cloud, str(second_network.get("name") or ""))),
         classic_x + 34, top + 245, 320, 70,
         fill="#E8DAFF", stroke=COLOR["az_stroke"], font_size=11,
     )
@@ -1755,7 +1803,7 @@ def _render_classic_vcf_rovs_deployment(builder: DrawioBuilder, project: dict, i
     )
     target_vpc = vpc_targets[0] if vpc_targets else {"name": "Workload VPC"}
     vpc = builder.child_ibm_location(
-        _component_label(target_vpc, "Workload VPC") + _cidr_suffix(ibm_cloud, str(target_vpc.get("name") or "")),
+        _label_with_cidr(_component_label(target_vpc, "Workload VPC"), _find_cidr_for_name(ibm_cloud, str(target_vpc.get("name") or ""))),
         36, 70, account_w - 72, 380,
         "ibm-cloud--vpc", COLOR["network"], region,
     )

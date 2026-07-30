@@ -1009,13 +1009,15 @@ def test_mcp_all_pages_applies_ollama_render_plan(server, monkeypatch):
 
     captured = {}
 
-    def fake_open_all_pages(diagrams):
-        captured["diagrams"] = diagrams
-        return [{"page": name} for name in diagrams]
+    def fake_open_multipage(xml, **kwargs):
+        captured["xml"] = xml
+        captured["kwargs"] = kwargs
+        return {"ok": True}
 
     monkeypatch.setattr(server_module._ollama, "plan_render", fake_plan_render)
     monkeypatch.setattr(server_module._mcp, "is_running", lambda: True)
-    monkeypatch.setattr(server_module._mcp, "open_all_pages", fake_open_all_pages)
+    monkeypatch.setattr(server_module._mcp, "open_multipage_diagram_in_editor", fake_open_multipage)
+    monkeypatch.setattr(server_module._mcp, "open_all_pages", lambda _diagrams: pytest.fail("generated pages should open atomically as a multipage Draw.io document"))
 
     status, body = _post(server, "/api/drawio-mcp-all-pages", {
         "architecture": {
@@ -1032,9 +1034,8 @@ def test_mcp_all_pages_applies_ollama_render_plan(server, monkeypatch):
 
     assert status == 200
     assert body["pages"] == 5
-    deployment_xml = captured["diagrams"]["deployment"]
-    assert "Edge VPC" in deployment_xml
-    assert "Workload VPC" in deployment_xml
+    assert "Edge VPC" in captured["xml"]
+    assert "Workload VPC" in captured["xml"]
 
 
 def test_mcp_all_pages_prefers_saved_project_drawio(server, tmp_path, monkeypatch):

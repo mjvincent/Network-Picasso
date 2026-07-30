@@ -123,7 +123,7 @@ def test_stencil_shape_lookup():
 
 def test_classic_vcf_rovs_deployment_renders_customer_topology():
     arch = {
-        "project": {"name": "UPS VCF ROVS"},
+        "project": {"name": "UPS VCF ROVS", "customer": "UPS"},
         "render_plan": {
             "topology_variant": "classic-vcf-rovs",
             "pattern": "hybrid-classic-vpc",
@@ -156,9 +156,12 @@ def test_classic_vcf_rovs_deployment_renders_customer_topology():
     xml = render_drawio(arch, diagram_type="deployment")
 
     assert "IBM Cloud Classic / Existing Network" in xml
+    assert "UPS Enterprise / On-Premises" in xml
+    assert "UPS users" in xml
     assert "Juniper vSRX" in xml
     assert "VCF ProdNet" in xml
     assert "VCF TestNet" in xml
+    assert "10.233.128.0/17" in xml
     assert "Transit Gateway" in xml
     assert "ROVS POC VPC" in xml
     assert "ROVS cluster" in xml

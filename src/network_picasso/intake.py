@@ -1195,6 +1195,17 @@ def _extract_supernet(text: str, label: str) -> str:
     return match.group(1) if match else ""
 
 
+def _customer_name_from_requirements(text: str) -> str:
+    possessive = re.search(r"\b([A-Z][A-Z0-9&.-]{1,})'s\b", text)
+    if possessive:
+        return possessive.group(1)
+    match = re.search(
+        r"\bfor\s+([A-Z][A-Za-z0-9&.-]{1,}(?:\s+[A-Z][A-Za-z0-9&.-]{1,}){0,2})\s+(?:environment|network|architecture|workload|VCF)\b",
+        text,
+    )
+    return match.group(1).strip() if match else ""
+
+
 def enrich_architecture_from_requirements(
     architecture: dict,
     requirements: str,
@@ -1210,6 +1221,9 @@ def enrich_architecture_from_requirements(
     if not requirements.strip():
         return
     text = requirements.lower()
+    customer_name = _customer_name_from_requirements(requirements)
+    if customer_name:
+        architecture.setdefault("project", {}).setdefault("customer", customer_name)
     ibm_cloud = architecture.setdefault("ibm_cloud", {})
     facts: dict[str, list[dict[str, str]]] = {
         key: list(ibm_cloud.get(key, []))
@@ -1266,7 +1280,7 @@ def enrich_architecture_from_requirements(
             }, source=source_label, notes=requirements)
 
         for name, purpose in [
-            ("DirectLink 2.0", "Existing private connectivity from UPS on-premises to IBM Cloud WDC Classic"),
+            ("DirectLink 2.0", f"Existing private connectivity from {customer_name or 'customer'} on-premises to IBM Cloud WDC Classic"),
             ("Juniper vSRX", "Classic network firewall/router terminating DirectLink and routing VCF ProdNet/TestNet traffic"),
             ("Transit Gateway", "Connects Classic/vSRX-routed networks to the new ROVS POC VPC"),
         ]:
@@ -1300,7 +1314,7 @@ def enrich_architecture_from_requirements(
         plan.update({
             "pattern": "hybrid-classic-vpc",
             "pattern_name": "Hybrid Classic to VPC Transit Gateway",
-            "pattern_reason": "UPS connects on-premises to IBM Cloud Classic through DirectLink 2.0 and Juniper vSRX, with Transit Gateway connectivity to a new ROVS POC VPC.",
+            "pattern_reason": f"{customer_name or 'The customer'} connects on-premises to IBM Cloud Classic through DirectLink 2.0 and Juniper vSRX, with Transit Gateway connectivity to a new ROVS POC VPC.",
             "pattern_source": source,
             "topology_variant": "classic-vcf-rovs",
             "has_on_prem": True,
