@@ -2094,20 +2094,20 @@ export default function App() {
         mcpOpened,
       });
       if (mcpOpened) {
-        setStatus(`Bob prompt copied: ${preset.label}. Loading the current Network Picasso diagram into MCP…`);
+        setStatus(`Bob prompt copied: ${preset.label}. Loading the generated five-page design into MCP…`);
         if (mcpRunning && architecture) {
           try {
             const result = await postJson<{ ok: boolean; editorUrl: string; pages: number }>(
               '/api/drawio-mcp-all-pages',
-              diagramRenderPayload(),
+              diagramRenderPayload({ forceRegenerate: true }),
             );
             setMcpDiagramPushed(true);
-            setMcpStatus(`Current ${result.pages}-page diagram pushed to MCP. Paste the copied prompt into Bob to start the edit.`);
+            setMcpStatus(`Generated ${result.pages}-page design pushed to MCP. Paste the copied prompt into Bob to start the edit.`);
           } catch (pushErr) {
             setMcpStatus(
               pushErr instanceof Error
-                ? `Prompt copied, but the current diagram could not be pushed to MCP: ${pushErr.message}`
-                : 'Prompt copied, but the current diagram could not be pushed to MCP.',
+                ? `Prompt copied, but the generated design could not be pushed to MCP: ${pushErr.message}`
+                : 'Prompt copied, but the generated design could not be pushed to MCP.',
             );
           }
         } else if (!mcpRunning) {
@@ -3813,7 +3813,7 @@ export default function App() {
                     <InlineNotification
                       kind="warning"
                       title="Bob prompt handoff"
-                      subtitle="Browser apps cannot reliably submit prompts directly into IBM Bob. Use Copy + open MCP, then paste the prompt into Bob to start the edit."
+                      subtitle="Browser apps cannot reliably submit prompts directly into IBM Bob. Use Copy + open generated design to load a fresh five-page Draw.io file, then paste the prompt into Bob."
                       lowContrast
                       hideCloseButton
                     />
@@ -3868,14 +3868,14 @@ export default function App() {
                               onClick={() => copyBobPromptAndOpenMcp(preset)}
                               disabled={busy}
                             >
-                              Copy + open MCP
+                              Copy + open generated design
                             </Button>
                           </div>
                         </div>
                       ))}
                     </div>
                     <p className="panel-copy">
-                      Use these after the diagram is loaded in the MCP editor. They replace the older overlapping prompt library with one clear seller path.
+                      Use these for Bob-assisted refinement. The generated-design shortcut always pushes a fresh five-page diagram; use the saved project diagram button when you intentionally want the last saved MCP-edited file.
                     </p>
                   </div>
 
