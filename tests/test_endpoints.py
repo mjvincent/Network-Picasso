@@ -1042,6 +1042,7 @@ def test_set_pattern_enriches_hybrid_classic_requirements(server, tmp_path):
     assert body["renderPlan"]["pattern"] == "hybrid-classic-vpc"
     assert body["renderPlan"]["pattern_source"] == "architect"
     assert body["renderPlan"]["topology_variant"] == "classic-vcf-rovs"
+    assert body["architecture"]["render_plan"]["pattern"] == "hybrid-classic-vpc"
     on_disk = json.loads(arch_path.read_text())
     names = {
         item["name"]

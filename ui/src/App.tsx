@@ -215,6 +215,67 @@ function latestRequirementsText(architecture: Architecture | null | undefined): 
   return String(latest?.text || '').trim();
 }
 
+function persistedPatternFromArchitecture(architecture: Architecture | null | undefined): PatternResult | null {
+  const renderPlan = architecture?.render_plan || {};
+  const id = String(renderPlan.pattern || '').trim();
+  if (!id) return null;
+  const fallback = IBM_PATTERN_OPTIONS.find((pattern) => pattern.id === id);
+  return {
+    id,
+    name: String(renderPlan.pattern_name || fallback?.name || id),
+    description: fallback?.description || 'IBM Think Architecture pattern selected for this architecture.',
+    url: fallback?.url || 'https://www.ibm.com/think/architectures/patterns',
+    score: Number(renderPlan.pattern_score || fallback?.score || 0),
+    matched: fallback?.matched || [],
+    missing: fallback?.missing || [],
+  };
+}
+
+function suggestedQuestionOptions(question: Question): string[] {
+  if (question.options?.length) return question.options.slice(0, 3);
+  const text = `${question.area} ${question.question} ${question.guidance || ''}`.toLowerCase();
+  if (text.includes('architecture pattern')) {
+    return [
+      'Use the AI-recommended IBM Think pattern and persist it as the design foundation.',
+      'Select Red Hat OpenShift on IBM Cloud (ROKS) when this is a managed OpenShift workload on VPC.',
+      'Select VPC landing zone - Standard when this is a general private VPC workload foundation.',
+    ];
+  }
+  if (text.includes('roks') || text.includes('openshift')) {
+    return [
+      'Use private ROKS worker nodes with OpenShift Router ingress and controlled IBM Cloud service access.',
+      'Use IBM Cloud Internet Services plus load balancing in front of OpenShift routes for public-facing apps.',
+      'Keep this as an internal-only ROKS cluster reached over Direct Link, VPN, or Transit Gateway.',
+    ];
+  }
+  if (text.includes('region') || text.includes('availability') || text.includes('dr')) {
+    return [
+      'Use one IBM Cloud MZR for production and document DR as a later-phase decision.',
+      'Use a primary region plus a lower-capacity DR region with explicit RPO/RTO assumptions.',
+      'Use a single-zone proof-of-concept and mark production HA as out of scope.',
+    ];
+  }
+  if (text.includes('connect')) {
+    return [
+      'Use Direct Link for private enterprise connectivity and Transit Gateway for cloud routing.',
+      'Use VPN as the initial private connectivity option with Direct Link as a production upgrade.',
+      'Use VPC-only private connectivity with no on-premises dependency for this phase.',
+    ];
+  }
+  if (text.includes('security') || text.includes('compliance') || text.includes('key')) {
+    return [
+      'Use Key Protect or HPCS, Secrets Manager, Activity Tracker, and Security and Compliance Center.',
+      'Use private endpoints and centralized logging as baseline controls, with compliance evidence in phase two.',
+      'Document customer-managed key ownership, audit retention, and access-control assumptions.',
+    ];
+  }
+  return [
+    'Use the IBM best-practice guidance as the current design assumption.',
+    'Defer this item and mark it as an assumption for seller/customer validation.',
+    'Provide a custom answer based on the customer requirement or workshop discussion.',
+  ];
+}
+
 type FileRole = {
   file: string;
   role: string;
@@ -856,6 +917,16 @@ export default function App() {
   }, [diagramType]);
 
   useEffect(() => {
+    const pattern = persistedPatternFromArchitecture(architecture);
+    if (pattern) {
+      setChosenPatternState(pattern);
+      setSelectedPatternOverrideId(pattern.id);
+    } else {
+      setChosenPatternState(null);
+    }
+  }, [architecture?.render_plan]);
+
+  useEffect(() => {
     fetch('/api/example')
       .then((r) => r.json())
       .then((payload) => {
@@ -1479,6 +1550,15 @@ export default function App() {
     () => questions.filter((q) => !answeredKeys.has(q.question)),
     [answeredKeys, questions],
   );
+  const currentQuestion = openQuestions[0] || null;
+  const currentQuestionOptions = useMemo(
+    () => currentQuestion ? suggestedQuestionOptions(currentQuestion) : [],
+    [currentQuestion],
+  );
+  const persistedPattern = useMemo(
+    () => persistedPatternFromArchitecture(architecture),
+    [architecture?.render_plan],
+  );
 
   const restoreSnapshots = useMemo(() => {
     const snapshots = projectActivity?.snapshots || [];
@@ -1586,14 +1666,14 @@ export default function App() {
     setQuestionAnswers((current) => ({ ...current, [questionKey(question)]: answer }));
   }
 
-  async function saveAnswer(question: Question) {
+  async function saveAnswer(question: Question, answerOverride?: string, source = 'architect') {
     const key = questionKey(question);
-    const answer = questionAnswers[key]?.trim();
+    const answer = (answerOverride ?? questionAnswers[key] ?? '').trim();
     if (!answer) { setError('Write an answer before saving.'); return; }
     setError('');
     const entry: AnsweredQuestion = {
       area: question.area, question: question.question,
-      answer, source: 'architect', timestamp: new Date().toISOString(),
+      answer, source, timestamp: new Date().toISOString(),
     };
     setAnsweredQuestions((current) => [...current, entry]);
     setStatus('Answer saved');
@@ -1603,7 +1683,7 @@ export default function App() {
         area: question.area,
         question: question.question,
         answer,
-        source: 'architect',
+        source,
       });
       if (payload.architecture) {
         setArchitecture(payload.architecture);
@@ -1615,26 +1695,12 @@ export default function App() {
   async function acceptCoaching(question: Question) {
     const answer = question.guidance || question.question;
     setQuestionAnswers((current) => ({ ...current, [questionKey(question)]: answer }));
-    const entry: AnsweredQuestion = {
-      area: question.area, question: question.question,
-      answer, source: 'coaching', timestamp: new Date().toISOString(),
-    };
-    setAnsweredQuestions((current) => [...current, entry]);
-    setError('');
-    setStatus('Best-practice guidance accepted');
-    try {
-      const payload = await postJson<{ architecture?: Architecture }>('/api/answer', {
-        architecturePath,
-        area: question.area,
-        question: question.question,
-        answer,
-        source: 'coaching',
-      });
-      if (payload.architecture) {
-        setArchitecture(payload.architecture);
-        await runArchitectureReview(payload.architecture, requirementsText);
-      }
-    } catch { console.warn('Failed to persist coaching answer'); }
+    await saveAnswer(question, answer, 'coaching');
+  }
+
+  async function useSuggestedAnswer(question: Question, option: string, index: number) {
+    setQuestionAnswers((current) => ({ ...current, [questionKey(question)]: option }));
+    await saveAnswer(question, option, `option-${String.fromCharCode(65 + index)}`);
   }
 
   async function saveRequirements(text: string, source: 'text' | 'file', filename = '', replaceArchitecture = false) {
@@ -1735,8 +1801,7 @@ export default function App() {
         ...(review.alternativePatterns || []),
       ].filter(Boolean) as PatternResult[];
       setPatternResults(ranked);
-      if (!chosenPattern && review.recommendedPattern) {
-        setChosenPatternState(review.recommendedPattern);
+      if (!persistedPattern && review.recommendedPattern) {
         setSelectedPatternOverrideId(review.recommendedPattern.id);
       }
     } catch (err) {
@@ -1756,9 +1821,7 @@ export default function App() {
         { architecture, requirements: requirementsText },
       );
       setPatternResults(payload.patterns || []);
-      // Auto-select top match if not already chosen
-      if (!chosenPattern && payload.best) {
-        setChosenPatternState(payload.best);
+      if (!persistedPattern && payload.best) {
         setSelectedPatternOverrideId(payload.best.id);
       }
     } catch (err) {
@@ -1769,29 +1832,33 @@ export default function App() {
   }
 
   async function confirmPattern(pattern: PatternResult) {
-    setChosenPatternState(pattern);
-    setSelectedPatternOverrideId(pattern.id);
+    if (!architecturePath) {
+      setError('Create or load a project before confirming an IBM pattern.');
+      return;
+    }
+    setPatternBusy(true);
+    setError('');
     try {
-      await postJson('/api/set-pattern', {
+      const payload = await postJson<{ ok: boolean; patternId: string; renderPlan: Record<string, unknown>; architecture?: Architecture }>('/api/set-pattern', {
         architecturePath,
         patternId: pattern.id,
         patternName: pattern.name,
         score: pattern.score,
       });
-      setArchitecture((current) => current ? {
+      setChosenPatternState(pattern);
+      setSelectedPatternOverrideId(pattern.id);
+      setArchitecture((current) => payload.architecture || (current ? {
         ...current,
-        render_plan: {
-          ...(current.render_plan || {}),
-          pattern: pattern.id,
-          pattern_name: pattern.name,
-          pattern_source: 'architect',
-          pattern_score: pattern.score,
-        },
-      } : current);
+        render_plan: payload.renderPlan,
+      } : current));
       setStatus(`Pattern set: ${pattern.name}`);
     } catch (err) {
-      // Non-fatal — pattern is still set in local state
-      console.warn('set-pattern failed:', err);
+      const message = err instanceof Error ? err.message : 'Pattern could not be saved to the architecture model.';
+      setChosenPatternState(null);
+      setError(message);
+      setStatus('');
+    } finally {
+      setPatternBusy(false);
     }
   }
 
@@ -1803,6 +1870,15 @@ export default function App() {
       ? `${activeProject.customer}${activeProject.project ? ` / ${activeProject.project}` : ''}`
       : 'the current project';
     const message = `Cannot ${action} yet. The requirements text has not been applied to ${projectLabel}. Use "Design fresh environment" for a new customer/workload, or "Add to current project" if this text belongs to the active project.`;
+    setError(message);
+    setMcpStatus(message);
+    setStatus('');
+    return false;
+  }
+
+  function requirePatternBeforeDiagram(action: string): boolean {
+    if (persistedPattern) return true;
+    const message = `Cannot ${action} yet. Confirm an IBM Think Architecture pattern first, such as ROKS on VPC, VPC landing zone, or the advisor-recommended pattern.`;
     setError(message);
     setMcpStatus(message);
     setStatus('');
@@ -1830,6 +1906,7 @@ export default function App() {
 
   async function generateDiagram() {
     if (!requireAppliedRequirementsBeforeDiagram('generate a Draw.io file')) return;
+    if (!requirePatternBeforeDiagram('generate a Draw.io file')) return;
     setBusy(true);
     setError('');
     setStatus('Generating diagram…');
@@ -1912,6 +1989,7 @@ export default function App() {
 
   async function copyDiagramXml() {
     if (!requireAppliedRequirementsBeforeDiagram('copy Draw.io XML')) return;
+    if (!requirePatternBeforeDiagram('copy Draw.io XML')) return;
     setBusy(true);
     try {
       const response = await fetch('/api/drawio-xml', {
@@ -1932,6 +2010,7 @@ export default function App() {
   async function openInDiagramsNet() {
     if (!architecture) return;
     if (!requireAppliedRequirementsBeforeDiagram('open diagrams.net')) return;
+    if (!requirePatternBeforeDiagram('open diagrams.net')) return;
     setBusy(true);
     setError('');
     try {
@@ -1974,6 +2053,7 @@ export default function App() {
   async function loadPreview() {
     if (!architecture) return;
     if (!requireAppliedRequirementsBeforeDiagram('load a diagram preview')) return;
+    if (!requirePatternBeforeDiagram('load a diagram preview')) return;
     setBusy(true);
     setError('');
     try {
@@ -1996,6 +2076,7 @@ export default function App() {
   async function openInMcpEditor() {
     if (!architecture) return;
     if (!requireAppliedRequirementsBeforeDiagram('open MCP')) return;
+    if (!requirePatternBeforeDiagram('open MCP')) return;
     setBusy(true);
     setMcpStatus('');
     setError('');
@@ -2021,6 +2102,7 @@ export default function App() {
 
   async function saveAndOpenAllPages(forceRegenerate = false) {
     if (!requireAppliedRequirementsBeforeDiagram('open all diagram pages')) return;
+    if (!requirePatternBeforeDiagram('open all diagram pages')) return;
     const payload = await postJson<{ outputPath: string; xml?: string; source?: string }>(
       '/api/drawio-multipage',
       diagramRenderPayload({ outputPath: 'outputs/network-picasso-all.drawio', includeXml: true, forceRegenerate }),
@@ -2040,6 +2122,7 @@ export default function App() {
   async function generateAllPages(forceRegenerate = false) {
     if (!architecture) return;
     if (!requireAppliedRequirementsBeforeDiagram('open all diagram pages')) return;
+    if (!requirePatternBeforeDiagram('open all diagram pages')) return;
     setBusy(true);
     setMcpStatus('');
     setError('');
@@ -2115,6 +2198,7 @@ export default function App() {
   async function rebuildAndVerifyMcpPages() {
     if (!architecture) return;
     if (!requireAppliedRequirementsBeforeDiagram('rebuild MCP pages')) return;
+    if (!requirePatternBeforeDiagram('rebuild MCP pages')) return;
     setMcpTabsBusy(true);
     setError('');
     try {
@@ -3203,6 +3287,15 @@ export default function App() {
                           hideCloseButton
                         />
                       )}
+                      {!chosenPattern && selectedPatternOverrideId && (
+                        <InlineNotification
+                          kind="info"
+                          title="Pattern selected but not confirmed"
+                          subtitle="Use selected pattern to save this IBM Think pattern into the architecture model before generating diagrams."
+                          lowContrast
+                          hideCloseButton
+                        />
+                      )}
 
                       <div className="pattern-override">
                         <Select
@@ -3221,14 +3314,14 @@ export default function App() {
                           kind="tertiary"
                           size="md"
                           renderIcon={Checkmark}
-                          disabled={!selectedPatternOverrideId}
+                          disabled={!selectedPatternOverrideId || patternBusy}
                           onClick={() => {
                             const scored = patternResults.find((pattern) => pattern.id === selectedPatternOverrideId);
                             const fallback = IBM_PATTERN_OPTIONS.find((pattern) => pattern.id === selectedPatternOverrideId);
                             if (scored || fallback) confirmPattern(scored || fallback!);
                           }}
                         >
-                          Use selected pattern
+                          {patternBusy ? <InlineLoading description="Saving pattern..." /> : 'Use selected pattern'}
                         </Button>
                       </div>
 
@@ -3279,6 +3372,7 @@ export default function App() {
                                         size="sm"
                                         renderIcon={isChosen ? Checkmark : undefined}
                                         onClick={() => confirmPattern(pat)}
+                                        disabled={patternBusy}
                                       >
                                         {isChosen ? 'Confirmed' : 'Use this pattern'}
                                       </Button>
@@ -3458,43 +3552,57 @@ export default function App() {
                     </p>
                   )}
 
-                  <div className="question-list">
-                    {openQuestions.map((item, index) => (
-                      <Layer key={questionKey(item)}>
-                        <div className="question-item">
-                          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
-                            <Tag type="blue">{item.area}</Tag>
-                            {item.source === 'llm'   && <Tag type="purple">AI</Tag>}
-                            {item.source === 'rules' && <Tag type="cool-gray">Rules</Tag>}
-                          </div>
-                          <p>{item.question}</p>
-                          {item.guidance && (
-                            <div className="coaching">
-                              <span>IBM Cloud best-practice guidance</span>
-                              <p>{item.guidance}</p>
-                            </div>
-                          )}
-                          <TextArea
-                            id={`answer-${index}`}
-                            labelText="Your answer"
-                            placeholder="Describe the design decision, assumption, or constraint for this area."
-                            value={questionAnswers[questionKey(item)] || ''}
-                            onChange={(e) => updateAnswer(item, e.target.value)}
-                          />
-                          <div className="question-actions">
-                            {item.guidance && (
-                              <Button kind="tertiary" size="sm" onClick={() => acceptCoaching(item)}>
-                                Accept guidance as answer
-                              </Button>
-                            )}
-                            <Button renderIcon={Checkmark} size="sm" onClick={() => saveAnswer(item)}>
-                              Save answer
-                            </Button>
-                          </div>
+                  {currentQuestion && (
+                    <Layer>
+                      <div className="question-item question-item--guided">
+                        <div className="question-progress">
+                          <span className="advisor-label">Current decision</span>
+                          <span>{answeredQuestions.length + 1} of {answeredQuestions.length + openQuestions.length}</span>
                         </div>
-                      </Layer>
-                    ))}
-                  </div>
+                        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                          <Tag type="blue">{currentQuestion.area}</Tag>
+                          {currentQuestion.source === 'llm'   && <Tag type="purple">AI guidance</Tag>}
+                          {currentQuestion.source === 'rules' && <Tag type="cool-gray">Rules</Tag>}
+                        </div>
+                        <h3>{currentQuestion.question}</h3>
+                        {currentQuestion.guidance && (
+                          <div className="coaching">
+                            <span>Why this matters</span>
+                            <p>{currentQuestion.guidance}</p>
+                          </div>
+                        )}
+                        <div className="question-options">
+                          {currentQuestionOptions.map((option, index) => (
+                            <Button
+                              key={`${questionKey(currentQuestion)}-option-${index}`}
+                              kind="secondary"
+                              size="sm"
+                              onClick={() => useSuggestedAnswer(currentQuestion, option, index)}
+                            >
+                              {String.fromCharCode(65 + index)}. {option}
+                            </Button>
+                          ))}
+                        </div>
+                        <TextArea
+                          id="guided-question-answer"
+                          labelText="Written answer or seller notes"
+                          placeholder="Use one of the options above, or write the customer-specific answer here."
+                          value={questionAnswers[questionKey(currentQuestion)] || ''}
+                          onChange={(e) => updateAnswer(currentQuestion, e.target.value)}
+                        />
+                        <div className="question-actions">
+                          {currentQuestion.guidance && (
+                            <Button kind="tertiary" size="sm" onClick={() => acceptCoaching(currentQuestion)}>
+                              Use IBM guidance
+                            </Button>
+                          )}
+                          <Button renderIcon={Checkmark} size="sm" onClick={() => saveAnswer(currentQuestion)}>
+                            Save written answer
+                          </Button>
+                        </div>
+                      </div>
+                    </Layer>
+                  )}
 
                   <div className="step-actions">
                     <Button kind="secondary" renderIcon={ArrowLeft} onClick={() => setStep('review')}>Back</Button>
@@ -3587,7 +3695,7 @@ export default function App() {
                               size="sm"
                               renderIcon={Launch}
                               onClick={openInMcpEditor}
-                              disabled={busy || !architecture || !mcpRunning || unappliedRequirements}
+                              disabled={busy || !architecture || !mcpRunning || unappliedRequirements || !persistedPattern}
                             >
                               Open in MCP editor
                             </Button>
@@ -3602,7 +3710,7 @@ export default function App() {
                                 targetPage: remediationTarget.label,
                                 prompt: qualityRemediationPrompt(remediationTarget.label, diagramQuality),
                               })}
-                              disabled={busy || unappliedRequirements}
+                              disabled={busy || unappliedRequirements || !persistedPattern}
                             >
                               {copiedPrompt === 'Quality Fix' ? 'Quality fix copied' : 'Copy quality fix prompt'}
                             </Button>
@@ -3686,6 +3794,15 @@ export default function App() {
                         hideCloseButton
                       />
                     )}
+                    {architecture && !persistedPattern && (
+                      <InlineNotification
+                        kind="warning"
+                        title="Confirm an IBM pattern before generating diagrams"
+                        subtitle="Use the Architecture Advisor recommendation or the manual override in Step 2. This selected pattern becomes the diagram foundation and quality baseline."
+                        lowContrast
+                        hideCloseButton
+                      />
+                    )}
                     {/* Option A */}
                     <div className="diagram-action-card">
                       <div className="diagram-action-header">
@@ -3693,7 +3810,7 @@ export default function App() {
                         <InfoTip text="Writes the .drawio XML file to the outputs/ folder inside this repository. Open the saved file in the Draw.io desktop app or diagrams.net." />
                       </div>
                       <p className="panel-copy">Saves the diagram to <code>outputs/</code> on disk.</p>
-                      <Button renderIcon={Diagram} onClick={generateDiagram} disabled={busy || !architecture || unappliedRequirements}>
+                      <Button renderIcon={Diagram} onClick={generateDiagram} disabled={busy || !architecture || unappliedRequirements || !persistedPattern}>
                         Save Draw.io file
                       </Button>
                       {diagramPath && (
@@ -3711,7 +3828,7 @@ export default function App() {
                         <InfoTip text="Copies the raw Draw.io XML to your clipboard. Paste it into diagrams.net using Edit › XML, or into any tool that accepts Draw.io XML." />
                       </div>
                       <p className="panel-copy">Copy the diagram XML to your clipboard, then paste into diagrams.net via Edit › XML.</p>
-                      <Button kind="secondary" renderIcon={Copy} onClick={copyDiagramXml} disabled={busy || !architecture || unappliedRequirements}>
+                      <Button kind="secondary" renderIcon={Copy} onClick={copyDiagramXml} disabled={busy || !architecture || unappliedRequirements || !persistedPattern}>
                         Copy XML to clipboard
                       </Button>
                     </div>
@@ -3723,7 +3840,7 @@ export default function App() {
                         <InfoTip text="Opens diagrams.net in a new window using the embed API. The diagram XML is delivered automatically via postMessage once the editor loads — nothing is uploaded externally. Requires internet access and that your browser permits the popup." />
                       </div>
                       <p className="panel-copy">Open your diagram directly in diagrams.net in a new tab.</p>
-                      <Button kind="secondary" renderIcon={Launch} onClick={openInDiagramsNet} disabled={busy || !architecture || unappliedRequirements}>
+                      <Button kind="secondary" renderIcon={Launch} onClick={openInDiagramsNet} disabled={busy || !architecture || unappliedRequirements || !persistedPattern}>
                         Open in diagrams.net
                       </Button>
                     </div>
@@ -3735,7 +3852,7 @@ export default function App() {
                         <InfoTip text="Renders a live interactive preview of the diagram using the diagrams.net embed API. Requires an internet connection to load the embed viewer. The diagram is sent to the iframe via postMessage — nothing is stored externally." />
                       </div>
                       <p className="panel-copy">Render an interactive preview inline. Requires internet access to load the embed viewer.</p>
-                      <Button kind="secondary" renderIcon={Diagram} onClick={loadPreview} disabled={busy || !architecture || unappliedRequirements}>
+                      <Button kind="secondary" renderIcon={Diagram} onClick={loadPreview} disabled={busy || !architecture || unappliedRequirements || !persistedPattern}>
                         {previewXml ? 'Refresh preview' : 'Load preview'}
                       </Button>
                       {previewXml && (
@@ -3790,7 +3907,7 @@ export default function App() {
                         Open MCP editor tab
                       </Button>
                       <Button kind="secondary" renderIcon={Launch} onClick={openInMcpEditor}
-                        disabled={busy || !architecture || !mcpRunning || unappliedRequirements}>
+                        disabled={busy || !architecture || !mcpRunning || unappliedRequirements || !persistedPattern}>
                         Open generated five-page design
                       </Button>
                       {mcpStatus && (
@@ -3812,13 +3929,13 @@ export default function App() {
                           : 'Saves and opens a five-page .drawio file: executive, context, logical, deployment, and assumptions/decisions.'}
                       </p>
                       <Button renderIcon={Layers} onClick={() => generateAllPages(false)}
-                        disabled={busy || !architecture || unappliedRequirements}>
+                        disabled={busy || !architecture || unappliedRequirements || !persistedPattern}>
                         {projectActivity?.file?.hasSavedDrawio
                           ? 'Open saved project diagram'
                           : (mcpRunning ? 'Open all pages in MCP editor' : 'Open all-pages .drawio file')}
                       </Button>
                       <Button kind="ghost" size="sm" onClick={() => generateAllPages(true)}
-                        disabled={busy || !architecture || unappliedRequirements}>
+                        disabled={busy || !architecture || unappliedRequirements || !persistedPattern}>
                         Regenerate from model
                       </Button>
                     </div>
@@ -3994,7 +4111,7 @@ export default function App() {
                               size="sm"
                               renderIcon={copiedPrompt === preset.label ? Checkmark : Copy}
                               onClick={() => copyBobPrompt(preset)}
-                              disabled={busy || unappliedRequirements}
+                              disabled={busy || unappliedRequirements || !persistedPattern}
                             >
                               Copy prompt
                             </Button>
@@ -4003,7 +4120,7 @@ export default function App() {
                               size="sm"
                               renderIcon={Launch}
                               onClick={() => copyBobPromptAndOpenMcp(preset)}
-                              disabled={busy || unappliedRequirements}
+                              disabled={busy || unappliedRequirements || !persistedPattern}
                             >
                               Copy + open generated design
                             </Button>

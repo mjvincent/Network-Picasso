@@ -1499,6 +1499,7 @@ class NetworkPicassoHandler(BaseHTTPRequestHandler):
             for item in architecture.get("questions", {}).get("answered", [])
             if isinstance(item, dict)
         }
+        apply_saved_requirements(architecture)
         gaps = find_design_gaps(architecture)
         open_gaps = [gap for gap in gaps if gap.get("question") not in answered_questions]
         architecture.setdefault("questions", {})["open"] = [gap["question"] for gap in open_gaps]
@@ -1542,6 +1543,7 @@ class NetworkPicassoHandler(BaseHTTPRequestHandler):
         if not architecture:
             architecture_path = repo_path(payload.get("architecturePath") or DEFAULT_ARCHITECTURE_PATH)
             architecture = read_json_file(architecture_path)
+        apply_saved_requirements(architecture)
         gaps = find_design_gaps(architecture)
         # Augment with LLM gaps when mode is ollama (from payload or saved settings).
         settings = load_settings()
@@ -1554,7 +1556,12 @@ class NetworkPicassoHandler(BaseHTTPRequestHandler):
                 if g.get("question") and g["question"] not in existing_texts:
                     gaps.append(g)
                     existing_texts.add(g["question"])
-        self.send_json({"questions": gaps})
+        answered_questions = {
+            item.get("question")
+            for item in architecture.get("questions", {}).get("answered", [])
+            if isinstance(item, dict)
+        }
+        self.send_json({"questions": [gap for gap in gaps if gap.get("question") not in answered_questions]})
 
     def handle_pattern_match(self, payload: dict) -> None:
         """Score IBM Think Architecture patterns against the provided architecture.
@@ -1691,7 +1698,7 @@ class NetworkPicassoHandler(BaseHTTPRequestHandler):
 
         atomic_write_json(architecture_path, architecture)
         sync_project_if_managed(architecture_path.parent, load_settings(), architecture=architecture, event_type="pattern-set")
-        self.send_json({"ok": True, "patternId": pattern_id, "renderPlan": render_plan})
+        self.send_json({"ok": True, "patternId": pattern_id, "renderPlan": render_plan, "architecture": architecture})
 
     def handle_save_settings(self, payload: dict) -> None:
         settings = load_settings()

@@ -4,6 +4,7 @@ export type Question = {
   area: string;
   question: string;
   guidance?: string;
+  options?: string[];
   source?: 'rules' | 'llm';
 };
 

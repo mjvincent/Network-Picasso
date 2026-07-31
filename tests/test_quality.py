@@ -59,6 +59,29 @@ def test_quality_analyzer_flags_missing_pattern_elements():
     assert "Observability services" in messages
 
 
+def test_quality_analyzer_recognizes_roks_pattern():
+    arch = {
+        "project": {"name": "T-Mobile DLM"},
+        "render_plan": {"pattern": "roks", "pattern_name": "Red Hat OpenShift on IBM Cloud (ROKS)"},
+        "ibm_cloud": {
+            "regions": [{"name": "us-south"}],
+            "vpcs": [{"name": "Dallas ROKS VPC"}],
+            "subnets": [{"name": "private worker subnet"}],
+            "compute": [{"name": "Red Hat OpenShift on IBM Cloud"}],
+            "ingress": [{"name": "OpenShift Router"}],
+            "security": [{"name": "Security and Compliance Center"}, {"name": "IBM Container Registry"}],
+            "observability": [{"name": "IBM Cloud Monitoring"}, {"name": "Activity Tracker"}],
+        },
+    }
+    xml = render_drawio(arch, diagram_type="deployment")
+    result = analyze_diagram_quality(arch, diagram_type="deployment", xml=xml)
+    messages = " ".join(finding["message"] for finding in result["findings"])
+
+    assert result["pattern"] == "roks"
+    assert result["ibmPatternChecks"]["name"] == "Red Hat OpenShift Container Platform on VPC landing zone"
+    assert "No explicit IBM pattern was detected" not in messages
+
+
 def test_quality_analyzer_flags_tight_label_box():
     xml = """<?xml version="1.0" encoding="UTF-8"?>
 <mxfile><diagram name="Test"><mxGraphModel><root>

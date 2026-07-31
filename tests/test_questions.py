@@ -67,11 +67,20 @@ def _full_architecture() -> dict:
 
 # ── Tier 0 — always asked ────────────────────────────────────────────────────
 
-def test_tier0_pattern_question_always_asked():
-    """Architecture pattern question fires even when all keys are populated."""
+def test_tier0_pattern_question_asked_when_no_pattern_selected():
+    """Architecture pattern question fires until an IBM pattern is selected."""
     gaps = find_design_gaps(_full_architecture())
     questions = [g["question"] for g in gaps]
     assert any("reference architecture pattern" in q.lower() for q in questions)
+
+
+def test_tier0_pattern_question_suppressed_when_pattern_selected():
+    """Pattern selection becomes authoritative and removes the duplicate prompt."""
+    arch = _full_architecture()
+    arch["render_plan"] = {"pattern": "roks", "pattern_name": "Red Hat OpenShift on IBM Cloud (ROKS)"}
+    gaps = find_design_gaps(arch)
+    questions = [g["question"] for g in gaps]
+    assert not any("reference architecture pattern" in q.lower() for q in questions)
 
 
 def test_tier0_region_question_always_asked():

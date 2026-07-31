@@ -86,6 +86,8 @@ def find_design_gaps(architecture: dict) -> list[dict[str, str]]:
     confidently without prior IBM Cloud knowledge.
     """
     ibm_cloud = architecture.get("ibm_cloud", {})
+    render_plan = architecture.get("render_plan", {}) if isinstance(architecture.get("render_plan"), dict) else {}
+    selected_pattern = str(render_plan.get("pattern") or "").strip()
     asked: set[str] = set()
     questions: list[dict[str, str]] = []
 
@@ -117,35 +119,36 @@ def find_design_gaps(architecture: dict) -> list[dict[str, str]]:
     # IBM reference: every architecture starts by choosing a pattern.
     # ═══════════════════════════════════════════════════════════════════════
 
-    _ask(
-        "Architecture pattern",
-        "Which IBM Cloud reference architecture pattern best describes this workload?",
-        (
-            "IBM Cloud publishes proven reference architecture patterns at "
-            "ibm.com/think/architectures/patterns. The most common are:\n\n"
-            "• Basic VPC — single VPC, one or two AZs, suitable for dev/test.\n"
-            "• Multi-Zone VPC (MZR) — one VPC spanning all three availability zones "
-            "(zone-1, zone-2, zone-3) in a region. The IBM Cloud gold standard for "
-            "production HA. Compute, storage, and load balancers are replicated across "
-            "all three zones so that a single data-centre failure does not cause downtime.\n"
-            "• Hub-and-Spoke (Edge VPC) — a dedicated Edge VPC handles all ingress "
-            "and egress traffic (internet, Direct Link, VPN). Spoke VPCs contain "
-            "workloads. Transit Gateway connects them. Recommended when multiple teams "
-            "or workloads share a common network perimeter.\n"
-            "• Three-Tier VPC — separates presentation (public subnet), application "
-            "(private subnet), and data (data subnet) tiers. Classic pattern for "
-            "web-facing applications.\n"
-            "• PowerVS — IBM Power Virtual Servers connected to VPC or on-premises "
-            "via Cloud Connection or Direct Link. Required for AIX, IBM i, or SAP "
-            "HANA on Power workloads.\n"
-            "• Financial Services Cloud (FSC) — IBM Cloud for Financial Services "
-            "validated architecture. Mandatory controls include: no public egress from "
-            "workload VPCs, all service access via Virtual Private Endpoints (VPE), "
-            "customer-managed keys (HPCS or Key Protect), Security and Compliance "
-            "Center (SCC) for evidence, and centralised logging/audit.\n\n"
-            "Choosing a pattern now drives every subsequent question."
-        ),
-    )
+    if not selected_pattern:
+        _ask(
+            "Architecture pattern",
+            "Which IBM Cloud reference architecture pattern best describes this workload?",
+            (
+                "IBM Cloud publishes proven reference architecture patterns at "
+                "ibm.com/think/architectures/patterns. The most common are:\n\n"
+                "• Basic VPC — single VPC, one or two AZs, suitable for dev/test.\n"
+                "• Multi-Zone VPC (MZR) — one VPC spanning all three availability zones "
+                "(zone-1, zone-2, zone-3) in a region. The IBM Cloud gold standard for "
+                "production HA. Compute, storage, and load balancers are replicated across "
+                "all three zones so that a single data-centre failure does not cause downtime.\n"
+                "• Hub-and-Spoke (Edge VPC) — a dedicated Edge VPC handles all ingress "
+                "and egress traffic (internet, Direct Link, VPN). Spoke VPCs contain "
+                "workloads. Transit Gateway connects them. Recommended when multiple teams "
+                "or workloads share a common network perimeter.\n"
+                "• Three-Tier VPC — separates presentation (public subnet), application "
+                "(private subnet), and data (data subnet) tiers. Classic pattern for "
+                "web-facing applications.\n"
+                "• PowerVS — IBM Power Virtual Servers connected to VPC or on-premises "
+                "via Cloud Connection or Direct Link. Required for AIX, IBM i, or SAP "
+                "HANA on Power workloads.\n"
+                "• Financial Services Cloud (FSC) — IBM Cloud for Financial Services "
+                "validated architecture. Mandatory controls include: no public egress from "
+                "workload VPCs, all service access via Virtual Private Endpoints (VPE), "
+                "customer-managed keys (HPCS or Key Protect), Security and Compliance "
+                "Center (SCC) for evidence, and centralised logging/audit.\n\n"
+                "Choosing a pattern now drives every subsequent question."
+            ),
+        )
 
     _ask(
         "Regions and availability",

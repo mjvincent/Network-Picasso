@@ -92,6 +92,19 @@ PATTERN_CHECKS = {
             ("Security and observability foundation", ("security and compliance", "activity tracker", "flow logs")),
         ],
     },
+    "roks": {
+        "name": "Red Hat OpenShift Container Platform on VPC landing zone",
+        "source": IBM_PATTERN_URL,
+        "required": [
+            ("ROKS or OpenShift workload cluster", ("roks", "openshift", "red hat openshift", "ocp")),
+            ("VPC landing zone", ("vpc", "landing zone")),
+            ("Private worker subnet tier", ("private subnet", "worker", "worker pool")),
+            ("Ingress strategy", ("openshift router", "route", "ingress", "alb", "cis")),
+            ("Registry and image security", ("container registry", "registry", "icr", "vulnerability")),
+            ("Security and audit foundation", ("security and compliance", "key protect", "secrets manager", "activity tracker")),
+            ("Observability services", ("monitoring", "logging", "flow logs", "instana")),
+        ],
+    },
 }
 
 

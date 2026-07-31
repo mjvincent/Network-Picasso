@@ -565,9 +565,42 @@ body {
   padding: 1rem;
 }
 
+.question-item--guided {
+  border: 1px solid #e0e0e0;
+  border-left: 4px solid #0f62fe;
+  padding: 1.25rem;
+}
+
+.question-item h3 {
+  font-size: 1.125rem;
+  line-height: 1.45;
+  margin: 0;
+}
+
 .question-item p {
   line-height: 1.5;
   margin: 0;
+}
+
+.question-progress {
+  align-items: center;
+  color: #525252;
+  display: flex;
+  font-size: 0.875rem;
+  justify-content: space-between;
+}
+
+.question-options {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.question-options .cds--btn {
+  justify-content: flex-start;
+  max-width: none;
+  min-height: 2.75rem;
+  text-align: left;
+  white-space: normal;
 }
 
 .coaching {
