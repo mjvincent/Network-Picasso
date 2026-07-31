@@ -1893,15 +1893,11 @@ class NetworkPicassoHandler(BaseHTTPRequestHandler):
                 results = [{"source": "saved-project-drawio"}]
                 source = "saved"
             else:
-                generated_xml = render_multipage_drawio(
+                generated_pages = render_all_diagrams(
                     architecture,
                     style_memory=style_memory_for_project(project_path),
                 )
-                _mcp.open_multipage_diagram_in_editor(
-                    generated_xml,
-                    filename="network-picasso-all.drawio",
-                )
-                results = [{"source": "generated-multipage"} for _ in DIAGRAM_PAGE_NAMES]
+                results = _mcp.open_all_pages(generated_pages)
                 source = "generated"
         except (ConnectionError, RuntimeError) as exc:
             self.send_error_json(503, str(exc))

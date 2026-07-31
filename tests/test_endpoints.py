@@ -951,8 +951,8 @@ def test_mcp_all_pages_prefers_architecture_path_over_stale_payload(server, tmp_
     }))
     captured = {}
     monkeypatch.setattr(server_module._mcp, "is_running", lambda: True)
-    monkeypatch.setattr(server_module._mcp, "open_multipage_diagram_in_editor", lambda xml, **kwargs: captured.update({"xml": xml, "kwargs": kwargs}) or {"ok": True})
-    monkeypatch.setattr(server_module._mcp, "open_all_pages", lambda _diagrams: pytest.fail("all pages should open atomically as a multipage Draw.io document"))
+    monkeypatch.setattr(server_module._mcp, "open_multipage_diagram_in_editor", lambda xml, **kwargs: pytest.fail("generated pages should use page-by-page MCP import"))
+    monkeypatch.setattr(server_module._mcp, "open_all_pages", lambda diagrams: captured.update({"diagrams": diagrams}) or [{"ok": True} for _ in diagrams])
 
     status, body = _post(server, "/api/drawio-mcp-all-pages", {
         "architecturePath": str(arch_path),
@@ -969,10 +969,11 @@ def test_mcp_all_pages_prefers_architecture_path_over_stale_payload(server, tmp_
 
     assert status == 200
     assert body["source"] == "generated"
-    assert "VCF ProdNet" in captured["xml"]
-    assert "ROVS POC VPC" in captured["xml"]
-    assert "Old Omnicare" not in captured["xml"]
-    assert "Medical imaging processing VSIs" not in captured["xml"]
+    xml = "\n".join(captured["diagrams"].values())
+    assert "VCF ProdNet" in xml
+    assert "ROVS POC VPC" in xml
+    assert "Old Omnicare" not in xml
+    assert "Medical imaging processing VSIs" not in xml
 
 
 def test_drawio_xml_uses_active_architecture_payload_without_path(server):
@@ -1175,15 +1176,14 @@ def test_mcp_all_pages_applies_ollama_render_plan(server, monkeypatch):
 
     captured = {}
 
-    def fake_open_multipage(xml, **kwargs):
-        captured["xml"] = xml
-        captured["kwargs"] = kwargs
-        return {"ok": True}
+    def fake_open_all_pages(diagrams):
+        captured["diagrams"] = diagrams
+        return [{"ok": True} for _ in diagrams]
 
     monkeypatch.setattr(server_module._ollama, "plan_render", fake_plan_render)
     monkeypatch.setattr(server_module._mcp, "is_running", lambda: True)
-    monkeypatch.setattr(server_module._mcp, "open_multipage_diagram_in_editor", fake_open_multipage)
-    monkeypatch.setattr(server_module._mcp, "open_all_pages", lambda _diagrams: pytest.fail("generated pages should open atomically as a multipage Draw.io document"))
+    monkeypatch.setattr(server_module._mcp, "open_multipage_diagram_in_editor", lambda xml, **kwargs: pytest.fail("generated pages should use page-by-page MCP import"))
+    monkeypatch.setattr(server_module._mcp, "open_all_pages", fake_open_all_pages)
 
     status, body = _post(server, "/api/drawio-mcp-all-pages", {
         "architecture": {
@@ -1200,8 +1200,9 @@ def test_mcp_all_pages_applies_ollama_render_plan(server, monkeypatch):
 
     assert status == 200
     assert body["pages"] == 5
-    assert "Edge VPC" in captured["xml"]
-    assert "Workload VPC" in captured["xml"]
+    xml = "\n".join(captured["diagrams"].values())
+    assert "Edge VPC" in xml
+    assert "Workload VPC" in xml
 
 
 def test_mcp_all_pages_prefers_saved_project_drawio(server, tmp_path, monkeypatch):
@@ -1269,7 +1270,8 @@ def test_mcp_all_pages_force_regenerate_ignores_saved_project_drawio(server, tmp
 
         captured = {}
         monkeypatch.setattr(server_module._mcp, "is_running", lambda: True)
-        monkeypatch.setattr(server_module._mcp, "open_multipage_diagram_in_editor", lambda xml, **kwargs: captured.update({"xml": xml, "kwargs": kwargs}) or {"ok": True})
+        monkeypatch.setattr(server_module._mcp, "open_multipage_diagram_in_editor", lambda xml, **kwargs: pytest.fail("force-regenerated pages should use page-by-page MCP import"))
+        monkeypatch.setattr(server_module._mcp, "open_all_pages", lambda diagrams: captured.update({"diagrams": diagrams}) or [{"ok": True} for _ in diagrams])
 
         status, body = _post(server, "/api/drawio-mcp-all-pages", {
             "architecturePath": str(arch_path),
@@ -1278,8 +1280,9 @@ def test_mcp_all_pages_force_regenerate_ignores_saved_project_drawio(server, tmp
 
         assert status == 200
         assert body["source"] == "generated"
-        assert "T-Mobile DLM" in captured["xml"]
-        assert "Saved but should not reopen" not in captured["xml"]
+        xml = "\n".join(captured["diagrams"].values())
+        assert "T-Mobile DLM" in xml
+        assert "Saved but should not reopen" not in xml
     finally:
         if original is not None:
             settings_path.write_text(original)
@@ -1316,8 +1319,8 @@ def test_mcp_all_pages_ignores_stale_saved_project_drawio(server, tmp_path, monk
 
         captured = {}
         monkeypatch.setattr(server_module._mcp, "is_running", lambda: True)
-        monkeypatch.setattr(server_module._mcp, "open_multipage_diagram_in_editor", lambda xml, **kwargs: captured.update({"xml": xml, "kwargs": kwargs}) or {"ok": True})
-        monkeypatch.setattr(server_module._mcp, "open_all_pages", lambda _diagrams: pytest.fail("all pages should open atomically"))
+        monkeypatch.setattr(server_module._mcp, "open_multipage_diagram_in_editor", lambda xml, **kwargs: pytest.fail("stale saved Draw.io should not be reopened"))
+        monkeypatch.setattr(server_module._mcp, "open_all_pages", lambda diagrams: captured.update({"diagrams": diagrams}) or [{"ok": True} for _ in diagrams])
 
         status, body = _post(server, "/api/drawio-mcp-all-pages", {
             "architecturePath": str(arch_path),
@@ -1325,8 +1328,9 @@ def test_mcp_all_pages_ignores_stale_saved_project_drawio(server, tmp_path, monk
 
         assert status == 200
         assert body["source"] == "generated"
-        assert "T-Mobile DLM" in captured["xml"]
-        assert "UPS ROVS old design" not in captured["xml"]
+        xml = "\n".join(captured["diagrams"].values())
+        assert "T-Mobile DLM" in xml
+        assert "UPS ROVS old design" not in xml
         status, activity = _get(server, f"/api/project-activity?path={proj_path}")
         assert status == 200
         assert activity["file"]["hasSavedDrawio"] is True
