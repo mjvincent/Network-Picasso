@@ -78,6 +78,86 @@ def _zones_covered(ibm_cloud: dict) -> bool:
     return len(seen) >= 3
 
 
+def guided_options_for_question(question: dict, architecture: dict) -> list[str]:
+    """Return weighted, question-specific answer choices for the guided interview."""
+    render_plan = architecture.get("render_plan", {}) if isinstance(architecture.get("render_plan"), dict) else {}
+    pattern = str(render_plan.get("pattern") or "").lower()
+    area = str(question.get("area") or "").lower()
+    text = f"{question.get('question', '')} {question.get('guidance', '')}".lower()
+
+    if "architecture pattern" in area or "reference architecture pattern" in text:
+        if pattern:
+            return [
+                f"Recommended - Use the confirmed {render_plan.get('pattern_name') or pattern} pattern as the design foundation.",
+                "Good fit - Re-score IBM Think patterns if the customer requirements changed materially.",
+                "Assumption - Defer pattern confirmation and keep the diagram as an internal draft only.",
+            ]
+        return [
+            "Recommended - Use the Architecture Advisor's top IBM Think pattern after reviewing matched and missing signals.",
+            "Good fit - Manually select the IBM pattern when the customer already named the intended topology.",
+            "Assumption - Pause diagram generation until the seller confirms the pattern with the customer.",
+        ]
+
+    if pattern == "roks" or "roks" in text or "openshift" in text:
+        if "ingress" in text or "router" in text or "alb" in text:
+            return [
+                "Recommended - Private ROKS workers with OpenShift Router ingress; place CIS or a load balancer in front only when public access is required.",
+                "Good fit - Internal-only OpenShift routes reached through Direct Link, VPN, or Transit Gateway.",
+                "Customer confirmation needed - Public internet ingress through CIS/WAF and IBM Cloud load balancing.",
+            ]
+        return [
+            "Recommended - Multi-zone ROKS worker pools in private subnets with registry, secrets, monitoring, logging, and audit controls.",
+            "Good fit - Single-zone ROKS proof of concept with production HA documented as out of scope.",
+            "Assumption - Keep worker count and profiles as sizing placeholders until performance targets are confirmed.",
+        ]
+
+    if "region" in area or "availability" in area or "dr" in text or "recovery" in text:
+        return [
+            "Recommended - Use the primary IBM Cloud MZR from the requirements and document DR region, RPO, and RTO as explicit assumptions.",
+            "Good fit - Primary plus lower-capacity DR region when the workload has customer-facing recovery requirements.",
+            "Assumption - Single-region draft only; customer must confirm DR posture before final design.",
+        ]
+
+    if "connect" in area or "direct link" in text or "transit gateway" in text or "vpn" in text:
+        return [
+            "Recommended - Use Direct Link for private enterprise connectivity and Transit Gateway for IBM Cloud routing domains.",
+            "Good fit - Use VPN for initial non-production connectivity, with Direct Link as the production target.",
+            "Customer confirmation needed - No on-premises connectivity; keep the workload isolated inside IBM Cloud VPC.",
+        ]
+
+    if "security" in area or "compliance" in area or "key" in text or "audit" in text:
+        return [
+            "Recommended - Include IAM, Secrets Manager, Key Protect or HPCS, Activity Tracker, flow logs, and Security and Compliance Center.",
+            "Good fit - Use private endpoints and centralized logs as baseline controls, with formal compliance evidence in a later phase.",
+            "Customer confirmation needed - Confirm key ownership, audit retention, and required regulatory controls.",
+        ]
+
+    if "data" in area or "storage" in text or "database" in text:
+        return [
+            "Recommended - Keep data services private with VPE/private connectivity, backups, encryption, and retention documented.",
+            "Good fit - Use managed IBM Cloud data services when operations ownership should stay with IBM Cloud.",
+            "Customer confirmation needed - Confirm data classification, retention, replication, and migration source.",
+        ]
+
+    guidance = str(question.get("guidance") or "").strip()
+    recommended = guidance.split("\n", 1)[0].strip() if guidance else "Use IBM best-practice guidance as the current design assumption."
+    return [
+        f"Recommended - {recommended[:220]}",
+        "Good fit - Save a customer-specific answer in the narrative field when the requirements already imply the decision.",
+        "Assumption - Defer this item and show it on the Assumptions & Decisions page for customer validation.",
+    ]
+
+
+def add_guided_options(questions: list[dict], architecture: dict) -> list[dict]:
+    return [
+        {
+            **question,
+            "options": guided_options_for_question(question, architecture),
+        }
+        for question in questions
+    ]
+
+
 def find_design_gaps(architecture: dict) -> list[dict[str, str]]:
     """Return IBM Cloud reference-architecture-driven design questions.
 

@@ -63,7 +63,7 @@ from .projects import (
     resolve_projects_root,
     safe_slug,
 )
-from .questions import find_design_gaps
+from .questions import add_guided_options, find_design_gaps
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -217,6 +217,37 @@ def read_project_live_drawio(project_path: Path, architecture: dict | None = Non
     return xml
 
 
+def project_live_drawio_status(project_path: Path, architecture: dict | None = None) -> dict:
+    path = project_live_drawio_path(project_path)
+    metadata_path = project_live_drawio_metadata_path(project_path)
+    status = {
+        "exists": path.exists(),
+        "compatible": False,
+        "reason": "missing",
+        "metadataPath": relative_to_repo(metadata_path),
+    }
+    if not path.exists():
+        return status
+    if architecture is None:
+        status.update({"compatible": True, "reason": "unchecked"})
+        return status
+    if not metadata_path.exists():
+        status["reason"] = "missing-fingerprint-metadata"
+        return status
+    try:
+        metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        status["reason"] = "invalid-fingerprint-metadata"
+        return status
+    status["savedAt"] = metadata.get("savedAt", "")
+    status["source"] = metadata.get("source", "")
+    if metadata.get("architectureFingerprint") != architecture_fingerprint(architecture):
+        status["reason"] = "architecture-fingerprint-mismatch"
+        return status
+    status.update({"compatible": True, "reason": "architecture-fingerprint-match"})
+    return status
+
+
 def style_memory_for_project(project_path: Path | None) -> dict | None:
     if project_path:
         memory = load_style_memory(project_path)
@@ -292,7 +323,10 @@ def project_activity_payload(project_path: Path, settings: dict) -> dict:
         "architectureSize": 0,
         "architectureModifiedAt": "",
         "hasSavedDrawio": drawio_path.exists(),
+        "hasCompatibleSavedDrawio": False,
+        "savedDrawioCompatible": False,
         "savedDrawioPath": relative_to_repo(drawio_path) if drawio_path.exists() else "",
+        "savedDrawioStatus": project_live_drawio_status(managed, None),
         "savedDrawioSize": 0,
         "savedDrawioModifiedAt": "",
     }
@@ -302,6 +336,16 @@ def project_activity_payload(project_path: Path, settings: dict) -> dict:
             "architectureSize": stat.st_size,
             "architectureModifiedAt": datetime.fromtimestamp(stat.st_mtime, timezone.utc).isoformat(),
         })
+        try:
+            architecture = read_json_file(arch_path)
+            apply_saved_requirements(architecture)
+            file_meta["savedDrawioStatus"] = project_live_drawio_status(managed, architecture)
+            file_meta["savedDrawioCompatible"] = bool(file_meta["savedDrawioStatus"].get("compatible"))
+            file_meta["hasCompatibleSavedDrawio"] = bool(file_meta["savedDrawioStatus"].get("compatible"))
+        except Exception:
+            file_meta["savedDrawioStatus"] = project_live_drawio_status(managed, None)
+            file_meta["savedDrawioCompatible"] = False
+            file_meta["hasCompatibleSavedDrawio"] = False
     if drawio_path.exists():
         stat = drawio_path.stat()
         file_meta.update({
@@ -734,7 +778,7 @@ class NetworkPicassoHandler(BaseHTTPRequestHandler):
             self.send_json(
                 {
                     "architecture": architecture,
-                    "questions": find_design_gaps(architecture),
+                    "questions": add_guided_options(find_design_gaps(architecture), architecture),
                     "architecturePath": relative_to_repo(architecture_path),
                     "answeredQuestions": answered,
                 }
@@ -1501,7 +1545,7 @@ class NetworkPicassoHandler(BaseHTTPRequestHandler):
         }
         apply_saved_requirements(architecture)
         gaps = find_design_gaps(architecture)
-        open_gaps = [gap for gap in gaps if gap.get("question") not in answered_questions]
+        open_gaps = add_guided_options([gap for gap in gaps if gap.get("question") not in answered_questions], architecture)
         architecture.setdefault("questions", {})["open"] = [gap["question"] for gap in open_gaps]
 
         atomic_write_json(architecture_path, architecture)
@@ -1561,7 +1605,7 @@ class NetworkPicassoHandler(BaseHTTPRequestHandler):
             for item in architecture.get("questions", {}).get("answered", [])
             if isinstance(item, dict)
         }
-        self.send_json({"questions": [gap for gap in gaps if gap.get("question") not in answered_questions]})
+        self.send_json({"questions": add_guided_options([gap for gap in gaps if gap.get("question") not in answered_questions], architecture)})
 
     def handle_pattern_match(self, payload: dict) -> None:
         """Score IBM Think Architecture patterns against the provided architecture.
@@ -2165,7 +2209,7 @@ def run_intake(
 
     # Exclude questions already answered when building the open list.
     answered_questions = {entry["question"] for entry in architecture["questions"].get("answered", []) if isinstance(entry, dict)}
-    open_gaps = [gap for gap in gaps if gap["question"] not in answered_questions]
+    open_gaps = add_guided_options([gap for gap in gaps if gap["question"] not in answered_questions], architecture)
     architecture["questions"]["open"] = [gap["question"] for gap in open_gaps]
 
     atomic_write_json(output_path, architecture)

@@ -685,6 +685,8 @@ def test_project_diagram_save_endpoint_persists_drawio(server, tmp_path):
         status, activity = _get(server, f"/api/project-activity?path={proj_path}")
         assert status == 200
         assert activity["file"]["hasSavedDrawio"] is True
+        assert activity["file"]["hasCompatibleSavedDrawio"] is True
+        assert activity["file"]["savedDrawioStatus"]["reason"] == "architecture-fingerprint-match"
         assert activity["file"]["savedDrawioSize"] > 0
     finally:
         if original is not None:
@@ -1241,6 +1243,50 @@ def test_mcp_all_pages_prefers_saved_project_drawio(server, tmp_path, monkeypatc
             settings_path.unlink()
 
 
+def test_mcp_all_pages_force_regenerate_ignores_saved_project_drawio(server, tmp_path, monkeypatch):
+    from network_picasso import server as server_module
+
+    settings_path = REPO_ROOT / "inputs" / "settings.json"
+    settings_path.parent.mkdir(parents=True, exist_ok=True)
+    original = settings_path.read_text() if settings_path.exists() else None
+    try:
+        root = tmp_path / "projects"
+        settings_path.write_text(json.dumps({"projectsRoot": str(root)}))
+        _post(server, "/api/projects", {"customer": "tmobile", "project": "dlm"})
+        proj_path = root / "tmobile" / "dlm"
+        arch_path = proj_path / "architecture.json"
+        architecture = {
+            "project": {"name": "T-Mobile DLM"},
+            "render_plan": {"pattern": "roks", "pattern_name": "Red Hat OpenShift on IBM Cloud (ROKS)"},
+            "ibm_cloud": {
+                "regions": [{"name": "us-south"}],
+                "compute": [{"name": "Red Hat OpenShift on IBM Cloud"}],
+            },
+        }
+        arch_path.write_text(json.dumps(architecture))
+        saved_xml = "<mxfile><diagram name=\"Deployment\"><mxGraphModel><root><mxCell id=\"saved\" value=\"Saved but should not reopen\" /></root></mxGraphModel></diagram></mxfile>"
+        save_project_live_drawio(proj_path, saved_xml, source="test", architecture=architecture)
+
+        captured = {}
+        monkeypatch.setattr(server_module._mcp, "is_running", lambda: True)
+        monkeypatch.setattr(server_module._mcp, "open_multipage_diagram_in_editor", lambda xml, **kwargs: captured.update({"xml": xml, "kwargs": kwargs}) or {"ok": True})
+
+        status, body = _post(server, "/api/drawio-mcp-all-pages", {
+            "architecturePath": str(arch_path),
+            "forceRegenerate": True,
+        })
+
+        assert status == 200
+        assert body["source"] == "generated"
+        assert "T-Mobile DLM" in captured["xml"]
+        assert "Saved but should not reopen" not in captured["xml"]
+    finally:
+        if original is not None:
+            settings_path.write_text(original)
+        elif settings_path.exists():
+            settings_path.unlink()
+
+
 def test_mcp_all_pages_ignores_stale_saved_project_drawio(server, tmp_path, monkeypatch):
     from network_picasso import server as server_module
 
@@ -1281,6 +1327,11 @@ def test_mcp_all_pages_ignores_stale_saved_project_drawio(server, tmp_path, monk
         assert body["source"] == "generated"
         assert "T-Mobile DLM" in captured["xml"]
         assert "UPS ROVS old design" not in captured["xml"]
+        status, activity = _get(server, f"/api/project-activity?path={proj_path}")
+        assert status == 200
+        assert activity["file"]["hasSavedDrawio"] is True
+        assert activity["file"]["hasCompatibleSavedDrawio"] is False
+        assert activity["file"]["savedDrawioStatus"]["reason"] == "architecture-fingerprint-mismatch"
     finally:
         if original is not None:
             settings_path.write_text(original)

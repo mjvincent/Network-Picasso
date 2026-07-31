@@ -332,6 +332,9 @@ type ProjectActivity = {
     architectureSize: number;
     architectureModifiedAt: string;
     hasSavedDrawio?: boolean;
+    hasCompatibleSavedDrawio?: boolean;
+    savedDrawioCompatible?: boolean;
+    savedDrawioStatus?: { compatible?: boolean; reason?: string; savedAt?: string; source?: string };
     savedDrawioPath?: string;
     savedDrawioSize?: number;
     savedDrawioModifiedAt?: string;
@@ -3925,19 +3928,28 @@ export default function App() {
                       </div>
                       <p className="panel-copy">
                         {mcpRunning
-                          ? 'Opens all five diagram pages in the MCP editor.'
+                          ? 'Generates all five diagram pages from the current architecture model and opens them in the MCP editor.'
                           : 'Saves and opens a five-page .drawio file: executive, context, logical, deployment, and assumptions/decisions.'}
                       </p>
-                      <Button renderIcon={Layers} onClick={() => generateAllPages(false)}
+                      <Button renderIcon={Layers} onClick={() => generateAllPages(true)}
                         disabled={busy || !architecture || unappliedRequirements || !persistedPattern}>
-                        {projectActivity?.file?.hasSavedDrawio
-                          ? 'Open saved project diagram'
-                          : (mcpRunning ? 'Open all pages in MCP editor' : 'Open all-pages .drawio file')}
+                        {mcpRunning ? 'Generate all pages in MCP editor' : 'Generate all-pages .drawio file'}
                       </Button>
-                      <Button kind="ghost" size="sm" onClick={() => generateAllPages(true)}
-                        disabled={busy || !architecture || unappliedRequirements || !persistedPattern}>
-                        Regenerate from model
-                      </Button>
+                      {projectActivity?.file?.hasCompatibleSavedDrawio && (
+                        <Button kind="ghost" size="sm" onClick={() => generateAllPages(false)}
+                          disabled={busy || !architecture || unappliedRequirements || !persistedPattern}>
+                          Open saved MCP checkpoint
+                        </Button>
+                      )}
+                      {projectActivity?.file?.hasSavedDrawio && !projectActivity?.file?.hasCompatibleSavedDrawio && (
+                        <InlineNotification
+                          kind="warning"
+                          title="Saved Draw.io checkpoint ignored"
+                          subtitle={`The saved checkpoint does not match the current architecture model (${projectActivity.file.savedDrawioStatus?.reason || 'stale checkpoint'}). Generate from the current model, then save new MCP edits when finished.`}
+                          lowContrast
+                          hideCloseButton
+                        />
+                      )}
                     </div>
 
                     <div className="diagram-action-card">
@@ -3952,14 +3964,16 @@ export default function App() {
                         <Tag type={mcpRunning ? 'green' : 'gray'}>
                           {mcpRunning
                             ? 'Export source: live MCP editor'
-                            : (projectActivity?.file?.hasSavedDrawio ? 'Export source: saved project diagram' : 'Export source: generated model')}
+                            : (projectActivity?.file?.hasCompatibleSavedDrawio ? 'Export source: saved project diagram' : 'Export source: generated model')}
                         </Tag>
                         <span>
                           {mcpRunning
                             ? 'Uses the browser-edited Draw.io tabs.'
-                            : (projectActivity?.file?.hasSavedDrawio
+                            : (projectActivity?.file?.hasCompatibleSavedDrawio
                               ? 'Uses the last saved Draw.io checkpoint.'
-                              : 'Start/open MCP to package browser-edited diagrams.')}
+                              : (projectActivity?.file?.hasSavedDrawio
+                                ? 'Saved checkpoint is stale for this architecture; export will regenerate from the current model.'
+                                : 'Start/open MCP to package browser-edited diagrams.'))}
                         </span>
                       </div>
                       <div className="style-memory-summary">
@@ -3972,11 +3986,19 @@ export default function App() {
                           </span>
                         )}
                       </div>
-                      {projectActivity?.file?.hasSavedDrawio && (
+                      {projectActivity?.file?.hasCompatibleSavedDrawio && (
                         <div className="style-memory-summary">
                           <Tag type="green">Saved Draw.io checkpoint</Tag>
                           <span>
                             {projectActivity.file.savedDrawioPath} · {formatBytes(projectActivity.file.savedDrawioSize || 0)}
+                          </span>
+                        </div>
+                      )}
+                      {projectActivity?.file?.hasSavedDrawio && !projectActivity?.file?.hasCompatibleSavedDrawio && (
+                        <div className="style-memory-summary">
+                          <Tag type="magenta">Stale Draw.io checkpoint</Tag>
+                          <span>
+                            {projectActivity.file.savedDrawioStatus?.reason || 'Does not match the current architecture model'}
                           </span>
                         </div>
                       )}

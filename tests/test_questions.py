@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from network_picasso.questions import find_design_gaps
+from network_picasso.questions import add_guided_options, find_design_gaps
 
 ALL_IBMCLOUD_KEYS = [
     "regions", "vpcs", "subnets", "connectivity", "ingress", "compute",
@@ -81,6 +81,22 @@ def test_tier0_pattern_question_suppressed_when_pattern_selected():
     gaps = find_design_gaps(arch)
     questions = [g["question"] for g in gaps]
     assert not any("reference architecture pattern" in q.lower() for q in questions)
+
+
+def test_guided_options_are_weighted_for_roks_ingress_question():
+    arch = {
+        "render_plan": {"pattern": "roks", "pattern_name": "Red Hat OpenShift on IBM Cloud (ROKS)"},
+        "ibm_cloud": {
+            "compute": [{"name": "ROKS cluster", "notes": "openshift roks ocp"}],
+        },
+    }
+    gaps = find_design_gaps(arch)
+    roks_gap = next(gap for gap in gaps if "openshift" in gap["question"].lower() or "roks" in gap["question"].lower())
+    enriched = add_guided_options([roks_gap], arch)[0]
+
+    assert enriched["options"][0].startswith("Recommended -")
+    assert "OpenShift Router" in " ".join(enriched["options"])
+    assert len(set(enriched["options"])) == 3
 
 
 def test_tier0_region_question_always_asked():
