@@ -24,6 +24,7 @@ from network_picasso.server import (
     ThreadingHTTPServer,
     build_project_export_package,
     restore_preview_payload,
+    save_project_live_drawio,
 )
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -641,13 +642,13 @@ def test_project_export_package_prefers_saved_project_drawio(tmp_path):
     root = tmp_path / "projects"
     proj_path = root / "acme" / "q1"
     proj_path.mkdir(parents=True)
-    (proj_path / "architecture.json").write_text(json.dumps({
+    architecture = {
         "project": {"name": "Acme Q1"},
         "ibm_cloud": {"regions": [{"name": "us-south"}]},
-    }))
+    }
+    (proj_path / "architecture.json").write_text(json.dumps(architecture))
     saved_xml = "<mxfile><diagram name=\"Deployment\"><mxGraphModel><root><mxCell id=\"saved\" value=\"Saved Bob layout\" /></root></mxGraphModel></diagram></mxfile>"
-    (proj_path / "diagrams").mkdir()
-    (proj_path / "diagrams" / "live-edited.drawio").write_text(saved_xml)
+    save_project_live_drawio(proj_path, saved_xml, source="test", architecture=architecture)
 
     body, _filename = build_project_export_package(proj_path, {"projectsRoot": str(root)})
 
@@ -1212,13 +1213,13 @@ def test_mcp_all_pages_prefers_saved_project_drawio(server, tmp_path, monkeypatc
         _post(server, "/api/projects", {"customer": "acme", "project": "q4"})
         proj_path = root / "acme" / "q4"
         arch_path = proj_path / "architecture.json"
-        arch_path.write_text(json.dumps({
+        architecture = {
             "project": {"name": "Acme Q4"},
             "ibm_cloud": {"regions": [{"name": "us-south"}]},
-        }))
+        }
+        arch_path.write_text(json.dumps(architecture))
         saved_xml = "<mxfile><diagram name=\"Deployment\"><mxGraphModel><root><mxCell id=\"saved\" value=\"Saved MCP edits\" /></root></mxGraphModel></diagram></mxfile>"
-        (proj_path / "diagrams").mkdir()
-        (proj_path / "diagrams" / "live-edited.drawio").write_text(saved_xml)
+        save_project_live_drawio(proj_path, saved_xml, source="test", architecture=architecture)
 
         captured = {}
         monkeypatch.setattr(server_module._mcp, "is_running", lambda: True)
@@ -1232,6 +1233,53 @@ def test_mcp_all_pages_prefers_saved_project_drawio(server, tmp_path, monkeypatc
         assert status == 200
         assert body["source"] == "saved"
         assert "Saved MCP edits" in captured["xml"]
+    finally:
+        if original is not None:
+            settings_path.write_text(original)
+        elif settings_path.exists():
+            settings_path.unlink()
+
+
+def test_mcp_all_pages_ignores_stale_saved_project_drawio(server, tmp_path, monkeypatch):
+    from network_picasso import server as server_module
+
+    settings_path = REPO_ROOT / "inputs" / "settings.json"
+    settings_path.parent.mkdir(parents=True, exist_ok=True)
+    original = settings_path.read_text() if settings_path.exists() else None
+    try:
+        root = tmp_path / "projects"
+        settings_path.write_text(json.dumps({"projectsRoot": str(root)}))
+        _post(server, "/api/projects", {"customer": "tmobile", "project": "dlm"})
+        proj_path = root / "tmobile" / "dlm"
+        arch_path = proj_path / "architecture.json"
+        old_architecture = {
+            "project": {"name": "UPS"},
+            "ibm_cloud": {"compute": [{"name": "ROVS POC"}]},
+        }
+        new_architecture = {
+            "project": {"name": "T-Mobile DLM"},
+            "ibm_cloud": {
+                "regions": [{"name": "us-south"}],
+                "compute": [{"name": "Red Hat OpenShift on IBM Cloud"}],
+            },
+        }
+        arch_path.write_text(json.dumps(new_architecture))
+        saved_xml = "<mxfile><diagram name=\"Deployment\"><mxGraphModel><root><mxCell id=\"saved\" value=\"UPS ROVS old design\" /></root></mxGraphModel></diagram></mxfile>"
+        save_project_live_drawio(proj_path, saved_xml, source="test", architecture=old_architecture)
+
+        captured = {}
+        monkeypatch.setattr(server_module._mcp, "is_running", lambda: True)
+        monkeypatch.setattr(server_module._mcp, "open_multipage_diagram_in_editor", lambda xml, **kwargs: captured.update({"xml": xml, "kwargs": kwargs}) or {"ok": True})
+        monkeypatch.setattr(server_module._mcp, "open_all_pages", lambda _diagrams: pytest.fail("all pages should open atomically"))
+
+        status, body = _post(server, "/api/drawio-mcp-all-pages", {
+            "architecturePath": str(arch_path),
+        })
+
+        assert status == 200
+        assert body["source"] == "generated"
+        assert "T-Mobile DLM" in captured["xml"]
+        assert "UPS ROVS old design" not in captured["xml"]
     finally:
         if original is not None:
             settings_path.write_text(original)

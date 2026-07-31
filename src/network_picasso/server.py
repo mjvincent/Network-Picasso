@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import io
 import os
 import re
@@ -184,10 +185,32 @@ def project_live_drawio_metadata_path(project_path: Path) -> Path:
     return project_path / "diagrams" / "live-edited.metadata.json"
 
 
-def read_project_live_drawio(project_path: Path) -> str | None:
+def architecture_fingerprint(architecture: dict) -> str:
+    """Return a stable fingerprint for diagram/session compatibility checks."""
+    payload = {
+        "project": architecture.get("project", {}),
+        "requirements": architecture.get("requirements", []),
+        "render_plan": architecture.get("render_plan", {}),
+        "ibm_cloud": architecture.get("ibm_cloud", {}),
+    }
+    blob = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
+    return hashlib.sha256(blob.encode("utf-8")).hexdigest()
+
+
+def read_project_live_drawio(project_path: Path, architecture: dict | None = None) -> str | None:
     path = project_live_drawio_path(project_path)
     if not path.exists():
         return None
+    if architecture is not None:
+        metadata_path = project_live_drawio_metadata_path(project_path)
+        if not metadata_path.exists():
+            return None
+        try:
+            metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return None
+        if metadata.get("architectureFingerprint") != architecture_fingerprint(architecture):
+            return None
     xml = path.read_text(encoding="utf-8").strip()
     if "<mxfile" not in xml:
         return None
@@ -202,9 +225,14 @@ def style_memory_for_project(project_path: Path | None) -> dict | None:
     return load_global_style_memory(REPO_ROOT)
 
 
-def save_project_live_drawio(project_path: Path, xml: str, *, source: str) -> Path:
+def save_project_live_drawio(project_path: Path, xml: str, *, source: str, architecture: dict | None = None) -> Path:
     if "<mxfile" not in xml:
         raise ValueError("Draw.io XML must be a multi-page mxfile document")
+    if architecture is None:
+        arch_path = project_architecture_path(project_path)
+        if arch_path.exists():
+            architecture = read_json_file(arch_path)
+            apply_saved_requirements(architecture)
     diagram_path = project_live_drawio_path(project_path)
     diagram_path.parent.mkdir(parents=True, exist_ok=True)
     diagram_path.write_text(xml, encoding="utf-8")
@@ -213,6 +241,7 @@ def save_project_live_drawio(project_path: Path, xml: str, *, source: str) -> Pa
         "source": source,
         "path": relative_to_repo(diagram_path),
         "bytes": len(xml.encode("utf-8")),
+        "architectureFingerprint": architecture_fingerprint(architecture) if architecture else "",
     }, indent=2), encoding="utf-8")
     return diagram_path
 
@@ -413,7 +442,7 @@ def build_project_export_package(
     pattern_report_md = _pattern_report_markdown(reviews)
     quality_report_md = _quality_report_markdown(reviews, architecture)
     assumptions_md = _assumptions_markdown(architecture)
-    saved_drawio_xml = None if drawio_xml else read_project_live_drawio(project_path)
+    saved_drawio_xml = None if drawio_xml else read_project_live_drawio(project_path, architecture)
     effective_diagram_source = diagram_source
     if saved_drawio_xml:
         effective_diagram_source = "saved project Draw.io"
@@ -1804,7 +1833,7 @@ class NetworkPicassoHandler(BaseHTTPRequestHandler):
             self.send_error_json(503, "drawio-mcp-server is not running at localhost:4000. Start it via the MCP panel in Bob.")
             return
         try:
-            saved_xml = None if payload.get("forceRegenerate") else (read_project_live_drawio(project_path) if project_path else None)
+            saved_xml = None if payload.get("forceRegenerate") else (read_project_live_drawio(project_path, architecture) if project_path else None)
             if saved_xml:
                 _mcp.open_multipage_diagram_in_editor(
                     saved_xml,
@@ -1869,7 +1898,7 @@ class NetworkPicassoHandler(BaseHTTPRequestHandler):
             payload.get("outputPath") or "outputs/network-picasso-all.drawio"
         )
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        saved_xml = None if payload.get("forceRegenerate") else (read_project_live_drawio(project_path) if project_path else None)
+        saved_xml = None if payload.get("forceRegenerate") else (read_project_live_drawio(project_path, architecture) if project_path else None)
         xml = saved_xml or render_multipage_drawio(architecture, style_memory=style_memory_for_project(project_path))
         output_path.write_text(xml, encoding="utf-8")
         response = {"outputPath": relative_to_repo(output_path), "source": "saved" if saved_xml else "generated"}

@@ -194,6 +194,7 @@ type Architecture = {
   project: { name: string; environment?: string };
   ibm_cloud: Record<string, Component[] | string[]>;
   render_plan?: Record<string, unknown>;
+  requirements?: Array<{ text?: string; source?: string; filename?: string; timestamp?: string }>;
   questions?: { answered?: AnsweredQuestionType[]; open?: Question[] | string[] };
   quality?: {
     lastReview?: {
@@ -207,6 +208,12 @@ type Architecture = {
   };
   sources?: Array<{ file: string; type: string; records: number; role?: string; skipped?: boolean; skip_reason?: string }>;
 };
+
+function latestRequirementsText(architecture: Architecture | null | undefined): string {
+  const requirements = architecture?.requirements || [];
+  const latest = requirements.length ? requirements[requirements.length - 1] : null;
+  return String(latest?.text || '').trim();
+}
 
 type FileRole = {
   file: string;
@@ -745,6 +752,7 @@ export default function App() {
   const [qualityFixResult, setQualityFixResult] = useState<QualityFixResult | null>(null);
   const [diagramPath, setDiagramPath]     = useState('');
   const [requirementsText, setRequirementsText] = useState('');
+  const [lastAppliedRequirementsText, setLastAppliedRequirementsText] = useState('');
   const [requirementsSaved, setRequirementsSaved] = useState(false);
   const requirementsFileRef = useRef<HTMLInputElement>(null);
   const [previewXml, setPreviewXml]       = useState<string | null>(null);
@@ -824,6 +832,10 @@ export default function App() {
   const [projectSearch, setProjectSearch] = useState('');
   const [projectStatusFilter, setProjectStatusFilter] = useState<ProjectFilterStatus>('all');
   const [projectSortOrder, setProjectSortOrder] = useState<ProjectSortOrder>('nameAsc');
+  const unappliedRequirements = useMemo(() => {
+    const current = requirementsText.trim();
+    return Boolean(current && current !== lastAppliedRequirementsText.trim());
+  }, [requirementsText, lastAppliedRequirementsText]);
 
   // Send XML to the embed iframe whenever both are ready
   useEffect(() => {
@@ -852,6 +864,7 @@ export default function App() {
         setArchitecture(payload.architecture);
         setQuestions(payload.questions || []);
         setArchitecturePath(payload.architecturePath);
+        setLastAppliedRequirementsText(latestRequirementsText(payload.architecture));
         runArchitectureReview(payload.architecture, '');
       })
       .catch(() => setStatus('Start the local API server to use this app.'));
@@ -1188,6 +1201,7 @@ export default function App() {
       setSelectedPatternOverrideId('');
       setPreviewXml(null);
       setRequirementsText('');
+      setLastAppliedRequirementsText('');
       setRequirementsSaved(false);
       setAutosaveStatus('');
       setProjectActivity(null);
@@ -1231,6 +1245,7 @@ export default function App() {
     setMcpDiagramPushed(false);
     setCopiedPrompt('');
     setRequirementsText('');
+    setLastAppliedRequirementsText('');
     setRequirementsSaved(false);
     setProjectActivity(null);
     setStyleMemory(null);
@@ -1251,11 +1266,14 @@ export default function App() {
       const savedArchitecture = await response.json() as Architecture;
       const answered = savedArchitecture.questions?.answered || [];
       const open = normalizeSavedQuestions(savedArchitecture.questions?.open);
+      const savedRequirements = latestRequirementsText(savedArchitecture);
       setArchitecture(savedArchitecture);
       setAnsweredQuestions(answered);
       setQuestions(mergeQuestions([], open, answered));
+      setRequirementsText(savedRequirements);
+      setLastAppliedRequirementsText(savedRequirements);
       setProjectName(savedArchitecture.project?.name || node.project || node.customer);
-      await runArchitectureReview(savedArchitecture, requirementsText);
+      await runArchitectureReview(savedArchitecture, savedRequirements);
       setStep('review');
       setStatus('Project loaded');
       await loadProjectActivity(node);
@@ -1527,6 +1545,7 @@ export default function App() {
       setArchitecture(payload.architecture);
       setQuestions(mergeQuestions([], payload.questions, answered));
       setArchitecturePath(payload.outputPath);
+      setLastAppliedRequirementsText(latestRequirementsText(payload.architecture));
       setDiagramPath('');
       setFileRoles(payload.fileRoles || []);
       if (payload.pendingComponents?.length) {
@@ -1629,7 +1648,9 @@ export default function App() {
         projectName,
         replaceArchitecture,
       });
+      const appliedRequirements = text.trim();
       setRequirementsSaved(true);
+      setLastAppliedRequirementsText(appliedRequirements);
       if (payload.architecture) {
         setArchitecture(payload.architecture);
         setQuestions(mergeQuestions([], payload.questions || normalizeSavedQuestions(payload.architecture.questions?.open), payload.architecture.questions?.answered || []));
@@ -1661,7 +1682,10 @@ export default function App() {
         await runArchitectureReview(architecture, text.trim());
       }
       setTimeout(() => setRequirementsSaved(false), 3000);
-    } catch { /* non-fatal — requirements are still shown in the UI */ }
+    } catch (err) {
+      setRequirementsSaved(false);
+      setError(err instanceof Error ? err.message : 'Requirements could not be applied to the architecture model.');
+    }
   }
 
   async function loadRequirementsFromFile(file: File) {
@@ -1773,6 +1797,18 @@ export default function App() {
 
   // ── Diagram ──────────────────────────────────────────────────────────────────
 
+  function requireAppliedRequirementsBeforeDiagram(action: string): boolean {
+    if (!unappliedRequirements) return true;
+    const projectLabel = activeProject
+      ? `${activeProject.customer}${activeProject.project ? ` / ${activeProject.project}` : ''}`
+      : 'the current project';
+    const message = `Cannot ${action} yet. The requirements text has not been applied to ${projectLabel}. Use "Design fresh environment" for a new customer/workload, or "Add to current project" if this text belongs to the active project.`;
+    setError(message);
+    setMcpStatus(message);
+    setStatus('');
+    return false;
+  }
+
   function diagramRenderPayload(extra: Record<string, unknown> = {}) {
     const base: Record<string, unknown> = {
       diagramType,
@@ -1793,6 +1829,7 @@ export default function App() {
   }
 
   async function generateDiagram() {
+    if (!requireAppliedRequirementsBeforeDiagram('generate a Draw.io file')) return;
     setBusy(true);
     setError('');
     setStatus('Generating diagram…');
@@ -1874,6 +1911,7 @@ export default function App() {
   }
 
   async function copyDiagramXml() {
+    if (!requireAppliedRequirementsBeforeDiagram('copy Draw.io XML')) return;
     setBusy(true);
     try {
       const response = await fetch('/api/drawio-xml', {
@@ -1893,6 +1931,7 @@ export default function App() {
 
   async function openInDiagramsNet() {
     if (!architecture) return;
+    if (!requireAppliedRequirementsBeforeDiagram('open diagrams.net')) return;
     setBusy(true);
     setError('');
     try {
@@ -1934,6 +1973,7 @@ export default function App() {
 
   async function loadPreview() {
     if (!architecture) return;
+    if (!requireAppliedRequirementsBeforeDiagram('load a diagram preview')) return;
     setBusy(true);
     setError('');
     try {
@@ -1955,6 +1995,7 @@ export default function App() {
 
   async function openInMcpEditor() {
     if (!architecture) return;
+    if (!requireAppliedRequirementsBeforeDiagram('open MCP')) return;
     setBusy(true);
     setMcpStatus('');
     setError('');
@@ -1979,6 +2020,7 @@ export default function App() {
   }
 
   async function saveAndOpenAllPages(forceRegenerate = false) {
+    if (!requireAppliedRequirementsBeforeDiagram('open all diagram pages')) return;
     const payload = await postJson<{ outputPath: string; xml?: string; source?: string }>(
       '/api/drawio-multipage',
       diagramRenderPayload({ outputPath: 'outputs/network-picasso-all.drawio', includeXml: true, forceRegenerate }),
@@ -1997,6 +2039,7 @@ export default function App() {
 
   async function generateAllPages(forceRegenerate = false) {
     if (!architecture) return;
+    if (!requireAppliedRequirementsBeforeDiagram('open all diagram pages')) return;
     setBusy(true);
     setMcpStatus('');
     setError('');
@@ -2071,6 +2114,7 @@ export default function App() {
 
   async function rebuildAndVerifyMcpPages() {
     if (!architecture) return;
+    if (!requireAppliedRequirementsBeforeDiagram('rebuild MCP pages')) return;
     setMcpTabsBusy(true);
     setError('');
     try {
@@ -2107,6 +2151,7 @@ export default function App() {
   }
 
   async function copyBobPrompt(preset: GuidedRemediationPreset, options: { mcpOpened?: boolean } = {}) {
+    if (!requireAppliedRequirementsBeforeDiagram('copy a Bob editing prompt')) return;
     try {
       await navigator.clipboard.writeText(preset.prompt);
       setCopiedPrompt(preset.label);
@@ -2124,6 +2169,7 @@ export default function App() {
   }
 
   async function copyBobPromptAndOpenMcp(preset: GuidedRemediationPreset) {
+    if (!requireAppliedRequirementsBeforeDiagram('copy a Bob prompt and open MCP')) return;
     const clipboardWrite = navigator.clipboard.writeText(preset.prompt);
     const openedWindow = window.open(BROWSER_MCP_EDITOR_URL, 'drawio-mcp-editor');
     const mcpOpened = Boolean(openedWindow);
@@ -3330,7 +3376,7 @@ export default function App() {
                       onClick={() => saveRequirements(requirementsText, 'text')}
                       disabled={!requirementsText.trim()}
                     >
-                      {requirementsSaved ? 'Saved' : 'Save requirements'}
+                      {requirementsSaved ? 'Applied' : 'Add to current project'}
                     </Button>
                     <Button
                       kind="secondary"
@@ -3364,8 +3410,17 @@ export default function App() {
                   {requirementsSaved && (
                     <InlineNotification
                       kind="success"
-                      title="Requirements saved"
+                      title="Requirements applied"
                       subtitle="Stored in your architecture model."
+                      lowContrast
+                      hideCloseButton
+                    />
+                  )}
+                  {unappliedRequirements && (
+                    <InlineNotification
+                      kind="warning"
+                      title="Requirements not applied"
+                      subtitle="Draw.io and MCP actions are locked until you choose Add to current project or Design fresh environment."
                       lowContrast
                       hideCloseButton
                     />
@@ -3373,7 +3428,7 @@ export default function App() {
                   <InlineNotification
                     kind="info"
                     title="When to use fresh design"
-                    subtitle="Use Save requirements to add detail to the current model. Use Design fresh environment when the text describes a new customer, workload, or topology and should replace the current model."
+                    subtitle="Use Add to current project only when the text belongs to the active project. Use Design fresh environment when the text describes a new customer, workload, or topology."
                     lowContrast
                     hideCloseButton
                   />
@@ -3532,7 +3587,7 @@ export default function App() {
                               size="sm"
                               renderIcon={Launch}
                               onClick={openInMcpEditor}
-                              disabled={busy || !architecture || !mcpRunning}
+                              disabled={busy || !architecture || !mcpRunning || unappliedRequirements}
                             >
                               Open in MCP editor
                             </Button>
@@ -3547,7 +3602,7 @@ export default function App() {
                                 targetPage: remediationTarget.label,
                                 prompt: qualityRemediationPrompt(remediationTarget.label, diagramQuality),
                               })}
-                              disabled={busy}
+                              disabled={busy || unappliedRequirements}
                             >
                               {copiedPrompt === 'Quality Fix' ? 'Quality fix copied' : 'Copy quality fix prompt'}
                             </Button>
@@ -3622,6 +3677,15 @@ export default function App() {
                   </div>
 
                   <div className="diagram-actions">
+                    {unappliedRequirements && (
+                      <InlineNotification
+                        kind="warning"
+                        title="Apply requirements before generating diagrams"
+                        subtitle="The text in Customer requirements is not part of the architecture model yet. Choose Add to current project or Design fresh environment before opening Draw.io or MCP."
+                        lowContrast
+                        hideCloseButton
+                      />
+                    )}
                     {/* Option A */}
                     <div className="diagram-action-card">
                       <div className="diagram-action-header">
@@ -3629,7 +3693,7 @@ export default function App() {
                         <InfoTip text="Writes the .drawio XML file to the outputs/ folder inside this repository. Open the saved file in the Draw.io desktop app or diagrams.net." />
                       </div>
                       <p className="panel-copy">Saves the diagram to <code>outputs/</code> on disk.</p>
-                      <Button renderIcon={Diagram} onClick={generateDiagram} disabled={busy || !architecture}>
+                      <Button renderIcon={Diagram} onClick={generateDiagram} disabled={busy || !architecture || unappliedRequirements}>
                         Save Draw.io file
                       </Button>
                       {diagramPath && (
@@ -3647,7 +3711,7 @@ export default function App() {
                         <InfoTip text="Copies the raw Draw.io XML to your clipboard. Paste it into diagrams.net using Edit › XML, or into any tool that accepts Draw.io XML." />
                       </div>
                       <p className="panel-copy">Copy the diagram XML to your clipboard, then paste into diagrams.net via Edit › XML.</p>
-                      <Button kind="secondary" renderIcon={Copy} onClick={copyDiagramXml} disabled={busy || !architecture}>
+                      <Button kind="secondary" renderIcon={Copy} onClick={copyDiagramXml} disabled={busy || !architecture || unappliedRequirements}>
                         Copy XML to clipboard
                       </Button>
                     </div>
@@ -3659,7 +3723,7 @@ export default function App() {
                         <InfoTip text="Opens diagrams.net in a new window using the embed API. The diagram XML is delivered automatically via postMessage once the editor loads — nothing is uploaded externally. Requires internet access and that your browser permits the popup." />
                       </div>
                       <p className="panel-copy">Open your diagram directly in diagrams.net in a new tab.</p>
-                      <Button kind="secondary" renderIcon={Launch} onClick={openInDiagramsNet} disabled={busy || !architecture}>
+                      <Button kind="secondary" renderIcon={Launch} onClick={openInDiagramsNet} disabled={busy || !architecture || unappliedRequirements}>
                         Open in diagrams.net
                       </Button>
                     </div>
@@ -3671,7 +3735,7 @@ export default function App() {
                         <InfoTip text="Renders a live interactive preview of the diagram using the diagrams.net embed API. Requires an internet connection to load the embed viewer. The diagram is sent to the iframe via postMessage — nothing is stored externally." />
                       </div>
                       <p className="panel-copy">Render an interactive preview inline. Requires internet access to load the embed viewer.</p>
-                      <Button kind="secondary" renderIcon={Diagram} onClick={loadPreview} disabled={busy || !architecture}>
+                      <Button kind="secondary" renderIcon={Diagram} onClick={loadPreview} disabled={busy || !architecture || unappliedRequirements}>
                         {previewXml ? 'Refresh preview' : 'Load preview'}
                       </Button>
                       {previewXml && (
@@ -3726,7 +3790,7 @@ export default function App() {
                         Open MCP editor tab
                       </Button>
                       <Button kind="secondary" renderIcon={Launch} onClick={openInMcpEditor}
-                        disabled={busy || !architecture || !mcpRunning}>
+                        disabled={busy || !architecture || !mcpRunning || unappliedRequirements}>
                         Open generated five-page design
                       </Button>
                       {mcpStatus && (
@@ -3748,13 +3812,13 @@ export default function App() {
                           : 'Saves and opens a five-page .drawio file: executive, context, logical, deployment, and assumptions/decisions.'}
                       </p>
                       <Button renderIcon={Layers} onClick={() => generateAllPages(false)}
-                        disabled={busy || !architecture}>
+                        disabled={busy || !architecture || unappliedRequirements}>
                         {projectActivity?.file?.hasSavedDrawio
                           ? 'Open saved project diagram'
                           : (mcpRunning ? 'Open all pages in MCP editor' : 'Open all-pages .drawio file')}
                       </Button>
                       <Button kind="ghost" size="sm" onClick={() => generateAllPages(true)}
-                        disabled={busy || !architecture}>
+                        disabled={busy || !architecture || unappliedRequirements}>
                         Regenerate from model
                       </Button>
                     </div>
@@ -3930,7 +3994,7 @@ export default function App() {
                               size="sm"
                               renderIcon={copiedPrompt === preset.label ? Checkmark : Copy}
                               onClick={() => copyBobPrompt(preset)}
-                              disabled={busy}
+                              disabled={busy || unappliedRequirements}
                             >
                               Copy prompt
                             </Button>
@@ -3939,7 +4003,7 @@ export default function App() {
                               size="sm"
                               renderIcon={Launch}
                               onClick={() => copyBobPromptAndOpenMcp(preset)}
-                              disabled={busy}
+                              disabled={busy || unappliedRequirements}
                             >
                               Copy + open generated design
                             </Button>
